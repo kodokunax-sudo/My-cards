@@ -1,51 +1,144 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MiniBrain | Neural Lab</title>
-<style>
-:root{color-scheme:dark;--bg:#0b1017;--panel:#121b26;--panel2:#172332;--line:#26384b;--text:#e8f0f8;--muted:#8fa3b8;--mint:#78e6c1;--blue:#7ba8ff;--red:#ff8f9a}*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 90% -10%,#193047 0%,transparent 60%),var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Arial,sans-serif}.wrap{max-width:1080px;margin:auto;padding:28px 18px 60px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}.brand{display:flex;gap:13px;align-items:center}.logo{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;background:linear-gradient(145deg,#214e55,#1d344b);font-size:25px}.eyebrow{font-size:11px;letter-spacing:.16em;color:var(--mint);font-weight:800}.title{font-size:25px;font-weight:800;letter-spacing:-.03em}.status{border:1px solid var(--line);border-radius:99px;padding:7px 12px;color:var(--mint);font-size:12px;font-weight:700}.intro{color:var(--muted);margin:0 0 22px}.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:16px}.card{background:linear-gradient(180deg,var(--panel),#101823);border:1px solid var(--line);border-radius:18px;padding:19px;box-shadow:0 12px 35px #0003}.card h2{font-size:16px;margin:0 0 5px}.sub{font-size:12px;color:var(--muted);margin:0 0 17px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}.stat{padding:13px;border:1px solid var(--line);border-radius:13px;background:#0d151f}.stat strong{display:block;font-size:23px;letter-spacing:-.03em}.stat span{color:var(--muted);font-size:11px}.mint{color:var(--mint)}.controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center}.btn{border:1px solid var(--line);color:var(--text);background:var(--panel2);padding:10px 14px;border-radius:11px;font-weight:700;cursor:pointer}.btn.primary{background:var(--mint);color:#092018;border-color:var(--mint)}.btn:disabled{opacity:.45;cursor:not-allowed}label{font-size:12px;color:var(--muted);display:block;margin-bottom:5px}input,select{background:#0b141e;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 10px;font:inherit;min-width:0}input[type=range]{padding:0;width:100%}.field{margin:12px 0}.progress{height:8px;background:#0a1119;border-radius:9px;overflow:hidden;margin:12px 0 6px}.progress>div{height:100%;width:0;background:linear-gradient(90deg,#4caeaa,var(--mint));transition:width .15s}.hint{font-size:11px;color:var(--muted)}canvas{width:100%;height:165px;display:block;background:#0b141e;border:1px solid var(--line);border-radius:12px}.predictbox{border:1px solid var(--line);border-radius:14px;background:#0b141e;padding:16px;margin-top:12px}.pred{display:flex;align-items:center;justify-content:space-between;gap:14px}.pred strong{font-size:42px;color:var(--mint);line-height:1}.meter{height:9px;background:#263547;border-radius:9px;overflow:hidden;margin-top:13px}.meter div{height:100%;width:50%;background:var(--mint);transition:width .2s}.samples{width:100%;border-collapse:collapse;font-size:13px}.samples th,.samples td{text-align:center;padding:9px;border-bottom:1px solid var(--line)}.samples th{color:var(--muted);font-weight:600}.notice{margin-top:16px;border:1px solid #315b51;background:#10231f;border-radius:13px;padding:12px 14px;color:#b8eadb;font-size:12px}.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#e8f0f8;color:#101923;padding:11px 17px;border-radius:11px;box-shadow:0 8px 35px #0008;display:none;max-width:calc(100% - 30px);z-index:5}.toast.show{display:block}.footer{margin-top:18px;color:var(--muted);font-size:11px;text-align:center}@media(max-width:760px){.grid{grid-template-columns:1fr}.wrap{padding:18px 12px 40px}.title{font-size:21px}.stats{gap:7px}.stat{padding:10px}.stat strong{font-size:20px}}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a1018">
+  <meta name="description" content="MiniBrain — учебная нейросеть с реальным обучением, локальной памятью и облачной синхронизацией.">
+  <title>MiniBrain | Neural Lab</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script>
+    // Этот экран останется видимым, даже если app.js не загрузится.
+    window.setTimeout(() => {
+      if (!window.__MINIBRAIN_READY__) {
+        const box = document.getElementById('boot-warning');
+        if (box) {
+          box.hidden = false;
+          box.textContent = 'Страница HTML открылась, но JavaScript-модули не запустились. Проверь, что папка src загружена целиком, а имена файлов и пути совпадают с регистром: src/app.js, src/brain.js, src/config.js, src/storage.js, src/supabase.js.';
+        }
+      }
+    }, 3500);
+  </script>
 </head>
-<body><main class="wrap">
-<header class="top"><div class="brand"><div class="logo">🧠</div><div><div class="eyebrow">NEURAL LAB · EXPERIMENT 001</div><div class="title">MiniBrain</div></div></div><div class="status" id="status">● ГОТОВА</div></header>
-<p class="intro">Маленькая нейросеть с настоящими обучаемыми весами. Она учится находить XOR-закономерность, а не получает готовый ответ из таблицы.</p>
-<div class="grid">
-<section class="card"><h2>Обучение сети</h2><p class="sub">Два входных нейрона → скрытый слой → один выходной нейрон</p>
-<div class="stats"><div class="stat"><strong id="accuracy" class="mint">0%</strong><span>Точность</span></div><div class="stat"><strong id="loss">0.0000</strong><span>Ошибка (loss)</span></div><div class="stat"><strong id="epochsDone">0</strong><span>Эпох обучено</span></div></div>
-<div class="field"><label for="epochs">Количество эпох за запуск: <b id="epochValue">2500</b></label><input id="epochs" type="range" min="100" max="10000" step="100" value="2500"></div>
-<div class="controls"><button class="btn primary" id="train">▶ Обучить</button><button class="btn" id="reset">↺ Сбросить веса</button></div>
-<div class="progress"><div id="progress"></div></div><div class="hint" id="progressText">Готова к первому обучению</div>
-<div style="margin-top:20px"><h2>Как меняется ошибка</h2><p class="sub">Чем ниже линия, тем лучше сеть подстроила веса.</p><canvas id="chart" width="700" height="220"></canvas></div>
-<div class="notice">Это настоящий небольшой эксперимент с обратным распространением ошибки (backpropagation). Он не является языковой моделью и пока решает только учебную задачу XOR.</div>
-</section>
-<section class="card"><h2>Проверка нейросети</h2><p class="sub">Меняй входы и смотри, какой ответ предсказывает обученная модель.</p>
-<div class="field"><label for="a">Вход A</label><select id="a"><option value="0">0</option><option value="1">1</option></select></div>
-<div class="field"><label for="b">Вход B</label><select id="b"><option value="0">0</option><option value="1" selected>1</option></select></div>
-<div class="predictbox"><div class="pred"><div><div class="hint">ПРЕДСКАЗАНИЕ</div><strong id="prediction">—</strong></div><div style="text-align:right"><div class="hint">Уверенность</div><b id="confidence">Сначала обучение</b></div></div><div class="meter"><div id="meter"></div></div><div class="hint" style="margin-top:8px" id="probability">Вероятность ответа 1: —</div></div>
-<div style="margin-top:21px"><h2>Контрольные примеры</h2><p class="sub">Правильные ответы для XOR. Сеть должна самостоятельно их выучить.</p><table class="samples"><thead><tr><th>A</th><th>B</th><th>Правильный ответ</th><th>Ответ сети</th></tr></thead><tbody id="sampleRows"></tbody></table></div>
-<div style="margin-top:20px"><h2>Память модели</h2><p class="sub">Экспортируй реальные веса или загрузи сохранённую модель.</p><div class="controls"><button class="btn" id="export">↓ Экспорт модели</button><button class="btn" id="import">↑ Импорт модели</button><input type="file" id="file" accept="application/json" hidden></div><p class="hint" id="saved">Модель автоматически сохраняется в этом браузере.</p></div>
-</section></div><div class="footer">MiniBrain v0.1 · Обучение выполняется в браузере · Данные модели остаются на этом устройстве</div>
-</main><div class="toast" id="toast"></div>
-<script>
-(()=>{'use strict';
-const $=id=>document.getElementById(id), data=[{x:[0,0],y:0},{x:[0,1],y:1},{x:[1,0],y:1},{x:[1,1],y:0}],KEY='minibrain-v1-model';let net,history=[],steps=0,busy=false;
-const sigmoid=z=>1/(1+Math.exp(-Math.max(-30,Math.min(30,z))));
-function rng(seed){let s=seed>>>0||1;return()=>{s^=s<<13;s^=s>>>17;s^=s<<5;return(s>>>0)/4294967296}}
-function create(seed=12345){const r=rng(seed),h=8;return{version:1,seed,hidden:h,lr:.8,w1:Array.from({length:h},()=>Array.from({length:2},()=>((r()*2-1)*.7))),b1:Array(h).fill(0),w2:Array.from({length:h},()=>((r()*2-1)*.7)),b2:0,epochs:0,history:[]}}
-function forward(n,x){const h=n.w1.map((w,i)=>Math.tanh(w[0]*x[0]+w[1]*x[1]+n.b1[i]));let z=n.b2;for(let i=0;i<n.hidden;i++)z+=h[i]*n.w2[i];return{p:sigmoid(z),h}}
-function evaluate(){let loss=0,correct=0;for(const s of data){const p=Math.max(1e-7,Math.min(1-1e-7,forward(net,s.x).p));loss-=s.y*Math.log(p)+(1-s.y)*Math.log(1-p);if((p>=.5?1:0)===s.y)correct++}return{loss:loss/4,accuracy:correct/4}}
-function trainBatch(count){const r=rng((net.seed+net.epochs*7919)>>>0);for(let ep=0;ep<count;ep++){const order=[0,1,2,3];for(let i=3;i>0;i--){const j=Math.floor(r()*(i+1));[order[i],order[j]]=[order[j],order[i]]}for(const idx of order){const s=data[idx],f=forward(net,s.x),d=f.p-s.y,old=[...net.w2];for(let i=0;i<net.hidden;i++){const g=d*old[i]*(1-f.h[i]*f.h[i]);net.w1[i][0]-=net.lr*g*s.x[0];net.w1[i][1]-=net.lr*g*s.x[1];net.b1[i]-=net.lr*g;net.w2[i]-=net.lr*d*f.h[i]}net.b2-=net.lr*d}net.epochs++;if((ep+1)%Math.max(1,Math.floor(count/100))===0||ep===count-1)net.history.push(evaluate().loss)}net.history=net.history.slice(-500);history=net.history;}
-function render(){const m=evaluate();$('accuracy').textContent=Math.round(m.accuracy*100)+'%';$('loss').textContent=m.loss.toFixed(4);$('epochsDone').textContent=net.epochs.toLocaleString('ru-RU');$('sampleRows').innerHTML=data.map(s=>{const p=forward(net,s.x).p;return `<tr><td>${s.x[0]}</td><td>${s.x[1]}</td><td>${s.y}</td><td style="color:${(p>=.5?1:0)===s.y?'var(--mint)':'var(--red)'}">${p>=.5?1:0} · ${(p*100).toFixed(1)}%</td></tr>`}).join('');predict();draw();}
-function predict(){if(!net)return;const p=forward(net,[+$('a').value,+$('b').value]).p;$('prediction').textContent=net.epochs?(p>=.5?1:0):'—';$('confidence').textContent=net.epochs?(Math.max(p,1-p)*100).toFixed(1)+'%':'Сначала обучение';$('meter').style.width=(p*100)+'%';$('probability').textContent='Вероятность ответа 1: '+(p*100).toFixed(1)+'%';}
-function draw(){const c=$('chart'),ctx=c.getContext('2d'),w=c.width,h=c.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#26384b';ctx.lineWidth=1;for(let i=1;i<5;i++){let y=i*h/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}if(history.length<2)return;const max=Math.max(.1,...history),min=Math.min(0,...history),range=max-min||1;ctx.beginPath();history.forEach((v,i)=>{const x=12+(w-24)*i/(history.length-1),y=h-12-(v-min)/range*(h-24);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.strokeStyle='#78e6c1';ctx.lineWidth=3;ctx.stroke()}
-function save(){localStorage.setItem(KEY,JSON.stringify(net));$('saved').textContent='Модель сохранена локально · '+new Date().toLocaleTimeString('ru-RU')}
-function toast(t){$('toast').textContent=t;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),2600)}
-async function train(){if(busy)return;busy=true;$('train').disabled=true;$('reset').disabled=true;$('status').textContent='● ОБУЧАЕТСЯ';const total=+$('epochs').value,chunk=Math.ceil(total/25);let done=0;while(done<total){const n=Math.min(chunk,total-done);trainBatch(n);done+=n;$('progress').style.width=(done/total*100)+'%';$('progressText').textContent='Обучение: '+Math.round(done/total*100)+'%';render();await new Promise(requestAnimationFrame)}save();$('status').textContent='● ГОТОВА';$('progressText').textContent='Обучение завершено';$('train').disabled=false;$('reset').disabled=false;busy=false;toast('Обучение завершено. Точность: '+Math.round(evaluate().accuracy*100)+'%')}
-function reset(){net=create();history=[];$('progress').style.width='0%';$('progressText').textContent='Готова к первому обучению';save();render();toast('Веса нейросети сброшены')}
-$('epochs').addEventListener('input',()=>$('epochValue').textContent=$('epochs').value);$('train').onclick=train;$('reset').onclick=reset;$('a').onchange=predict;$('b').onchange=predict;
-$('export').onclick=()=>{const blob=new Blob([JSON.stringify(net,null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='minibrain-model.json';a.click();URL.revokeObjectURL(u)};
-$('import').onclick=()=>$('file').click();$('file').onchange=async e=>{try{const n=JSON.parse(await e.target.files[0].text());if(n.version!==1||n.hidden!==8||!Array.isArray(n.w1)||n.w1.length!==8||!n.w1.every(r=>Array.isArray(r)&&r.length===2&&r.every(Number.isFinite))||!Array.isArray(n.w2)||n.w2.length!==8||!n.w2.every(Number.isFinite)||!Array.isArray(n.b1)||n.b1.length!==8||!n.b1.every(Number.isFinite)||!Number.isFinite(n.b2))throw Error('Файл не похож на MiniBrain v1');net=n;history=Array.isArray(net.history)?net.history:[];save();render();toast('Модель загружена')}catch(err){toast('Не удалось загрузить: '+err.message)}e.target.value=''};
-try{const stored=localStorage.getItem(KEY);net=stored?JSON.parse(stored):create();if(net.version!==1||!Array.isArray(net.w1)||net.w1.length!==8)net=create();history=net.history||[]}catch{net=create()}render();
-})();
-</script></body></html>
+<body>
+  <main class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="MiniBrain, главная">
+        <span class="brand-mark">🧠</span>
+        <span class="brand-copy"><span class="eyebrow">NEURAL LAB · EXPERIMENT 001</span><strong>MiniBrain</strong></span>
+      </a>
+      <div class="status-wrap"><span class="status-dot"></span><span id="status">ЗАПУСК</span></div>
+    </header>
+
+    <section class="intro">
+      <div>
+        <p class="eyebrow">МАЛЕНЬКАЯ СЕТЬ · НАСТОЯЩЕЕ ОБУЧЕНИЕ</p>
+        <h1>Учимся на данных,<br><span>а не угадываем ответ.</span></h1>
+        <p class="intro-copy">MiniBrain — компактная нейросеть, которая сама подбирает веса и учится распознавать закономерность XOR. Все вычисления идут в твоём браузере.</p>
+      </div>
+      <div class="brain-orbit" aria-hidden="true"><span>✳</span><i></i><b></b></div>
+    </section>
+
+    <div id="boot-warning" class="boot-warning" role="alert" hidden>
+      Загружаем модули MiniBrain… Если это сообщение не исчезнет, проверь наличие папки src.
+    </div>
+    <noscript><div class="boot-warning">Для работы MiniBrain нужно включить JavaScript в браузере.</div></noscript>
+
+    <section class="metric-grid" aria-label="Метрики обучения">
+      <article class="metric-card"><span>ТОЧНОСТЬ</span><strong id="accuracy">—</strong><small>доля верных ответов</small></article>
+      <article class="metric-card"><span>ОШИБКА LOSS</span><strong id="loss">—</strong><small>меньше — лучше</small></article>
+      <article class="metric-card"><span>ЭПОХИ</span><strong id="epochsDone">0</strong><small>циклы обучения</small></article>
+      <article class="metric-card"><span>ПАМЯТЬ</span><strong id="memoryStatus">Локально</strong><small>сохранение модели</small></article>
+    </section>
+
+    <section class="workspace">
+      <div class="main-column">
+        <article class="panel training-panel">
+          <div class="panel-heading">
+            <div><p class="eyebrow">01 / TRAINING</p><h2>Обучение сети</h2><p class="muted">Два входа → скрытый слой → один выход. Оптимизатор Adam обновляет веса через backpropagation.</p></div>
+            <span class="panel-icon">↗</span>
+          </div>
+
+          <div class="training-controls">
+            <div class="field-block">
+              <div class="field-label"><label for="epochs">Эпохи за запуск</label><output id="epochValue" for="epochs">3 000</output></div>
+              <input id="epochs" type="range" min="100" max="20000" step="100" value="3000">
+              <div class="range-hints"><span>100</span><span>20 000</span></div>
+            </div>
+            <div class="field-block">
+              <div class="field-label"><label for="learningRate">Скорость обучения</label><output id="learningRateValue" for="learningRate">0.030</output></div>
+              <input id="learningRate" type="range" min="0.005" max="0.080" step="0.001" value="0.030">
+              <div class="range-hints"><span>0.005</span><span>0.080</span></div>
+            </div>
+          </div>
+
+          <div class="button-row">
+            <button id="trainButton" class="button button-primary" type="button">▶ Начать обучение</button>
+            <button id="resetButton" class="button button-secondary" type="button">↺ Сбросить сеть</button>
+          </div>
+          <div class="progress-track"><div id="progressBar" class="progress-fill"></div></div>
+          <div class="progress-meta"><span id="progressText">Готова к первому запуску</span><span id="progressPercent">0%</span></div>
+
+          <div class="chart-header"><div><h3>Как уменьшается ошибка</h3><p class="muted">История loss во время обучения</p></div><span class="chart-legend"><i></i> LOSS</span></div>
+          <canvas id="lossChart" width="900" height="250" aria-label="График изменения ошибки"></canvas>
+        </article>
+
+        <article class="panel data-panel">
+          <div class="panel-heading compact">
+            <div><p class="eyebrow">02 / DATASET</p><h2>Контрольные примеры</h2><p class="muted">XOR: одинаковые значения дают 0, разные — 1.</p></div>
+            <span class="dataset-tag">4 примера</span>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead><tr><th>Вход A</th><th>Вход B</th><th>Правильный</th><th>Ответ сети</th><th>Состояние</th></tr></thead>
+              <tbody id="sampleRows"><tr><td>0</td><td>0</td><td>0</td><td>—</td><td><span class="state-pending">ожидание</span></td></tr></tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+
+      <aside class="side-column">
+        <article class="panel prediction-panel">
+          <div class="panel-heading compact"><div><p class="eyebrow">03 / PREDICTION</p><h2>Проверка сети</h2></div><span class="panel-icon small">◎</span></div>
+          <p class="muted">Поменяй входы и посмотри, что предскажет модель.</p>
+          <div class="input-pair">
+            <div class="field-block"><label for="inputA">Вход A</label><select id="inputA"><option value="0">0</option><option value="1">1</option></select></div>
+            <div class="field-block"><label for="inputB">Вход B</label><select id="inputB"><option value="0">0</option><option value="1" selected>1</option></select></div>
+          </div>
+          <div class="prediction-result">
+            <div class="prediction-top"><div><span class="mini-label">ПРЕДСКАЗАНИЕ</span><strong id="prediction">—</strong></div><div class="confidence"><span class="mini-label">УВЕРЕННОСТЬ</span><b id="confidence">Нет данных</b></div></div>
+            <div class="probability-track"><div id="probabilityBar"></div></div>
+            <p id="probabilityText" class="muted tiny">Вероятность ответа 1: —</p>
+          </div>
+          <div class="network-note"><span>✦</span><p>Сеть не получает готовую таблицу ответов. Она подбирает внутренние веса на тренировочных примерах.</p></div>
+        </article>
+
+        <article class="panel memory-panel">
+          <div class="panel-heading compact"><div><p class="eyebrow">04 / MODEL MEMORY</p><h2>Память модели</h2></div><span class="panel-icon small">▤</span></div>
+          <p class="muted">Модель автоматически сохраняется в этом браузере. Её также можно экспортировать в JSON.</p>
+          <div class="stack-buttons">
+            <button id="exportButton" class="button button-secondary" type="button">↓ Экспорт модели</button>
+            <button id="importButton" class="button button-secondary" type="button">↑ Импорт модели</button>
+            <input id="importFile" type="file" accept="application/json,.json" hidden>
+          </div>
+          <p id="localSaveText" class="save-caption">Локальное сохранение готово.</p>
+        </article>
+
+        <article class="panel cloud-panel">
+          <div class="panel-heading compact"><div><p class="eyebrow">05 / CLOUD</p><h2>Облачная память</h2></div><span class="cloud-indicator" id="cloudIndicator"></span></div>
+          <p class="muted">Подключается к Supabase. На сервер отправляются только параметры модели и метрики обучения.</p>
+          <div class="stack-buttons">
+            <button id="cloudConnectButton" class="button button-secondary" type="button">☁ Подключить облако</button>
+            <button id="cloudSaveButton" class="button button-secondary" type="button">↑ Сохранить в облако</button>
+            <button id="cloudLoadButton" class="button button-secondary" type="button">↓ Загрузить из облака</button>
+          </div>
+          <p id="cloudStatus" class="save-caption">Облако не подключено. Локальное обучение работает независимо.</p>
+        </article>
+      </aside>
+    </section>
+
+    <footer class="footer"><span>MINIBRAIN v0.2</span><span>Мозг, интерфейс, настройки и облако разделены по файлам.</span><span id="buildVersion">CORE / 2</span></footer>
+  </main>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
