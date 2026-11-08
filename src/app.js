@@ -1,334 +1,646 @@
 import { CONFIG } from './config.js';
-import { createBrain, evaluateBrain, forward, isValidBrain, trainEpoch } from './brain.js';
-import { downloadBrain, loadLocalBrain, readBrainFile, saveLocalBrain } from './storage.js';
+import { createAgentProfile } from './agents.js';
+import { generateAgentReply } from './chat-engine.js';
+import { getModelInfo, loadLanguageModel } from './model-runtime.js';
+import {
+  createChatRecord,
+  createDataDownload,
+  createLocalStore,
+  createMessageRecord
+} from './data-store.js';
 
 const $ = id => document.getElementById(id);
 const ui = {
-  status: $('status'), accuracy: $('accuracy'), loss: $('loss'), epochsDone: $('epochsDone'),
-  memoryStatus: $('memoryStatus'), epochs: $('epochs'), epochValue: $('epochValue'),
-  learningRate: $('learningRate'), learningRateValue: $('learningRateValue'),
-  train: $('trainButton'), reset: $('resetButton'), progress: $('progressBar'),
-  progressText: $('progressText'), progressPercent: $('progressPercent'), chart: $('lossChart'),
-  samples: $('sampleRows'), inputA: $('inputA'), inputB: $('inputB'),
-  prediction: $('prediction'), confidence: $('confidence'), probabilityBar: $('probabilityBar'),
-  probabilityText: $('probabilityText'), export: $('exportButton'), import: $('importButton'),
-  importFile: $('importFile'), localSave: $('localSaveText'), cloudIndicator: $('cloudIndicator'),
-  cloudConnect: $('cloudConnectButton'), cloudSave: $('cloudSaveButton'),
-  cloudLoad: $('cloudLoadButton'), cloudStatus: $('cloudStatus')
+  modelDot: $('modelDot'), modelStatus: $('modelStatus'), modelDescription: $('modelDescription'),
+  modelNotice: $('modelNotice'), deviceMode: $('deviceMode'), loadModel: $('loadModelButton'),
+  modelProgressWrap: $('modelProgressWrap'), modelProgress: $('modelProgress'),
+  modelProgressText: $('modelProgressText'), modelProgressPercent: $('modelProgressPercent'),
+  newChat: $('newChatButton'), addAgent: $('addAgentButton'), agentList: $('agentList'),
+  participantHint: $('participantHint'), chatList: $('chatList'), deleteChat: $('deleteChatButton'),
+  activeChatTitle: $('activeChatTitle'), chatMeta: $('chatMeta'), messages: $('messages'),
+  emptyState: $('emptyState'), messageForm: $('messageForm'), replyAgent: $('replyAgent'),
+  chatInput: $('chatInput'), sendButton: $('sendButton'), discussionTopic: $('discussionTopic'),
+  discussionTurns: $('discussionTurns'), discussionButton: $('discussionButton'),
+  stopDiscussionButton: $('stopDiscussionButton'), discussionStatus: $('discussionStatus'),
+  sharedMemory: $('sharedMemory'), saveSharedMemory: $('saveSharedMemoryButton'),
+  sharedMemoryStatus: $('sharedMemoryStatus'), memoryAgentSelect: $('memoryAgentSelect'),
+  agentMemory: $('agentMemory'), saveAgentMemory: $('saveAgentMemoryButton'),
+  agentMemoryStatus: $('agentMemoryStatus'), exportData: $('exportDataButton'),
+  clearData: $('clearDataButton'), storageStatus: $('storageStatus')
 };
 
-let brain = loadLocalBrain() || createBrain();
-let running = false;
-let loopRunning = false;
-let runToken = 0;
-let remainingEpochs = 0;
-let totalEpochs = 0;
-let cloudModulePromise = null;
+const store = createLocalStore();
+let state = store.load();
+let busy = false;
+let stopRequested = false;
+let currentRunId = 0;
+let streamingNode = null;
 
-function setStatus(text, tone = 'mint') {
-  ui.status.textContent = text;
-  ui.status.style.color = tone === 'red' ? 'var(--red)' : tone === 'gold' ? 'var(--gold)' : 'var(--mint)';
+function activeChat() {
+  return state.chats.find(chat => chat.id === state.settings.activeChatId) || state.chats[0];
 }
-function fmt(value) {
-  return Number(value).toLocaleString('ru-RU');
+
+function findAgent(id) {
+  return state.agents.find(agent => agent.id === id) || state.agents[0];
 }
-function saveLocal(reason = 'Модель сохранена') {
-  const result = saveLocalBrain(brain);
+
+function formatTime(value) {
+  const date = new Date(value || Date.now());
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function persist(label = 'Автосохранение включено.') {
+  const result = store.save(state);
   if (result.ok) {
-    ui.memoryStatus.textContent = 'Локально сохранена';
-    ui.localSave.textContent = reason + ' · ' + result.savedAt.toLocaleTimeString('ru-RU');
+    ui.storageStatus.textContent = label + ' · ' + result.savedAt.toLocaleTimeString('ru-RU');
   } else {
-    ui.memoryStatus.textContent = 'Ошибка';
-    ui.localSave.textContent = 'Не удалось сохранить в браузере: ' + (result.error?.message || 'недостаточно места');
+    ui.storageStatus.textContent = 'Не удалось записать данные в localStorage. Экспортируй важные диалоги.';
+    console.error('MiniBrain local storage error:', result.error);
   }
 }
-function drawChart() {
-  const canvas = ui.chart;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = '#26394b';
-  ctx.lineWidth = 1;
-  for (let i = 1; i < 5; i++) {
-    const y = h * i / 5;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+
+function setModelStatus(text, ready = false, error = false) {
+  ui.modelStatus.textContent = text;
+  ui.modelDot.classList.toggle('ready', ready);
+  ui.modelDot.style.background = error ? 'var(--red)' : '';
+}
+
+function setBusy(value, mode = '') {
+  busy = value;
+  ui.sendButton.disabled = value;
+  ui.chatInput.disabled = value;
+  ui.replyAgent.disabled = value;
+  ui.newChat.disabled = value;
+  ui.discussionButton.disabled = value || state.settings.selectedAgentIds.length < 2;
+  ui.stopDiscussionButton.disabled = !value || mode !== 'discussion';
+  ui.deleteChat.disabled = value;
+  ui.addAgent.disabled = value || state.agents.length >= CONFIG.agents.maxAgents;
+}
+
+function clearStreamingNode() {
+  if (streamingNode?.parentNode) streamingNode.remove();
+  streamingNode = null;
+}
+
+function createElement(tag, className, text = '') {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (text !== '') element.textContent = text;
+  return element;
+}
+
+function renderAgents() {
+  ui.agentList.replaceChildren();
+
+  for (const agent of state.agents) {
+    const card = createElement('div', 'agent-card' + (state.settings.selectedAgentId === agent.id ? ' active' : ''));
+    const avatar = createElement('span', 'agent-avatar', agent.avatar || '✧');
+    const main = createElement('div', 'agent-main');
+    const select = createElement('button', 'agent-select');
+    select.type = 'button';
+    select.setAttribute('aria-label', 'Выбрать агента ' + agent.name);
+    const name = createElement('span', 'agent-name', agent.name);
+    const role = createElement('span', 'agent-role', agent.role);
+    select.append(name, role);
+    main.append(select);
+
+    const actions = createElement('div', 'agent-actions');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'agent-participant';
+    checkbox.checked = state.settings.selectedAgentIds.includes(agent.id);
+    checkbox.title = 'Участвует в автономных обсуждениях';
+    checkbox.setAttribute('aria-label', 'Добавить ' + agent.name + ' в общие обсуждения');
+    actions.append(checkbox);
+    card.append(avatar, main, actions);
+    ui.agentList.append(card);
+
+    select.addEventListener('click', () => {
+      state.settings.selectedAgentId = agent.id;
+      renderAgents();
+      renderAgentSelectors();
+    });
+
+    checkbox.addEventListener('change', () => {
+      const selected = new Set(state.settings.selectedAgentIds);
+      if (checkbox.checked) selected.add(agent.id);
+      else selected.delete(agent.id);
+      state.settings.selectedAgentIds = [...selected];
+      persist('Состав агентов сохранён');
+      renderAgents();
+      renderAgentSelectors();
+      updateDiscussionAvailability();
+    });
   }
-  const values = brain.lossHistory || [];
-  if (values.length < 2) return;
-  const max = Math.max(0.1, ...values);
-  const min = Math.min(0, ...values);
-  const range = Math.max(0.000001, max - min);
-  ctx.beginPath();
-  values.forEach((value, index) => {
-    const x = 14 + (w - 28) * index / (values.length - 1);
-    const y = h - 14 - (value - min) / range * (h - 28);
-    if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  });
-  ctx.strokeStyle = '#82e6c5';
-  ctx.lineWidth = 3;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.stroke();
+
+  ui.participantHint.textContent = state.settings.selectedAgentIds.length < 2
+    ? 'Выбери минимум двух агентов для общего разговора.'
+    : 'В общем обсуждении участвуют: ' + state.settings.selectedAgentIds
+      .map(id => findAgent(id).name).join(', ');
+  updateDiscussionAvailability();
 }
-function renderSamples(metrics) {
-  ui.samples.innerHTML = metrics.rows.map(row => {
-    const state = row.correct
-      ? '<span class="state-good">✓ Да</span>'
-      : '<span class="state-bad">× Нет</span>';
-    const answer = brain.epoch ? row.prediction + ' · ' + (row.probability * 100).toFixed(1) + '%' : '—';
-    const result = brain.epoch ? state : '<span class="state-pending">Ожидает обучения</span>';
-    return '<tr><td>' + row.input[0] + '</td><td>' + row.input[1] +
-      '</td><td>' + row.target + '</td><td>' + answer +
-      '</td><td>' + result + '</td></tr>';
-  }).join('');
-}
-function renderPrediction() {
-  const input = [Number(ui.inputA.value), Number(ui.inputB.value)];
-  const probability = forward(brain, input).probability;
-  const prediction = probability >= 0.5 ? 1 : 0;
-  ui.prediction.textContent = brain.epoch ? String(prediction) : '—';
-  ui.confidence.textContent = brain.epoch
-    ? (Math.max(probability, 1 - probability) * 100).toFixed(1) + '%'
-    : 'Сначала обучение';
-  ui.probabilityBar.style.width = (probability * 100) + '%';
-  ui.probabilityText.textContent = 'Вероятность ответа 1: ' + (probability * 100).toFixed(1) + '%';
-}
-function render() {
-  const metrics = evaluateBrain(brain);
-  ui.accuracy.textContent = Math.round(metrics.accuracy * 100) + '%';
-  ui.loss.textContent = metrics.loss.toFixed(4);
-  ui.epochsDone.textContent = fmt(brain.epoch);
-  renderSamples(metrics);
-  renderPrediction();
-  drawChart();
-}
-function updateProgress() {
-  const done = totalEpochs - remainingEpochs;
-  const percent = totalEpochs ? Math.round(done / totalEpochs * 100) : 0;
-  ui.progress.style.width = percent + '%';
-  ui.progressPercent.textContent = percent + '%';
-  ui.progressText.textContent = running
-    ? 'Обучение: ' + percent + '% · осталось ' + fmt(remainingEpochs) + ' эпох'
-    : remainingEpochs > 0 ? 'Пауза · осталось ' + fmt(remainingEpochs) + ' эпох' : 'Готова к обучению';
-}
-function updateControls() {
-  ui.train.textContent = running ? 'Ⅱ Пауза' : remainingEpochs > 0 ? '▶ Продолжить' : '▶ Обучить';
-  ui.reset.disabled = running;
-  ui.epochs.disabled = running || remainingEpochs > 0;
-  ui.learningRate.disabled = running;
-  setStatus(running ? '● ОБУЧАЕТСЯ' : remainingEpochs > 0 ? '● ПАУЗА' : '● ГОТОВА');
-}
-async function trainingLoop(token) {
-  while (running && remainingEpochs > 0 && token === runToken) {
-    const count = Math.min(CONFIG.epochsPerFrame, remainingEpochs);
-    const rate = Number(ui.learningRate.value);
-    for (let i = 0; i < count; i++) {
-      const metrics = trainEpoch(brain, rate);
-      if (brain.epoch % 20 === 0) {
-        brain.lossHistory.push(metrics.loss);
-        if (brain.lossHistory.length > CONFIG.chartHistoryLimit) brain.lossHistory.shift();
-      }
-    }
-    remainingEpochs -= count;
-    render();
-    updateProgress();
-    if (brain.epoch % CONFIG.saveEveryEpochs === 0) saveLocal('Автосохранение');
-    await new Promise(resolve => requestAnimationFrame(resolve));
+
+function populateSelect(select, agents, selectedId) {
+  const previous = selectedId || select.value;
+  select.replaceChildren();
+  for (const agent of agents) {
+    const option = document.createElement('option');
+    option.value = agent.id;
+    option.textContent = agent.name + ' · ' + agent.role;
+    select.append(option);
   }
-  if (token !== runToken) return;
-  loopRunning = false;
-  if (remainingEpochs === 0) {
-    brain.lossHistory.push(evaluateBrain(brain).loss);
-    saveLocal('Обучение завершено');
-    ui.progress.style.width = '100%';
-    ui.progressPercent.textContent = '100%';
-    ui.progressText.textContent = 'Обучение завершено · точность ' + Math.round(evaluateBrain(brain).accuracy * 100) + '%';
-  }
-  running = false;
-  updateControls();
-  render();
+  if (agents.some(agent => agent.id === previous)) select.value = previous;
+  else if (agents[0]) select.value = agents[0].id;
 }
-function startOrPause() {
-  if (running) {
-    running = false;
-    updateControls();
-    updateProgress();
+
+function renderAgentSelectors() {
+  populateSelect(ui.replyAgent, state.agents, state.settings.selectedAgentId);
+  state.settings.selectedAgentId = ui.replyAgent.value || state.settings.selectedAgentId;
+  const selectedMemoryAgent = ui.memoryAgentSelect.value || state.settings.selectedAgentId;
+  populateSelect(ui.memoryAgentSelect, state.agents, selectedMemoryAgent);
+  renderMemoryEditor();
+}
+
+function renderMemoryEditor() {
+  const agent = findAgent(ui.memoryAgentSelect.value || state.settings.selectedAgentId);
+  if (!agent) return;
+  if (document.activeElement !== ui.agentMemory) {
+    ui.agentMemory.value = agent.memory || '';
+  }
+}
+
+function renderChats() {
+  ui.chatList.replaceChildren();
+  for (const chat of [...state.chats].reverse()) {
+    const button = createElement('button', 'chat-item' + (chat.id === state.settings.activeChatId ? ' active' : ''));
+    button.type = 'button';
+    const title = createElement('span', '', chat.title || 'Новый диалог');
+    const count = createElement('small', '', String(chat.messages.length));
+    button.append(title, count);
+    button.addEventListener('click', () => {
+      if (busy) return;
+      state.settings.activeChatId = chat.id;
+      renderChats();
+      renderConversation();
+      persist('Открыт диалог');
+    });
+    ui.chatList.append(button);
+  }
+}
+
+function renderConversation() {
+  const chat = activeChat();
+  if (!chat) return;
+
+  ui.activeChatTitle.textContent = chat.title || 'Новый диалог';
+  ui.chatMeta.textContent = 'Сообщений: ' + chat.messages.length + ' · сохранено локально';
+  ui.messages.replaceChildren();
+
+  if (!chat.messages.length) {
+    const empty = createElement('div', 'empty-state');
+    const symbol = createElement('div', 'empty-symbol', '◌');
+    const title = createElement('h3', '', 'Комната пока пуста');
+    const copy = createElement('p', '', 'Загрузи языковую модель, напиши сообщение или задай тему для обсуждения агентов.');
+    empty.append(symbol, title, copy);
+    ui.messages.append(empty);
     return;
   }
-  if (remainingEpochs <= 0) {
-    totalEpochs = Number(ui.epochs.value);
-    remainingEpochs = totalEpochs;
+
+  for (const message of chat.messages) {
+    ui.messages.append(createMessageNode(message));
   }
-  running = true;
-  updateControls();
-  updateProgress();
-  if (!loopRunning) {
-    loopRunning = true;
-    const token = ++runToken;
-    trainingLoop(token).catch(error => {
-      if (token !== runToken) return;
-      running = false;
-      loopRunning = false;
-      setStatus('● ОШИБКА', 'red');
-      ui.progressText.textContent = 'Ошибка обучения: ' + error.message;
-      updateControls();
-      console.error(error);
+  scrollMessages();
+}
+
+function createMessageNode(message) {
+  const isUser = message.type === 'user';
+  const node = createElement('article', 'message' + (isUser ? ' user' : ''));
+  const avatar = createElement('div', 'message-avatar', isUser ? '●' : (message.avatar || '✧'));
+  const body = createElement('div', 'message-body');
+  const meta = createElement('div', 'message-meta');
+  const name = createElement('span', 'message-name', isUser ? 'Ты' : (message.speakerName || 'Агент'));
+  const time = createElement('span', '', formatTime(message.createdAt));
+  meta.append(name, time);
+  const bubble = createElement('div', 'message-bubble', message.content || '');
+  const timestamp = createElement('div', 'message-time', isUser ? 'Сообщение пользователя' : 'Ответ агента');
+  body.append(meta, bubble, timestamp);
+  node.append(avatar, body);
+  return node;
+}
+
+function createStreamingMessage(agent) {
+  const node = createElement('article', 'message streaming');
+  const avatar = createElement('div', 'message-avatar', agent.avatar || '✧');
+  const body = createElement('div', 'message-body');
+  const meta = createElement('div', 'message-meta');
+  const name = createElement('span', 'message-name', agent.name);
+  const time = createElement('span', '', 'печатает…');
+  meta.append(name, time);
+  const bubble = createElement('div', 'message-bubble');
+  const dots = createElement('span', 'typing-indicator');
+  dots.append(createElement('i'), createElement('i'), createElement('i'));
+  bubble.append(dots);
+  body.append(meta, bubble);
+  node.append(avatar, body);
+  ui.messages.append(node);
+  scrollMessages();
+  streamingNode = { node, bubble, time, text: '' };
+  return streamingNode;
+}
+
+function scrollMessages() {
+  ui.messages.scrollTop = ui.messages.scrollHeight;
+}
+
+function appendMessage(chat, message) {
+  chat.messages.push(message);
+  if (chat.messages.length > 240) chat.messages.splice(0, chat.messages.length - 240);
+  chat.updatedAt = new Date().toISOString();
+
+  if (message.type === 'user' && (chat.title === 'Общий разговор' || chat.title === 'Новый диалог')) {
+    chat.title = message.content.replace(/\s+/g, ' ').slice(0, 38) || 'Новый диалог';
+  }
+
+  persist('Сообщение сохранено');
+  if (chat.id === state.settings.activeChatId) {
+    renderConversation();
+    renderChats();
+  }
+}
+
+function updateDiscussionAvailability() {
+  ui.discussionButton.disabled = busy || state.settings.selectedAgentIds.length < 2;
+  if (state.settings.selectedAgentIds.length < 2 && !busy) {
+    ui.discussionStatus.textContent = 'Выбери минимум двух участников в списке агентов.';
+  }
+}
+
+function updateModelDeviceNotice() {
+  const requested = ui.deviceMode.value;
+  const gpu = typeof navigator !== 'undefined' && Boolean(navigator.gpu);
+  if (requested === 'webgpu' && !gpu) {
+    ui.modelNotice.textContent = 'WebGPU не найден в этом браузере. Выбери «Автоматически» или CPU · WASM.';
+    return;
+  }
+  const useGpu = requested === 'webgpu' || (requested === 'auto' && gpu);
+  ui.modelNotice.textContent = useGpu
+    ? 'GPU-вариант: первая загрузка около 483 МБ. Модель будет кешироваться браузером и не должна скачиваться заново при каждом открытии.'
+    : 'CPU-вариант: первая загрузка может быть около 786 МБ и работать медленнее. Кеш модели хранится отдельно от истории.';
+}
+
+async function handleModelLoad() {
+  if (getModelInfo().loaded || getModelInfo().loading) return;
+  const device = ui.deviceMode.value;
+  const gpu = typeof navigator !== 'undefined' && Boolean(navigator.gpu);
+  const useGpu = device === 'webgpu' || (device === 'auto' && gpu);
+  const size = useGpu ? 'примерно 483 МБ' : 'примерно 786 МБ';
+  const accepted = window.confirm(
+    'Загрузить языковую модель ' + size + '?\n\n' +
+    'Файлы скачиваются из Hugging Face и кешируются в этом браузере. ' +
+    'Тексты диалогов остаются в localStorage и не отправляются на сервер.'
+  );
+  if (!accepted) return;
+
+  ui.loadModel.disabled = true;
+  ui.deviceMode.disabled = true;
+  ui.modelProgressWrap.hidden = false;
+  ui.modelProgress.style.width = '0%';
+  ui.modelProgressPercent.textContent = '0%';
+  setModelStatus('Подготовка…');
+
+  try {
+    const info = await loadLanguageModel({
+      device,
+      onProgress: progress => {
+        const file = String(progress.file || progress.status || 'Загрузка файлов');
+        let percent = Number(progress.progress);
+        if (Number.isFinite(percent)) {
+          if (percent >= 0 && percent <= 1) percent *= 100;
+          percent = Math.max(0, Math.min(100, percent));
+          ui.modelProgress.style.width = percent + '%';
+          ui.modelProgressPercent.textContent = Math.round(percent) + '%';
+        }
+        if (progress.status === 'ready') {
+          ui.modelProgress.style.width = '100%';
+          ui.modelProgressPercent.textContent = '100%';
+        }
+        ui.modelProgressText.textContent = file + (progress.status ? ' · ' + progress.status : '');
+        setModelStatus(progress.status === 'ready' ? 'Модель готова' : 'Загрузка модели…', progress.status === 'ready');
+      }
     });
-  }
-}
-function resetBrain() {
-  runToken += 1;
-  running = false;
-  loopRunning = false;
-  remainingEpochs = 0;
-  totalEpochs = 0;
-  brain = createBrain();
-  ui.progress.style.width = '0%';
-  ui.progressPercent.textContent = '0%';
-  saveLocal('Новая модель создана');
-  updateControls();
-  updateProgress();
-  render();
-}
-async function getCloud() {
-  if (!cloudModulePromise) cloudModulePromise = import('./supabase.js');
-  return cloudModulePromise;
-}
-function cloudMessage(error) {
-  const message = String(error?.message || error || 'Неизвестная ошибка');
-  if (/anonymous|sign.?in|disabled|not enabled/i.test(message)) {
-    return 'Включи Anonymous Sign-Ins: Supabase → Authentication → Sign In / Providers.';
-  }
-  if (/Failed to fetch|NetworkError|fetch/i.test(message)) {
-    return 'Нет связи с Supabase. Проверь интернет и доступность проекта.';
-  }
-  return message;
-}
-async function connectCloud() {
-  ui.cloudConnect.disabled = true;
-  ui.cloudStatus.textContent = 'Подключение к Supabase…';
-  try {
-    const cloud = await getCloud();
-    const user = await cloud.connectAnonymous();
-    ui.cloudIndicator.classList.add('connected');
-    ui.cloudStatus.textContent = 'Подключено · ID ' + user.id.slice(0, 8) + '…';
+
+    setModelStatus(info.device === 'webgpu' ? 'ИИ работает на GPU' : 'ИИ работает на CPU', true);
+    ui.modelDescription.textContent = 'Модель загружена. Генерация выполняется на этом устройстве.';
+    ui.modelNotice.textContent = 'Готово. Теперь агенты используют настоящую генерацию языковой модели, а не заранее написанные ответы.';
+    ui.loadModel.textContent = '✓ ИИ загружен';
+    ui.loadModel.disabled = true;
+    ui.storageStatus.textContent = 'Модель готова · история остаётся локальной.';
   } catch (error) {
-    ui.cloudIndicator.classList.remove('connected');
-    ui.cloudStatus.textContent = cloudMessage(error);
-    console.warn('Supabase connection:', error);
-  } finally {
-    ui.cloudConnect.disabled = false;
+    console.error('Ошибка загрузки модели:', error);
+    setModelStatus('Ошибка загрузки', false, true);
+    ui.modelDescription.textContent = 'Не удалось запустить языковую модель.';
+    ui.modelNotice.textContent = 'Ошибка: ' + error.message;
+    ui.modelProgressText.textContent = 'Загрузка не завершена';
+    ui.loadModel.disabled = false;
+    ui.deviceMode.disabled = false;
   }
 }
-async function saveCloud() {
-  ui.cloudSave.disabled = true;
-  ui.cloudStatus.textContent = 'Сохранение модели в облако…';
+
+function ensureModelReady() {
+  if (getModelInfo().loaded) return true;
+  ui.modelNotice.textContent = 'Сначала нажми «Загрузить ИИ». Пока модель не загружена, агенты не генерируют ответы.';
+  ui.modelNotice.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  return false;
+}
+
+function createNewChat() {
+  if (busy) return;
+  const chat = createChatRecord('Новый диалог');
+  state.chats.push(chat);
+  if (state.chats.length > CONFIG.persistence.maxChats) state.chats.shift();
+  state.settings.activeChatId = chat.id;
+  persist('Создан новый диалог');
+  renderChats();
+  renderConversation();
+  ui.chatInput.focus();
+}
+
+async function requestAgentTurn(agent, chat, topic, runId) {
+  const bubble = createStreamingMessage(agent);
+  let streamed = '';
+
   try {
-    const cloud = await getCloud();
-    const metrics = evaluateBrain(brain);
-    const result = await cloud.saveBrainToCloud(brain, {
-      accuracy: metrics.accuracy, loss: metrics.loss, epochs: brain.epoch
+    const answer = await generateAgentReply({
+      agent,
+      messages: chat.messages,
+      sharedMemory: state.sharedMemory,
+      topic,
+      onToken: token => {
+        if (runId !== currentRunId) return;
+        streamed += token;
+        if (streamingNode?.bubble) {
+          streamingNode.bubble.textContent = streamed;
+          streamingNode.time.textContent = 'генерация…';
+          scrollMessages();
+        }
+      }
     });
-    ui.cloudIndicator.classList.add('connected');
-    ui.cloudStatus.textContent = 'Модель сохранена в облако · ' +
-      new Date(result.saved.updated_at).toLocaleString('ru-RU');
-  } catch (error) {
-    ui.cloudStatus.textContent = cloudMessage(error);
-    console.warn('Supabase save:', error);
-  } finally {
-    ui.cloudSave.disabled = false;
-  }
-}
-async function loadCloud() {
-  ui.cloudLoad.disabled = true;
-  ui.cloudStatus.textContent = 'Загрузка модели из облака…';
-  try {
-    const cloud = await getCloud();
-    const record = await cloud.loadBrainFromCloud();
-    if (!record) {
-      ui.cloudStatus.textContent = 'В облаке пока нет сохранённой модели MiniBrain.';
-      return;
+
+    if (runId !== currentRunId) {
+      clearStreamingNode();
+      return false;
     }
-    if (!isValidBrain(record.weights)) throw new Error('Облачная модель имеет неподходящий формат.');
-    runToken += 1;
-    running = false;
-    loopRunning = false;
-    remainingEpochs = 0;
-    brain = record.weights;
-    saveLocal('Облачная модель загружена и сохранена локально');
-    ui.progress.style.width = '0%';
-    ui.progressPercent.textContent = '0%';
-    updateControls();
-    updateProgress();
-    render();
-    ui.cloudIndicator.classList.add('connected');
-    ui.cloudStatus.textContent = 'Облачная модель загружена · ' +
-      new Date(record.updated_at).toLocaleString('ru-RU');
+
+    clearStreamingNode();
+    const message = createMessageRecord({
+      type: 'agent',
+      content: answer || streamed,
+      speakerId: agent.id,
+      speakerName: agent.name,
+      avatar: agent.avatar
+    });
+    appendMessage(chat, message);
+    return true;
   } catch (error) {
-    ui.cloudStatus.textContent = cloudMessage(error);
-    console.warn('Supabase load:', error);
-  } finally {
-    ui.cloudLoad.disabled = false;
+    clearStreamingNode();
+    console.error('Ошибка ответа агента:', error);
+    ui.discussionStatus.textContent = 'Агент ' + agent.name + ' не смог ответить: ' + error.message;
+    return false;
   }
 }
+
+async function sendUserMessage(event) {
+  event.preventDefault();
+  if (busy || !ensureModelReady()) return;
+  const content = ui.chatInput.value.trim();
+  if (!content) return;
+
+  const agent = findAgent(ui.replyAgent.value);
+  const chat = activeChat();
+  ui.chatInput.value = '';
+
+  appendMessage(chat, createMessageRecord({
+    type: 'user',
+    content,
+    speakerName: 'Ты',
+    avatar: '●'
+  }));
+
+  setBusy(true, 'single');
+  const runId = ++currentRunId;
+  ui.discussionStatus.textContent = agent.name + ' готовит ответ…';
+
+  const success = await requestAgentTurn(agent, chat, content, runId);
+  if (runId === currentRunId) {
+    setBusy(false);
+    ui.discussionStatus.textContent = success
+      ? 'Ответ добавлен в историю диалога.'
+      : 'Ответ не получен. Проверь модель и попробуй ещё раз.';
+  }
+}
+
+async function startDiscussion() {
+  if (busy || !ensureModelReady()) return;
+  const selectedIds = state.settings.selectedAgentIds.filter(id => state.agents.some(agent => agent.id === id));
+  if (selectedIds.length < 2) {
+    ui.discussionStatus.textContent = 'Нужно выбрать минимум двух агентов.';
+    return;
+  }
+
+  const chat = activeChat();
+  const typedTopic = ui.discussionTopic.value.trim();
+  const lastUser = [...chat.messages].reverse().find(message => message.type === 'user');
+  const topic = typedTopic || lastUser?.content || '';
+  if (!topic) {
+    ui.discussionStatus.textContent = 'Сначала задай тему обсуждения или напиши сообщение в чат.';
+    ui.discussionTopic.focus();
+    return;
+  }
+
+  if (typedTopic) {
+    appendMessage(chat, createMessageRecord({
+      type: 'user',
+      content: 'Тема для обсуждения: ' + typedTopic,
+      speakerName: 'Ты',
+      avatar: '●'
+    }));
+    ui.discussionTopic.value = '';
+  }
+
+  const turns = Math.max(CONFIG.discussions.minTurns, Math.min(CONFIG.discussions.maxTurns, Number(ui.discussionTurns.value) || CONFIG.discussions.defaultTurns));
+  stopRequested = false;
+  setBusy(true, 'discussion');
+  ui.discussionStatus.textContent = 'Агенты начали обсуждение: ' + topic;
+  const runId = ++currentRunId;
+
+  for (let index = 0; index < turns; index += 1) {
+    if (stopRequested || runId !== currentRunId) break;
+    const agent = findAgent(selectedIds[index % selectedIds.length]);
+    ui.discussionStatus.textContent =
+      'Ход ' + (index + 1) + ' из ' + turns + ' · отвечает ' + agent.name;
+    const success = await requestAgentTurn(agent, chat, topic, runId);
+    if (!success) break;
+  }
+
+  if (runId === currentRunId) {
+    const stopped = stopRequested;
+    setBusy(false);
+    ui.discussionStatus.textContent = stopped
+      ? 'Обсуждение остановлено. Уже готовые реплики сохранены.'
+      : 'Обсуждение завершено · ' + turns + ' ходов запланировано.';
+  }
+}
+
+function stopDiscussion() {
+  if (!busy) return;
+  stopRequested = true;
+  ui.stopDiscussionButton.disabled = true;
+  ui.discussionStatus.textContent = 'Останавливаю после текущего ответа…';
+}
+
+function addAgent() {
+  if (busy || state.agents.length >= 12) return;
+  const name = window.prompt('Имя нового агента:');
+  if (name === null) return;
+  const role = window.prompt('Его роль, например «Инженер» или «Философ»:');
+  if (role === null) return;
+  const style = window.prompt('Характер и манера мышления:');
+  if (style === null) return;
+  const goal = window.prompt('Главная цель агента (можно оставить пустой):') || '';
+
+  try {
+    const agent = createAgentProfile({ name, role, style, goal });
+    state.agents.push(agent);
+    state.settings.selectedAgentId = agent.id;
+    state.settings.selectedAgentIds = [...new Set([...state.settings.selectedAgentIds, agent.id])];
+    persist('Создан агент ' + agent.name);
+    renderAgents();
+    renderAgentSelectors();
+    ui.memoryAgentSelect.value = agent.id;
+    renderMemoryEditor();
+  } catch (error) {
+    window.alert(error.message);
+  }
+}
+
+function saveSharedMemory() {
+  state.sharedMemory = ui.sharedMemory.value.slice(0, CONFIG.agents.maxSharedMemoryChars);
+  persist('Общая память сохранена');
+  ui.sharedMemoryStatus.textContent = 'Сохранено локально · ' + formatTime(new Date().toISOString());
+}
+
+function saveAgentMemory() {
+  const agent = findAgent(ui.memoryAgentSelect.value);
+  if (!agent) return;
+  agent.memory = ui.agentMemory.value.slice(0, CONFIG.agents.maxPrivateMemoryChars);
+  persist('Личная память ' + agent.name + ' сохранена');
+  ui.agentMemoryStatus.textContent = 'Заметки агента ' + agent.name + ' сохранены локально.';
+}
+
+function deleteCurrentChat() {
+  if (busy) return;
+  if (!window.confirm('Удалить текущий диалог и все его сообщения?')) return;
+  const chatId = state.settings.activeChatId;
+  state.chats = state.chats.filter(chat => chat.id !== chatId);
+  if (!state.chats.length) state.chats.push(createChatRecord());
+  state.settings.activeChatId = state.chats[state.chats.length - 1].id;
+  persist('Диалог удалён');
+  renderChats();
+  renderConversation();
+}
+
+function exportLocalData() {
+  createDataDownload(store.export(state));
+  ui.storageStatus.textContent = 'Экспорт текущих диалогов, агентов и памяти создан.';
+}
+
+function clearLocalData() {
+  if (busy) return;
+  const accepted = window.confirm(
+    'Удалить всех агентов, все диалоги и локальную память MiniBrain из этого браузера?\n\n' +
+    'Кеш загруженной языковой модели останется в браузере.'
+  );
+  if (!accepted) return;
+  const result = store.reset();
+  if (!result.ok) {
+    ui.storageStatus.textContent = 'Не удалось очистить данные: ' + result.error.message;
+    return;
+  }
+  state = store.load();
+  renderAll();
+  ui.storageStatus.textContent = 'Локальные данные очищены. Создан новый пустой набор агентов.';
+}
+
+function renderAll() {
+  renderAgents();
+  renderAgentSelectors();
+  renderChats();
+  renderConversation();
+  ui.sharedMemory.value = state.sharedMemory || '';
+  ui.deviceMode.value = state.settings.deviceMode || 'auto';
+  updateModelDeviceNotice();
+
+  const info = getModelInfo();
+  if (info.loaded) {
+    setModelStatus(info.device === 'webgpu' ? 'ИИ работает на GPU' : 'ИИ работает на CPU', true);
+    ui.loadModel.textContent = '✓ ИИ загружен';
+    ui.loadModel.disabled = true;
+    ui.deviceMode.disabled = true;
+  } else {
+    setModelStatus('Модель не загружена');
+  }
+}
+
 function bindEvents() {
-  ui.epochs.addEventListener('input', () => { ui.epochValue.textContent = fmt(ui.epochs.value); });
-  ui.learningRate.addEventListener('input', () => {
-    ui.learningRateValue.textContent = Number(ui.learningRate.value).toFixed(3);
+  ui.loadModel.addEventListener('click', handleModelLoad);
+  ui.deviceMode.addEventListener('change', () => {
+    state.settings.deviceMode = ui.deviceMode.value;
+    persist('Настройки вычислений сохранены');
+    updateModelDeviceNotice();
   });
-  ui.train.addEventListener('click', startOrPause);
-  ui.reset.addEventListener('click', resetBrain);
-  ui.inputA.addEventListener('change', renderPrediction);
-  ui.inputB.addEventListener('change', renderPrediction);
-  ui.export.addEventListener('click', () => downloadBrain(brain));
-  ui.import.addEventListener('click', () => ui.importFile.click());
-  ui.importFile.addEventListener('change', async event => {
-    try {
-      const imported = await readBrainFile(event.target.files?.[0]);
-      runToken += 1;
-      running = false;
-      loopRunning = false;
-      remainingEpochs = 0;
-      brain = imported;
-      saveLocal('Модель импортирована');
-      updateControls();
-      updateProgress();
-      render();
-    } catch (error) {
-      ui.localSave.textContent = 'Ошибка импорта: ' + error.message;
-    } finally {
-      event.target.value = '';
+  ui.newChat.addEventListener('click', createNewChat);
+  ui.addAgent.addEventListener('click', addAgent);
+  ui.deleteChat.addEventListener('click', deleteCurrentChat);
+  ui.replyAgent.addEventListener('change', () => {
+    state.settings.selectedAgentId = ui.replyAgent.value;
+    persist('Выбран агент для ответа');
+    renderAgents();
+  });
+  ui.messageForm.addEventListener('submit', sendUserMessage);
+  ui.chatInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      ui.messageForm.requestSubmit();
     }
   });
-  ui.cloudConnect.addEventListener('click', connectCloud);
-  ui.cloudSave.addEventListener('click', saveCloud);
-  ui.cloudLoad.addEventListener('click', loadCloud);
+  ui.discussionButton.addEventListener('click', startDiscussion);
+  ui.stopDiscussionButton.addEventListener('click', stopDiscussion);
+  ui.saveSharedMemory.addEventListener('click', saveSharedMemory);
+  ui.memoryAgentSelect.addEventListener('change', renderMemoryEditor);
+  ui.saveAgentMemory.addEventListener('click', saveAgentMemory);
+  ui.exportData.addEventListener('click', exportLocalData);
+  ui.clearData.addEventListener('click', clearLocalData);
 }
+
 function boot() {
-  ui.epochs.value = String(CONFIG.defaultEpochs);
-  ui.epochValue.textContent = fmt(CONFIG.defaultEpochs);
-  ui.learningRate.value = String(CONFIG.defaultLearningRate);
-  ui.learningRateValue.textContent = CONFIG.defaultLearningRate.toFixed(3);
   bindEvents();
-  render();
-  updateControls();
-  updateProgress();
-  ui.localSave.textContent = 'Модель сохраняется в этом браузере. Для другого устройства используй облако.';
+  renderAll();
   const warning = $('boot-warning');
   if (warning) warning.hidden = true;
   window.__MINIBRAIN_READY__ = true;
-  console.info(CONFIG.appName + ' ' + CONFIG.appVersion + ': интерфейс загружен.');
+  console.info('MiniBrain Neural Society: локальная система диалогов загружена.');
 }
 
 try {
   boot();
 } catch (error) {
-  console.error('MiniBrain boot error:', error);
+  console.error('MiniBrain startup error:', error);
   const warning = $('boot-warning');
   if (warning) {
     warning.hidden = false;
-    warning.textContent = 'MiniBrain не смог запуститься: ' + error.message +
-      '. Проверь, что папка src и все модули загружены по указанным путям.';
+    warning.textContent = 'MiniBrain не смог запуститься: ' + error.message;
   }
-  setStatus('● ОШИБКА', 'red');
+  setModelStatus('Ошибка запуска', false, true);
 }
