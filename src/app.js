@@ -276,11 +276,17 @@ function updateDiscussionAvailability() {
 }
 
 function ensureModelReady(){return true;}
-function handleModelLoad(){
- ui.loadModel.disabled=true;setModelStatus('Серверный ИИ готов',true);
- ui.modelDescription.textContent='Генерация выполняется на сервере. Модель не скачивается на устройство.';
- ui.modelNotice.textContent='Для ответов требуется настроенный серверный провайдер.';
- ui.loadModel.disabled=false;
+async function handleModelLoad(){
+ ui.loadModel.disabled=true;setModelStatus('Проверка сервера…');
+ try{
+  const response=await fetch(CONFIG.server.url,{method:'GET',headers:{'apikey':CONFIG.server.publishableKey}});
+  const data=await response.json();
+  if(!response.ok||!data.configured)throw new Error('Сервер доступен, но модель ещё не настроена. Нужны AI_BASE_URL, AI_API_KEY и AI_MODEL в секретах Supabase.');
+  setModelStatus('Серверный ИИ готов',true);
+  ui.modelDescription.textContent='Модель запущена на сервере. Веса не скачиваются на устройство.';
+  ui.modelNotice.textContent='Подключение проверено. Можно общаться с агентами.';
+ }catch(error){setModelStatus('Сервер не готов',false,true);ui.modelNotice.textContent=error.message;}
+ finally{ui.loadModel.disabled=false;}
 }
 
 function createNewChat() {
