@@ -38,7 +38,7 @@ export async function generateAgentReply({
     systemPrompt,
     userPrompt,
     temperature: agent.temperature,
-    maxNewTokens: CONFIG.languageModel.maxNewTokens,
+    maxNewTokens: CONFIG.server.maxNewTokens,
     onToken
   });
 }
