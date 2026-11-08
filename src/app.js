@@ -514,9 +514,9 @@ function renderAll() {
   renderConversation();
   ui.sharedMemory.value = state.sharedMemory || '';
 
-  setModelStatus('Серверный ИИ', true);
+  setModelStatus('Сервер не проверен', false);
   ui.loadModel.textContent = 'Проверить сервер';
-  ui.modelDescription.textContent = 'Модель работает на сервере. Скачивать веса на устройство не нужно.';
+  ui.modelDescription.textContent = 'Генерация должна выполняться на сервере. Внешний провайдер ещё нужно настроить.';
 }
 
 function bindEvents() {
