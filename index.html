@@ -25,12 +25,12 @@
       <a class="brand" href="./" aria-label="MiniBrain Neural Society">
         <span class="brand-mark">🧠</span>
         <span class="brand-copy">
-          <span class="eyebrow">LOCAL AI · NEURAL SOCIETY</span>
+          <span class="eyebrow">SERVER AI · NEURAL SOCIETY</span>
           <strong>MiniBrain</strong>
         </span>
       </a>
       <div class="top-actions">
-        <div class="model-pill"><span id="modelDot" class="status-dot"></span><span id="modelStatus">Модель не загружена</span></div>
+        <div class="model-pill"><span id="modelDot" class="status-dot"></span><span id="modelStatus">Серверный ИИ</span></div>
         <button id="newChatButton" class="button button-secondary" type="button">＋ Новый диалог</button>
       </div>
     </header>
@@ -48,30 +48,12 @@
     <noscript><div class="boot-warning">Для работы MiniBrain нужно включить JavaScript.</div></noscript>
 
     <section class="model-panel panel">
-      <div class="model-info">
-        <span class="model-icon">◈</span>
-        <div>
-          <p class="eyebrow">ЛОКАЛЬНАЯ ЯЗЫКОВАЯ МОДЕЛЬ</p>
-          <strong>Qwen2.5 · 0.5B Instruct</strong>
-          <p id="modelDescription" class="muted">Модель загружается в браузер один раз, затем берётся из локального кеша.</p>
-        </div>
-      </div>
-      <div class="model-controls">
-        <label class="device-select">
-          <span>Вычисления</span>
-          <select id="deviceMode">
-            <option value="auto">Автоматически</option>
-            <option value="webgpu">GPU · WebGPU</option>
-            <option value="wasm">CPU · WASM</option>
-          </select>
-        </label>
-        <button id="loadModelButton" class="button button-primary" type="button">↓ Загрузить ИИ</button>
-      </div>
-      <div id="modelProgressWrap" class="model-progress-wrap" hidden>
-        <div class="progress-track"><div id="modelProgress" class="progress-fill"></div></div>
-        <div class="progress-meta"><span id="modelProgressText">Подготовка модели…</span><span id="modelProgressPercent">0%</span></div>
-      </div>
-      <p id="modelNotice" class="model-notice">Первый запуск скачает примерно 483 МБ для GPU. Без WebGPU CPU-вариант может скачать около 786 МБ. Скачивание начинается только после нажатия кнопки.</p>
+      <div class="model-info"><span class="model-icon">◈</span><div>
+        <p class="eyebrow">СЕРВЕРНАЯ ЯЗЫКОВАЯ МОДЕЛЬ</p><strong>MiniBrain AI · Server Runtime</strong>
+        <p id="modelDescription" class="muted">Модель запускается на сервере. Устройство получает только текстовые ответы.</p>
+      </div></div>
+      <div class="model-controls"><button id="loadModelButton" class="button button-primary" type="button">Проверить сервер</button></div>
+      <p id="modelNotice" class="model-notice">Скачивать веса модели на устройство не требуется. История чатов и память остаются в localStorage.</p>
     </section>
 
     <div class="society-layout">
@@ -110,7 +92,7 @@
             <div class="empty-state" id="emptyState">
               <div class="empty-symbol">◌</div>
               <h3>Комната пока пуста</h3>
-              <p>Загрузи языковую модель, напиши сообщение или задай тему для обсуждения агентов.</p>
+              <p>Напиши сообщение или задай тему для обсуждения агентов.</p>
             </div>
           </div>
 
@@ -183,8 +165,8 @@
             <span class="panel-icon">⌂</span>
           </div>
           <div class="storage-row"><span>Диалоги и память</span><strong>localStorage</strong></div>
-          <div class="storage-row"><span>Веса языковой модели</span><strong>Cache Storage</strong></div>
-          <p class="muted tiny">Серверную синхронизацию добавим позже. Очистка данных браузера может удалить локальные диалоги и кеш модели.</p>
+          <div class="storage-row"><span>Веса языковой модели</span><strong>Сервер</strong></div>
+          <p class="muted tiny">Модель работает на сервере, а диалоги и память остаются в localStorage.</p>
           <button id="exportDataButton" class="button button-secondary full-button" type="button">↓ Экспортировать данные</button>
           <button id="clearDataButton" class="button button-ghost full-button danger-button" type="button">Очистить локальные данные</button>
           <p id="storageStatus" class="save-caption">Автосохранение включено.</p>

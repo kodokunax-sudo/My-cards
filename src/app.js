@@ -1,7 +1,7 @@
 import { CONFIG } from './config.js';
 import { createAgentProfile } from './agents.js';
 import { generateAgentReply } from './chat-engine.js';
-import { getModelInfo, loadLanguageModel } from './model-runtime.js';
+import { getModelInfo } from './model-runtime.js';
 import {
   createChatRecord,
   createDataDownload,
@@ -12,9 +12,7 @@ import {
 const $ = id => document.getElementById(id);
 const ui = {
   modelDot: $('modelDot'), modelStatus: $('modelStatus'), modelDescription: $('modelDescription'),
-  modelNotice: $('modelNotice'), deviceMode: $('deviceMode'), loadModel: $('loadModelButton'),
-  modelProgressWrap: $('modelProgressWrap'), modelProgress: $('modelProgress'),
-  modelProgressText: $('modelProgressText'), modelProgressPercent: $('modelProgressPercent'),
+  modelNotice: $('modelNotice'), loadModel: $('loadModelButton'),
   newChat: $('newChatButton'), addAgent: $('addAgentButton'), agentList: $('agentList'),
   participantHint: $('participantHint'), chatList: $('chatList'), deleteChat: $('deleteChatButton'),
   activeChatTitle: $('activeChatTitle'), chatMeta: $('chatMeta'), messages: $('messages'),
@@ -277,82 +275,12 @@ function updateDiscussionAvailability() {
   }
 }
 
-function updateModelDeviceNotice() {
-  const requested = ui.deviceMode.value;
-  const gpu = typeof navigator !== 'undefined' && Boolean(navigator.gpu);
-  if (requested === 'webgpu' && !gpu) {
-    ui.modelNotice.textContent = 'WebGPU не найден в этом браузере. Выбери «Автоматически» или CPU · WASM.';
-    return;
-  }
-  const useGpu = requested === 'webgpu' || (requested === 'auto' && gpu);
-  ui.modelNotice.textContent = useGpu
-    ? 'GPU-вариант: первая загрузка около 483 МБ. Модель будет кешироваться браузером и не должна скачиваться заново при каждом открытии.'
-    : 'CPU-вариант: первая загрузка может быть около 786 МБ и работать медленнее. Кеш модели хранится отдельно от истории.';
-}
-
-async function handleModelLoad() {
-  if (getModelInfo().loaded || getModelInfo().loading) return;
-  const device = ui.deviceMode.value;
-  const gpu = typeof navigator !== 'undefined' && Boolean(navigator.gpu);
-  const useGpu = device === 'webgpu' || (device === 'auto' && gpu);
-  const size = useGpu ? 'примерно 483 МБ' : 'примерно 786 МБ';
-  const accepted = window.confirm(
-    'Загрузить языковую модель ' + size + '?\n\n' +
-    'Файлы скачиваются из Hugging Face и кешируются в этом браузере. ' +
-    'Тексты диалогов остаются в localStorage и не отправляются на сервер.'
-  );
-  if (!accepted) return;
-
-  ui.loadModel.disabled = true;
-  ui.deviceMode.disabled = true;
-  ui.modelProgressWrap.hidden = false;
-  ui.modelProgress.style.width = '0%';
-  ui.modelProgressPercent.textContent = '0%';
-  setModelStatus('Подготовка…');
-
-  try {
-    const info = await loadLanguageModel({
-      device,
-      onProgress: progress => {
-        const file = String(progress.file || progress.status || 'Загрузка файлов');
-        let percent = Number(progress.progress);
-        if (Number.isFinite(percent)) {
-          if (percent >= 0 && percent <= 1) percent *= 100;
-          percent = Math.max(0, Math.min(100, percent));
-          ui.modelProgress.style.width = percent + '%';
-          ui.modelProgressPercent.textContent = Math.round(percent) + '%';
-        }
-        if (progress.status === 'ready') {
-          ui.modelProgress.style.width = '100%';
-          ui.modelProgressPercent.textContent = '100%';
-        }
-        ui.modelProgressText.textContent = file + (progress.status ? ' · ' + progress.status : '');
-        setModelStatus(progress.status === 'ready' ? 'Модель готова' : 'Загрузка модели…', progress.status === 'ready');
-      }
-    });
-
-    setModelStatus(info.device === 'webgpu' ? 'ИИ работает на GPU' : 'ИИ работает на CPU', true);
-    ui.modelDescription.textContent = 'Модель загружена. Генерация выполняется на этом устройстве.';
-    ui.modelNotice.textContent = 'Готово. Теперь агенты используют настоящую генерацию языковой модели, а не заранее написанные ответы.';
-    ui.loadModel.textContent = '✓ ИИ загружен';
-    ui.loadModel.disabled = true;
-    ui.storageStatus.textContent = 'Модель готова · история остаётся локальной.';
-  } catch (error) {
-    console.error('Ошибка загрузки модели:', error);
-    setModelStatus('Ошибка загрузки', false, true);
-    ui.modelDescription.textContent = 'Не удалось запустить языковую модель.';
-    ui.modelNotice.textContent = 'Ошибка: ' + error.message;
-    ui.modelProgressText.textContent = 'Загрузка не завершена';
-    ui.loadModel.disabled = false;
-    ui.deviceMode.disabled = false;
-  }
-}
-
-function ensureModelReady() {
-  if (getModelInfo().loaded) return true;
-  ui.modelNotice.textContent = 'Сначала нажми «Загрузить ИИ». Пока модель не загружена, агенты не генерируют ответы.';
-  ui.modelNotice.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  return false;
+function ensureModelReady(){return true;}
+function handleModelLoad(){
+ ui.loadModel.disabled=true;setModelStatus('Серверный ИИ готов',true);
+ ui.modelDescription.textContent='Генерация выполняется на сервере. Модель не скачивается на устройство.';
+ ui.modelNotice.textContent='Для ответов требуется настроенный серверный провайдер.';
+ ui.loadModel.disabled=false;
 }
 
 function createNewChat() {
@@ -579,27 +507,14 @@ function renderAll() {
   renderChats();
   renderConversation();
   ui.sharedMemory.value = state.sharedMemory || '';
-  ui.deviceMode.value = state.settings.deviceMode || 'auto';
-  updateModelDeviceNotice();
 
-  const info = getModelInfo();
-  if (info.loaded) {
-    setModelStatus(info.device === 'webgpu' ? 'ИИ работает на GPU' : 'ИИ работает на CPU', true);
-    ui.loadModel.textContent = '✓ ИИ загружен';
-    ui.loadModel.disabled = true;
-    ui.deviceMode.disabled = true;
-  } else {
-    setModelStatus('Модель не загружена');
-  }
+  setModelStatus('Серверный ИИ', true);
+  ui.loadModel.textContent = 'Проверить сервер';
+  ui.modelDescription.textContent = 'Модель работает на сервере. Скачивать веса на устройство не нужно.';
 }
 
 function bindEvents() {
   ui.loadModel.addEventListener('click', handleModelLoad);
-  ui.deviceMode.addEventListener('change', () => {
-    state.settings.deviceMode = ui.deviceMode.value;
-    persist('Настройки вычислений сохранены');
-    updateModelDeviceNotice();
-  });
   ui.newChat.addEventListener('click', createNewChat);
   ui.addAgent.addEventListener('click', addAgent);
   ui.deleteChat.addEventListener('click', deleteCurrentChat);
