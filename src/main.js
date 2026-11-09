@@ -10,6 +10,7 @@ import { createEnvironment } from './environment.js';
 import { createFountain } from './fountain.js';
 import { createWater } from './water.js';
 import { createPlayer } from './player.js';
+import { createPhysicsWorld } from './physics.js';
 import { createHud } from './hud.js';
 import { createAmbience } from './audio.js';
 import { createTouchControls } from './touch.js';
@@ -33,7 +34,7 @@ renderer.shadowMap.autoUpdate = false;
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(new THREE.Color(0xd9ae86), 0.00115);
 
-const camera = new THREE.PerspectiveCamera(64, window.innerWidth / window.innerHeight, 0.1, 6000);
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 6000);
 camera.position.set(0, 1.62, 132);
 camera.rotation.set(0.19, 0, 0);
 camera.layers.enable(2);   // слой 2 — поверхность воды (исключается из отражений)
@@ -45,7 +46,8 @@ const fountain = createFountain(scene);
 const water = createWater(scene, fountain, camera, renderer);
 const hud = createHud();
 const audio = createAmbience();
-const player = createPlayer(camera, canvas, (mode) => {
+const physics = createPhysicsWorld(scene);
+const player = createPlayer(camera, canvas, physics, (mode) => {
   hud.setMode(mode);
   touch?.setFlyState(mode === 'fly');
 });
@@ -103,7 +105,8 @@ function enterScene() {
   overlay.classList.add('hidden');
   audio.start();
   if (!touch) {
-    setTimeout(() => { try { player.lock(); } catch (e) { /* нет захвата — работает перетаскивание */ } }, 120);
+    // Keep pointer-lock request inside the actual click gesture.
+    try { player.lock(); } catch (error) { /* drag-to-look remains available */ }
   }
 }
 startBtn.addEventListener('click', enterScene);
@@ -123,6 +126,11 @@ window.addEventListener('keydown', (e) => {
 const clock = new THREE.Clock();
 let elapsed = 0;
 let frames = 0;
+let nightStartedMessageShown = false;
+const NIGHT_START_SECONDS = 180;
+const NIGHT_TRANSITION_SECONDS = 55;
+const dayFog = new THREE.Color(0xd9ae86);
+const nightFog = new THREE.Color(0x081326);
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -165,8 +173,22 @@ function animate() {
   renderer.shadowMap.needsUpdate = true;
 
   player.update(dt);
-  sky.update(elapsed, camera);
+
+  // The park starts changing at exactly 03:00 of session time.
+  const nightLinear = THREE.MathUtils.clamp(
+    (elapsed - NIGHT_START_SECONDS) / NIGHT_TRANSITION_SECONDS, 0, 1
+  );
+  const nightProgress = nightLinear * nightLinear * (3 - 2 * nightLinear);
+  sky.update(elapsed, camera, nightProgress);
+  env.setTimeOfDay(nightProgress);
   env.update(elapsed, renderer.getPixelRatio());
+  water.setNight(nightProgress);
+  scene.fog.color.copy(dayFog).lerp(nightFog, nightProgress);
+  scene.fog.density = THREE.MathUtils.lerp(0.00115, 0.00175, nightProgress);
+  if (elapsed >= NIGHT_START_SECONDS && !nightStartedMessageShown) {
+    nightStartedMessageShown = true;
+    hud.toast('Солнце садится. Наступает ночь.');
+  }
   water.update(elapsed, dt, renderer.getPixelRatio());
   hud.update(camera);
   audio.setDistance(Math.hypot(camera.position.x, camera.position.z));
@@ -182,4 +204,4 @@ function animate() {
 animate();
 
 // для отладки из консоли
-window.__scene = { scene, camera, renderer, fountain, water, player, FOUNTAIN_HEIGHT };
+window.__scene = { scene, camera, renderer, fountain, water, player, physics, FOUNTAIN_HEIGHT };
