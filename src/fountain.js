@@ -273,7 +273,8 @@ export function createFountain(scene) {
     const dropGeo = new THREE.SphereGeometry(0.2, 8, 6);
     dropGeo.scale(1, 1.7, 1);
     const drops = new THREE.InstancedMesh(dropGeo, gold, dropCount);
-    drops.castShadow = true;
+    drops.userData.noCollider = true; // tiny decorative beads must not act as player obstacles
+    drops.castShadow = false;
     const dm = new THREE.Matrix4();
     const dq = new THREE.Quaternion();
     const dp = new THREE.Vector3();
