@@ -35,8 +35,6 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(new THREE.Color(0xd9ae86), 0.00115);
 
 const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 6000);
-camera.position.set(0, 1.62, 132);
-camera.rotation.set(0.19, 0, 0);
 camera.layers.enable(2);   // слой 2 — поверхность воды (исключается из отражений)
 
 // ---------- сцена ----------
@@ -106,12 +104,14 @@ function enterScene() {
   audio.start();
   if (!touch) {
     // Keep pointer-lock request inside the actual click gesture.
-    try { player.lock(); } catch (error) { /* drag-to-look remains available */ }
+    try { Promise.resolve(player.lock()).catch(() => {}); } catch (error) { /* drag-to-look remains available */ }
   }
 }
 startBtn.addEventListener('click', enterScene);
 canvas.addEventListener('click', (e) => {
-  if (started && !player.locked && !touch && e.pointerType === 'mouse') player.lock();
+  if (started && !player.locked && !touch && e.pointerType === 'mouse') {
+    try { Promise.resolve(player.lock()).catch(() => {}); } catch (error) { /* drag-to-look remains available */ }
+  }
 });
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') {
