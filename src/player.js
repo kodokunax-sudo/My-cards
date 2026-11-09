@@ -88,7 +88,7 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
     const previous = mode;
     mode = next;
 
-    if (next === 'fly') {
+    if (next === 'fly' || next === 'cinematic') {
       velocity.set(0, 0, 0);
       grounded = false;
       swimming = false;
@@ -294,6 +294,9 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
   function update(dt) {
     if (mode === 'cinematic') {
       updateCinematic(dt);
+      swimming = false;
+      underwater = false;
+      oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 5.5);
       return;
     }
 
@@ -321,8 +324,17 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
       camera.position.y = THREE.MathUtils.clamp(camera.position.y + lift * speed * dt, 0.5, 500);
       feetY = camera.position.y - EYE_HEIGHT;
       swimming = false;
-      underwater = false;
-      oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 5.5);
+      underwater = Math.hypot(camera.position.x, camera.position.z) < WATER_RADIUS &&
+        camera.position.y < WATER_Y - 0.08;
+      if (underwater) {
+        oxygen = Math.max(0, oxygen - dt);
+        if (oxygen <= 0) {
+          respawnAfterDrowning();
+          return;
+        }
+      } else {
+        oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 5.5);
+      }
       return;
     }
 
