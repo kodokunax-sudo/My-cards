@@ -338,6 +338,7 @@ export function createWater(scene, fountain, camera, renderer) {
   });
 
   const pool = new THREE.Mesh(discGeometry(POOL_RADIUS - 1.25, 120, 180), waterMaterial);
+  pool.userData.noCollider = true;
   pool.position.y = WATER_Y;
   pool.renderOrder = 1;
   pool.layers.set(2);
