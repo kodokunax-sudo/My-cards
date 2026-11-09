@@ -6,7 +6,9 @@ export const SCALE_FACTOR = 33;                    // во сколько раз
 export const FOUNTAIN_HEIGHT = PLAYER_HEIGHT * SCALE_FACTOR; // 56.1 м
 
 export const POOL_RADIUS = 52;                     // радиус бассейна (внешний)
-export const WATER_Y = 1.15;                       // уровень воды
+export const POOL_DEPTH = 28;                       // глубина бассейна под уровнем парка
+export const POOL_BOTTOM_Y = -POOL_DEPTH;
+export const WATER_Y = 1.15;                       // уровень поверхности воды
 export const ISLAND_RADIUS = 15;                   // цоколь островка
 export const ISLAND_TOP = 4.2;                     // уровень площадки островка
 export const PLAZA_RADIUS = 175;                   // круглая площадь
