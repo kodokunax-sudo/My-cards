@@ -30,7 +30,8 @@ function makeRibbon(points, halfWidth, y) {
     );
     if (i < points.length - 1) {
       const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
-      indices.push(a, b, c, b, d, c);
+      // Counter-clockwise winding keeps the road and bank normals facing up.
+      indices.push(a, c, b, b, c, d);
     }
   }
   const geometry = new THREE.BufferGeometry();
@@ -232,7 +233,7 @@ function createForests(scene, routePoints, rnd) {
 }
 
 function createRiver(scene, rnd) {
-  const centerX = (z) => -800 + 450 * Math.sin(z / 1200) + 85 * Math.sin(z / 310);
+  const centerX = (z) => -900 + 840 * Math.sin(z / 1200);
   const points = [];
   const count = 150;
   for (let i = 0; i <= count; i++) {
@@ -321,8 +322,8 @@ export function createWorld(scene) {
     { x: -1588, z: 900 },
     { x: -1320, z: 760 },
     { x: -1050, z: 545 },
-    { x: -820, z: 365 },
-    { x: -600, z: 255 },
+    { x: -780, z: 300 },
+    { x: -600, z: 300 },
     { x: -360, z: 205 },
     { x: 0, z: 190 },
   ];
@@ -342,11 +343,11 @@ export function createWorld(scene) {
 
   // A timber footbridge crosses the river where the path meets it.
   const bridge = new THREE.Group();
-  bridge.position.set(-690, 0, 300);
-  const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(78, 0.55, 10), new THREE.MeshStandardMaterial({
+  bridge.position.set(-692, 0, 300);
+  const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(118, 0.25, 10), new THREE.MeshStandardMaterial({
     color: 0x715239, roughness: 0.9,
   }));
-  bridgeDeck.position.y = 0.55;
+  bridgeDeck.position.y = 0.05;
   bridgeDeck.castShadow = true;
   bridgeDeck.receiveShadow = true;
   bridgeDeck.userData.walkable = true;
@@ -354,12 +355,12 @@ export function createWorld(scene) {
 
   const railMaterial = new THREE.MeshStandardMaterial({ color: 0x503a2b, roughness: 0.95 });
   for (const z of [-4.8, 4.8]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(78, 1.0, 0.28), railMaterial);
-    rail.position.set(0, 1.22, z);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(118, 0.8, 0.28), railMaterial);
+    rail.position.set(0, 0.72, z);
     rail.castShadow = true;
     bridge.add(rail);
   }
-  for (let x = -35; x <= 35; x += 10) {
+  for (let x = -55; x <= 55; x += 10) {
     for (const z of [-4.6, 4.6]) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.32, 1.2, 0.32), railMaterial);
       post.position.set(x, 1.1, z);
