@@ -81,7 +81,7 @@ export function createHud() {
       el.angle.textContent = `${fmt(angle)}°`;
       el.height.textContent = `${fmt(camera.position.y)} м`;
 
-      const inWater = !!player?.swimming;
+      const inWater = !!(player?.swimming || player?.underwater);
       el.oxygen?.classList.toggle('active', inWater);
       if (el.oxygenFill && el.oxygenText && inWater) {
         const ratio = Math.max(0, Math.min(1, player.oxygenRatio));
