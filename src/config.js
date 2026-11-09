@@ -12,7 +12,7 @@ export const WATER_Y = 1.15;                       // уровень повер�
 export const ISLAND_RADIUS = 15;                   // цоколь островка
 export const ISLAND_TOP = 4.2;                     // уровень площадки островка
 export const PLAZA_RADIUS = 175;                   // круглая площадь
-export const GRASS_RADIUS = 520;                   // газон до горизонта
+export const GRASS_RADIUS = 5200;                  // новый радиус игрового мира: ×10
 export const EYE_HEIGHT = 1.62;                    // высота глаз над полом
 
 export const GRAVITY = 9.81;
