@@ -8,6 +8,7 @@ const ROUND_GEOMETRIES = new Set([
   'SphereGeometry',
   'IcosahedronGeometry',
   'DodecahedronGeometry',
+  'OctahedronGeometry',
   'LatheGeometry',
 ]);
 
@@ -98,21 +99,20 @@ export function createPhysicsWorld(scene, worldInfo = null) {
 
     if (ROUND_GEOMETRIES.has(geometry.type)) {
       bounds.getCenter(center);
-      const radius = Math.max(
-        (bounds.max.x - bounds.min.x) * 0.5,
-        (bounds.max.z - bounds.min.z) * 0.5
-      );
+      const radiusX = (bounds.max.x - bounds.min.x) * 0.5;
+      const radiusZ = (bounds.max.z - bounds.min.z) * 0.5;
       insertCollider({
-        kind: 'round',
+        kind: 'ellipse',
         x: center.x,
         z: center.z,
-        radius,
+        radiusX,
+        radiusZ,
         minY: bounds.min.y,
         maxY: bounds.max.y,
-        minX: center.x - radius,
-        maxX: center.x + radius,
-        minZ: center.z - radius,
-        maxZ: center.z + radius,
+        minX: center.x - radiusX,
+        maxX: center.x + radiusX,
+        minZ: center.z - radiusZ,
+        maxZ: center.z + radiusZ,
       });
       return;
     }
@@ -120,15 +120,15 @@ export function createPhysicsWorld(scene, worldInfo = null) {
     // Use the mesh-local bounds and inverse transform for every remaining
     // model. A rotated prop can no longer create a huge world-axis-aligned wall.
     const inverse = inverseMatrix.copy(matrix).invert().clone();
+    const forward = matrix.clone();
     matrix.decompose(position, rotation, scale);
-    const minScale = Math.max(0.001, Math.min(
-      Math.abs(scale.x), Math.abs(scale.z)
-    ));
     insertCollider({
       kind: 'obb',
       inverse,
+      forward,
       bounds: localBounds.clone(),
-      localRadiusScale: minScale,
+      scaleX: Math.max(0.001, Math.abs(scale.x)),
+      scaleZ: Math.max(0.001, Math.abs(scale.z)),
       minY: bounds.min.y,
       maxY: bounds.max.y,
       minX: bounds.min.x,
@@ -214,18 +214,23 @@ export function createPhysicsWorld(scene, worldInfo = null) {
       return Math.abs(distance - shape.radius) < radius + shape.thickness * 0.5;
     }
 
-    if (shape.kind === 'round') {
-      return Math.hypot(x - shape.x, z - shape.z) < radius + shape.radius;
+    if (shape.kind === 'ellipse') {
+      const dx = x - shape.x;
+      const dz = z - shape.z;
+      const rx = shape.radiusX + radius;
+      const rz = shape.radiusZ + radius;
+      return (dx * dx) / (rx * rx) + (dz * dz) / (rz * rz) < 1;
     }
 
     if (shape.kind === 'obb') {
       const local = new THREE.Vector3(x, feetY + height * 0.5, z).applyMatrix4(shape.inverse);
-      const localRadius = radius / shape.localRadiusScale;
       const closestX = THREE.MathUtils.clamp(local.x, shape.bounds.min.x, shape.bounds.max.x);
       const closestZ = THREE.MathUtils.clamp(local.z, shape.bounds.min.z, shape.bounds.max.z);
       const dx = local.x - closestX;
       const dz = local.z - closestZ;
-      return dx * dx + dz * dz < localRadius * localRadius;
+      const radiusX = radius / shape.scaleX;
+      const radiusZ = radius / shape.scaleZ;
+      return (dx * dx) / (radiusX * radiusX) + (dz * dz) / (radiusZ * radiusZ) < 1;
     }
 
     const box = shape.box;
@@ -266,7 +271,7 @@ export function createPhysicsWorld(scene, worldInfo = null) {
         const headY = feetY + height;
         if (headY <= shape.minY + EPSILON || feetY >= shape.maxY - EPSILON) continue;
 
-        if (shape.kind === 'round' || shape.kind === 'ring') {
+        if (shape.kind === 'ring' || shape.kind === 'ellipse') {
           let dx = px - shape.x;
           let dz = pz - shape.z;
           let distance = Math.hypot(dx, dz);
@@ -275,6 +280,7 @@ export function createPhysicsWorld(scene, worldInfo = null) {
             dz = 0;
             distance = 1;
           }
+
           if (shape.kind === 'ring') {
             if (shape.gapStart !== null && shape.gapEnd !== null &&
               angleInGap(Math.atan2(dz, dx), shape.gapStart, shape.gapEnd)) continue;
@@ -286,10 +292,13 @@ export function createPhysicsWorld(scene, worldInfo = null) {
               pushed = changed = true;
             }
           } else {
-            const penetration = radius + shape.radius - distance;
-            if (penetration > 0) {
-              px += (dx / distance) * penetration;
-              pz += (dz / distance) * penetration;
+            const rx = shape.radiusX + radius;
+            const rz = shape.radiusZ + radius;
+            const normalized = Math.sqrt((dx * dx) / (rx * rx) + (dz * dz) / (rz * rz));
+            if (normalized < 1) {
+              const factor = 1.015 / Math.max(normalized, 0.0001);
+              px = shape.x + dx * factor;
+              pz = shape.z + dz * factor;
               pushed = changed = true;
             }
           }
@@ -298,19 +307,32 @@ export function createPhysicsWorld(scene, worldInfo = null) {
 
         if (shape.kind === 'obb') {
           const local = new THREE.Vector3(px, feetY + height * 0.5, pz).applyMatrix4(shape.inverse);
-          const r = radius / shape.localRadiusScale;
-          const minX = shape.bounds.min.x - r, maxX = shape.bounds.max.x + r;
-          const minZ = shape.bounds.min.z - r, maxZ = shape.bounds.max.z + r;
-          if (local.x > minX && local.x < maxX && local.z > minZ && local.z < maxZ) {
-            const options = [
-              { d: local.x - minX, x: minX - 0.02, z: local.z },
-              { d: maxX - local.x, x: maxX + 0.02, z: local.z },
-              { d: local.z - minZ, x: local.x, z: minZ - 0.02 },
-              { d: maxZ - local.z, x: local.x, z: maxZ + 0.02 },
-            ].sort((a, b) => a.d - b.d);
-            const candidate = new THREE.Vector3(options[0].x, local.y, options[0].z).applyMatrix4(
-              new THREE.Matrix4().copy(shape.inverse).invert()
-            );
+          const closestX = THREE.MathUtils.clamp(local.x, shape.bounds.min.x, shape.bounds.max.x);
+          const closestZ = THREE.MathUtils.clamp(local.z, shape.bounds.min.z, shape.bounds.max.z);
+          let dx = local.x - closestX;
+          let dz = local.z - closestZ;
+          const radiusX = radius / shape.scaleX;
+          const radiusZ = radius / shape.scaleZ;
+          const normalized = Math.sqrt((dx * dx) / (radiusX * radiusX) + (dz * dz) / (radiusZ * radiusZ));
+
+          if (normalized < 1) {
+            if (normalized > 0.0001) {
+              const factor = 1.015 / normalized;
+              local.x = closestX + dx * factor;
+              local.z = closestZ + dz * factor;
+            } else {
+              // Player center is inside the box footprint: choose the nearest
+              // side in world metres, not in unscaled mesh-local units.
+              const options = [
+                { distance: (local.x - shape.bounds.min.x) * shape.scaleX, axis: 'x', value: shape.bounds.min.x - radiusX - 0.02 },
+                { distance: (shape.bounds.max.x - local.x) * shape.scaleX, axis: 'x', value: shape.bounds.max.x + radiusX + 0.02 },
+                { distance: (local.z - shape.bounds.min.z) * shape.scaleZ, axis: 'z', value: shape.bounds.min.z - radiusZ - 0.02 },
+                { distance: (shape.bounds.max.z - local.z) * shape.scaleZ, axis: 'z', value: shape.bounds.max.z + radiusZ + 0.02 },
+              ].sort((a, b) => a.distance - b.distance);
+              if (options[0].axis === 'x') local.x = options[0].value;
+              else local.z = options[0].value;
+            }
+            const candidate = local.applyMatrix4(shape.forward);
             px = candidate.x;
             pz = candidate.z;
             pushed = changed = true;
