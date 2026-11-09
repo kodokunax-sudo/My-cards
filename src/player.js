@@ -4,16 +4,16 @@ import {
   EYE_HEIGHT, PLAYER_HEIGHT, GRAVITY,
 } from './config.js';
 
-const WALK_SPEED = 4.8;
-const RUN_SPEED = 9.0;
+const WALK_SPEED = 5.4;
+const RUN_SPEED = 10.2;
 const FLY_SPEED = 14.0;
 const FLY_FAST = 34.0;
-const BODY_RADIUS = 0.32;
-const STEP_UP = 0.46;
-const MAX_STEP_DOWN = 0.82;
+const BODY_RADIUS = 0.29;
+const STEP_UP = 1.0;
+const MAX_STEP_DOWN = 1.45;
 const JUMP_SPEED = 6.4;
 const AIR_CONTROL = 5.0;
-const GROUND_ACCELERATION = 15.0;
+const GROUND_ACCELERATION = 19.0;
 
 const SWIM_SPEED = 3.4;
 const SWIM_SPRINT_SPEED = 5.1;
@@ -183,6 +183,21 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
 
   function tryGroundMove(dx, dz) {
     if (Math.abs(dx) + Math.abs(dz) < 1e-7) return false;
+
+    // If an earlier frame left the capsule slightly inside an obstacle,
+    // move it back to the nearest free position before attempting movement.
+    const resolved = physics.resolvePosition?.(
+      camera.position.x, camera.position.z, feetY, BODY_RADIUS, PLAYER_HEIGHT
+    );
+    if (resolved?.changed) {
+      camera.position.x = resolved.x;
+      camera.position.z = resolved.z;
+      const recoveredFloor = physics.groundAt(
+        camera.position.x, camera.position.z, feetY, STEP_UP, MAX_STEP_DOWN
+      );
+      if (grounded && recoveredFloor !== null) feetY = recoveredFloor;
+    }
+
     const nx = camera.position.x + dx;
     const nz = camera.position.z + dz;
     let nextFeet = feetY;
