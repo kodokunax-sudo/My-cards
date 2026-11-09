@@ -102,6 +102,29 @@
   </div>
 </div>
 
+<script>
+(() => {
+  const showBootError = (message) => {
+    const button = document.getElementById('start-btn');
+    if (!button || !button.disabled || !button.textContent.includes('Загрузка')) return;
+    button.textContent = 'Ошибка загрузки сцены';
+    const note = document.querySelector('.overlay-inner .note');
+    if (note) note.textContent = message || 'Сцена не запустилась. Обновите страницу и проверьте ошибки в консоли браузера.';
+  };
+
+  window.addEventListener('error', (event) => {
+    showBootError(event.message || 'Не удалось загрузить один из файлов сцены.');
+  }, true);
+  window.addEventListener('unhandledrejection', (event) => {
+    showBootError(event.reason?.message || 'Ошибка при запуске сцены.');
+  });
+
+  window.setTimeout(() => {
+    showBootError('Сцена не ответила за 18 секунд. Обновите страницу; при слабом устройстве попробуйте ?quality=low.');
+  }, 18000);
+})();
+</script>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
