@@ -167,7 +167,7 @@ applyQuality();
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
-  elapsed += dt;
+  if (started) elapsed += dt;
   frames++;
 
   renderer.shadowMap.needsUpdate = true;
