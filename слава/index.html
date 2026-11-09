@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Фонтан «Титан» — 56,1 м · 33 человеческих роста</title>
+<link rel="stylesheet" href="./styles.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="ui">
+  <section class="panel panel-left">
+    <h1>ФОНТАН «ТИТАН»</h1>
+    <p class="sub">золотой час · главный парк</p>
+
+    <div class="compare">
+      <div class="col">
+        <div class="bar bar-fountain"><i></i></div>
+        <div class="cap">56,1 м</div>
+        <div class="cap sub">сооружение</div>
+      </div>
+      <div class="ratio"><b>33×</b><span> выше<br>человека</span></div>
+      <div class="col">
+        <div class="bar bar-player"><i></i></div>
+        <div class="cap">1,7 м</div>
+        <div class="cap sub">это вы</div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div><span>до центра фонтана</span><b id="stat-dist">—</b></div>
+      <div><span>угол возвышения</span><b id="stat-angle">—</b></div>
+      <div><span>высота камеры</span><b id="stat-height">—</b></div>
+      <div><span>режим</span><b id="stat-mode">пешком</b></div>
+    </div>
+  </section>
+
+  <section class="panel panel-right">
+    <canvas id="compass" width="150" height="150"></canvas>
+    <div class="compass-cap">стрелка — направление на фонтан</div>
+  </section>
+
+  <div id="crosshair"></div>
+
+  <div id="hint">
+    <b>WASD</b> идти · <b>мышь</b> смотреть · <b>Shift</b> бежать · <b>F</b> полёт ·
+    <b>Space/C</b> высота · <b>T</b> облёт · <b>M</b> звук · <b>Esc</b> выйти
+  </div>
+  <div id="hint-touch">
+    <b>джойстик</b> слева — идти · <b>свайп</b> по экрану — смотреть · <b>БЕГ</b> — быстрее
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<div id="touch-layer" class="hidden">
+  <div id="stick"><div id="stick-knob"></div><span>ХОД</span></div>
+  <div id="touch-buttons">
+    <button class="tbtn tbtn-wide" data-act="run">БЕГ</button>
+    <button class="tbtn" data-act="fly">ПОЛЁТ</button>
+    <button class="tbtn" data-act="tour">ОБЛЁТ</button>
+    <button class="tbtn" data-act="sound">ЗВУК</button>
+    <button class="tbtn tbtn-up" data-act="up">▲</button>
+    <button class="tbtn tbtn-down" data-act="down">▼</button>
+  </div>
+</div>
+
+<div id="rotate">Поверните телефон — так удобнее смотреть</div>
+
+<div id="overlay">
+  <div class="overlay-inner">
+    <div class="kicker">HTML · WebGL · three.js</div>
+    <h1>ФОНТАН «ТИТАН»</h1>
+    <div class="hero-num">56,1 <span>м</span></div>
+    <div class="hero-sub">= 33 человеческих роста по 1,7 м</div>
+    <p>
+      Монументальный фонтан в золотом час: четыре яруса чаш, 52 водяные струи,
+      зеркальная вода и огромный светящийся кристалл на вершине.
+      Идите по мосту через бассейн, поднимитесь к подножию — и оцените масштаб.
+    </p>
+    <button id="start-btn" disabled>Загрузка сцены…</button>
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>движение</span></div>
+      <div><kbd>мышь</kbd><span>обзор</span></div>
+      <div><kbd>Shift</kbd><span>бег / скорость</span></div>
+      <div><kbd>F</kbd><span>полёт</span></div>
+      <div><kbd>T</kbd><span>автооблёт</span></div>
+      <div><kbd>M</kbd><span>звук</span></div>
+    </div>
+    <div class="note">Совет: если браузер не захватит мышь — зажмите левую кнопку и двигайте курсор.</div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
