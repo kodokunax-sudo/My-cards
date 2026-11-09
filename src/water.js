@@ -70,7 +70,7 @@ const WATER_FRAG = /* glsl */ `
       vec4 im = uImpacts[i];
       float d = abs(length(vWPos.xz - im.xy) - im.z);
       ripple += sin(d * 2.4 - uTime * 6.2) * exp(-d * 0.5) * im.w;
-      foam += smoothstep(1.6, 0.0, d) * im.w;
+      foam += (1.0 - smoothstep(0.0, 1.6, d)) * im.w;
     }
     N = normalize(N + vec3(ripple * 0.22, 0.0, ripple * 0.16));
 
@@ -94,7 +94,7 @@ const WATER_FRAG = /* glsl */ `
     float sp = fbm(vWPos.xz * 2.2 + vec2(uTime * 0.35, -uTime * 0.22));
     col += vec3(0.85, 0.98, 1.0) * smoothstep(0.76, 0.99, sp) * 0.14;
 
-    float foamIsl = smoothstep(uIslandRadius + 1.6, uIslandRadius - 0.4, vRad);
+    float foamIsl = (1.0 - smoothstep(uIslandRadius - 0.4, uIslandRadius + 1.6, vRad));
     float foamRim = smoothstep(uPoolRadius - 1.8, uPoolRadius - 0.4, vRad);
     float foamTex = 0.45 + 0.4 * fbm(vWPos.xz * 3.0 + vec2(uTime * 0.5, uTime * 0.3));
     foam = clamp(foam + (foamIsl + foamRim) * foamTex, 0.0, 1.0);
@@ -213,7 +213,7 @@ const JET_FRAG = /* glsl */ `
     float s = pow(max(dot(N, normalize(uSunDir + V)), 0.0), 48.0);
     col += vec3(1.0, 0.96, 0.86) * s * 0.9;
 
-    float fade = smoothstep(0.0, 0.05, vUv.y) * smoothstep(1.0, 0.80, vUv.y);
+    float fade = smoothstep(0.0, 0.05, vUv.y) * (1.0 - smoothstep(0.80, 1.0, vUv.y));
     float alpha = (0.09 + 0.30 * streak + 0.30 * rim + 0.10 * fine) * fade * uOpacity;
     gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
   }
