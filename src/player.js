@@ -285,7 +285,8 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       const verticalAcceleration = verticalInput * 8.5 + pitchDrive + buoyancyAssist - velocity.y * 2.1;
       velocity.y += verticalAcceleration * dt;
     } else {
-      const buoyancyAcceleration = (targetFeet - feetY) * 7.2 - velocity.y * 4.0;
+      const pitchDrive = direction.y * speed * 1.4;
+      const buoyancyAcceleration = (targetFeet - feetY) * 7.2 - velocity.y * 4.0 + pitchDrive;
       velocity.y += buoyancyAcceleration * dt;
     }
 
