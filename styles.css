@@ -217,6 +217,7 @@ html, body {
   transform: scale(0.95);
 }
 .tbtn-wide { grid-column: span 2; }
+.tbtn-jump { border-color: rgba(255, 226, 170, 0.55); color: #ffe2aa; }
 .tbtn-up, .tbtn-down { display: none; }
 body.fly .tbtn-up, body.fly .tbtn-down { display: block; }
 
