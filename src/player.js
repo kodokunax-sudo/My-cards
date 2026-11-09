@@ -291,6 +291,7 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
     get grounded() { return grounded; },
     get feetY() { return feetY; },
     setMode,
+    jump() { if (mode !== 'fly' && !grounded) jumpQueued = Math.max(jumpQueued, 0.16); else if (mode !== 'fly') jumpQueued = 0.16; },
     setMoveVector(x, y) {
       stick.x = THREE.MathUtils.clamp(x, -1, 1);
       stick.y = THREE.MathUtils.clamp(y, -1, 1);
