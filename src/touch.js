@@ -82,7 +82,15 @@ export function createTouchControls(player, actions = {}) {
         player.setVertical(act === 'up' ? 1 : -1);
         return;
       }
-      if (act === 'run') player.setRun(!player.run);
+      if (act === 'jump') {
+        player.jump();
+        btn.classList.remove('active');
+        return;
+      }
+      if (act === 'run') {
+        player.setRun(!player.run);
+        btn.classList.toggle('active', player.run);
+      }
       else if (act === 'fly') actions.fly?.();
       else if (act === 'tour') actions.tour?.();
       else if (act === 'sound') actions.sound?.();
@@ -90,6 +98,10 @@ export function createTouchControls(player, actions = {}) {
     const up = (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (act === 'run') {
+        btn.classList.toggle('active', player.run);
+        return;
+      }
       btn.classList.remove('active');
       if (act === 'up' || act === 'down') { held = false; player.setVertical(0); }
     };
