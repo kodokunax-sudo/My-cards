@@ -202,8 +202,8 @@ export function createEnvironment(scene) {
   city.userData.solid = true;
   for (let i = 0; i < 90; i++) {
     const a = rnd() * Math.PI * 2;
-    const r = 430 + rnd() * 420;
-    const h = 24 + rnd() * 120;
+    const r = 3900 + rnd() * 900;
+    const h = 45 + rnd() * 180;
     const w = 26 + rnd() * 60;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * 6.28);
@@ -216,8 +216,8 @@ export function createEnvironment(scene) {
   const mountainMat = new THREE.MeshStandardMaterial({ color: PALETTE.mountain, roughness: 1.0, flatShading: true });
   for (let i = 0; i < 9; i++) {
     const a = (i / 9) * Math.PI * 2 + rnd() * 0.3;
-    const r = 1150 + rnd() * 380;
-    const h = 200 + rnd() * 230;
+    const r = 4850 + rnd() * 520;
+    const h = 220 + rnd() * 360;
     const cone = new THREE.Mesh(new THREE.ConeGeometry(h * 1.25, h, 7), mountainMat);
     cone.position.set(Math.cos(a) * r, h / 2 - 20, Math.sin(a) * r);
     cone.rotation.y = rnd() * 6.28;
