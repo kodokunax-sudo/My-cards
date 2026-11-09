@@ -199,7 +199,9 @@ function animate() {
     nightStartedMessageShown = true;
     hud.toast('Солнце садится. Наступает ночь.');
   }
-  water.update(elapsed, dt, renderer.getPixelRatio(), player.underwater);
+  const fountainRegion = world.getWaterRegionAt(camera.position.x, camera.position.z);
+  const beneathFountainSurface = fountainRegion?.id === 'fountain' && player.underwater;
+  water.update(elapsed, dt, renderer.getPixelRatio(), beneathFountainSurface);
   hud.update(camera, player);
   audio.setDistance(Math.hypot(camera.position.x, camera.position.z));
   sampleQuality(dt);
