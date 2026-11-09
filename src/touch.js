@@ -120,5 +120,6 @@ export function createTouchControls(player, actions = {}) {
     setRunState(on) { runBtn?.classList.toggle('active', on); },
     setSoundState(on) { soundBtn?.classList.toggle('active', on); },
     setFlyState(on) { document.body.classList.toggle('fly', on); },
+    setSwimState(on) { document.body.classList.toggle('swim', on); },
   };
 }
