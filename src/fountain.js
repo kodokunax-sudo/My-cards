@@ -190,8 +190,9 @@ export function createFountain(scene) {
   rail.userData.collisionMode = 'ring';
   rail.userData.collisionRadius = 13.9;
   rail.userData.collisionThickness = 0.34;
+  // Leave the bridge-facing opening clear, including the player's body width.
   rail.userData.collisionGapStart = rail.geometry.parameters.arc;
-  rail.userData.collisionGapEnd = Math.PI * 2;
+  rail.userData.collisionGapEnd = 0.24;
   const mat4 = new THREE.Matrix4();
   for (let i = 0; i < 40; i++) {
     const a = (i / 40) * Math.PI * 2;
