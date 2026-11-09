@@ -14,6 +14,7 @@ import { createPhysicsWorld } from './physics.js';
 import { createHud } from './hud.js';
 import { createAmbience } from './audio.js';
 import { createTouchControls } from './touch.js';
+import { createWorld } from './world.js';
 
 const canvas = document.getElementById('scene');
 const overlay = document.getElementById('overlay');
@@ -34,7 +35,7 @@ renderer.shadowMap.autoUpdate = false;
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(new THREE.Color(0xd9ae86), 0.00115);
 
-const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 6000);
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 12000);
 camera.layers.enable(2);   // слой 2 — поверхность воды (исключается из отражений)
 
 // ---------- сцена ----------
@@ -42,10 +43,11 @@ const sky = createSky(scene);
 const env = createEnvironment(scene);
 const fountain = createFountain(scene);
 const water = createWater(scene, fountain, camera, renderer);
+const world = createWorld(scene);
 const hud = createHud();
 const audio = createAmbience();
 const physics = createPhysicsWorld(scene);
-const player = createPlayer(camera, canvas, physics, (mode) => {
+const player = createPlayer(camera, canvas, physics, world, (mode) => {
   hud.setMode(mode);
   touch?.setFlyState(mode === 'fly');
 });
@@ -212,4 +214,4 @@ function animate() {
 animate();
 
 // для отладки из консоли
-window.__scene = { scene, camera, renderer, fountain, water, player, physics, FOUNTAIN_HEIGHT };
+window.__scene = { scene, camera, renderer, fountain, water, world, player, physics, FOUNTAIN_HEIGHT };
