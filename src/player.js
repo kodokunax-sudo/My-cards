@@ -260,7 +260,7 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
 
     // Prevent swimming through the bridge, fountain structure or basin walls.
     if (nextFeet > previousFeet &&
-      physics.isBlocked(camera.position.x, nextFeet, camera.position.z, BODY_RADIUS, PLAYER_HEIGHT)) {
+      physics.isHeadBlocked(camera.position.x, nextFeet + PLAYER_HEIGHT, camera.position.z, BODY_RADIUS * 0.65)) {
       nextFeet = previousFeet;
       velocity.y = 0;
     }
@@ -396,7 +396,7 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
       let nextFeet = feetY + velocity.y * dt;
 
       if (velocity.y > 0 &&
-        physics.isBlocked(camera.position.x, nextFeet, camera.position.z, BODY_RADIUS, PLAYER_HEIGHT)) {
+        physics.isHeadBlocked(camera.position.x, nextFeet + PLAYER_HEIGHT, camera.position.z, BODY_RADIUS * 0.65)) {
         velocity.y = 0;
         nextFeet = previousFeet;
       }
