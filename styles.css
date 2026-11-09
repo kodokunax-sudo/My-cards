@@ -271,6 +271,9 @@ body.fly .tbtn-up, body.fly .tbtn-down,
 body.swim .tbtn-up, body.swim .tbtn-down { display: block; }
 body.swim .tbtn-up::after { content: " ВСПЛЫТЬ"; }
 body.swim .tbtn-down::after { content: " НЫРНУТЬ"; }
+body.swim #touch-buttons { grid-template-columns: repeat(2, 74px); }
+body.swim .tbtn-up, body.swim .tbtn-down { font-size: 8px; letter-spacing: 0; }
+body.swim .tbtn-jump { display: none; }
 
 #rotate {
   position: fixed; left: 50%; top: 42%;
@@ -322,6 +325,11 @@ body.touch .stats { display: none; }
 body.touch .panel-left #oxygen-indicator { margin-top: 8px; padding: 7px 8px; }
 body.touch .panel-left .oxygen-heading { font-size: 9px; }
 body.touch .panel-left .oxygen-tip { font-size: 8px; }
+body.touch.swim .panel-left .oxygen-tip { font-size: 0; }
+body.touch.swim .panel-left .oxygen-tip::after {
+  content: "▲ всплыть · ▼ нырнуть";
+  font-size: 8px;
+}
 body.touch .keys { display: none; }
 
 @media (orientation: portrait) {
