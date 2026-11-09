@@ -92,6 +92,7 @@ function applyQuality() {
   bloom.enabled = q.bloom;
   water.setCubeInterval(q.cube);
   env.setShadowSize(q.shadow);
+  renderer.shadowMap.needsUpdate = true;
   resize();
 }
 
@@ -169,8 +170,6 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (started) elapsed += dt;
   frames++;
-
-  renderer.shadowMap.needsUpdate = true;
 
   player.update(dt);
 
