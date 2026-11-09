@@ -33,13 +33,11 @@ export function createPhysicsWorld(scene) {
 
     if (object.userData.walkable) floors.push(object);
 
-    const solid = object.userData.solid || object.castShadow;
-    if (!solid) return;
-
+    // Every opaque mesh is treated as a solid by default. Transparent
+    // effects (water jets, birds, glow shells) are visual-only; objects can
+    // explicitly opt out with userData.noCollider.
     const materials = Array.isArray(object.material) ? object.material : [object.material];
-    if (materials.length && materials.every((material) =>
-      !material || (material.transparent && material.opacity < 0.8)
-    )) return;
+    if (!materials.length || materials.some((material) => !material || material.transparent)) return;
 
     const geometry = object.geometry;
     if (!geometry.boundingBox) geometry.computeBoundingBox();
