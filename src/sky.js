@@ -55,7 +55,7 @@ export function createSky(scene) {
         vec3 horizonCol = mix(uHorizon, nightHorizon, uNight);
         vec3 bottomCol = mix(uBottom, nightBottom, uNight);
         vec3 col = mix(horizonCol, topCol, pow(clamp(h, 0.0, 1.0), 0.42));
-        col = mix(col, bottomCol, smoothstep(0.0, -0.22, h));
+        col = mix(col, bottomCol, (1.0 - smoothstep(-0.22, 0.0, h)));
 
         float sd = max(dot(d, normalize(uSunDir)), 0.0);
         float sunFade = 1.0 - smoothstep(0.05, 0.82, uNight);
