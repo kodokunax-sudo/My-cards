@@ -20,7 +20,7 @@ const SWIM_SPRINT_SPEED = 5.1;
 const SWIM_ACCELERATION = 4.2;
 const WATER_DRAG = 1.65;
 const MAX_OXYGEN = 24;
-const EYE_WATER_OFFSET = 0.12;
+const EYE_WATER_OFFSET = 0.65;
 
 export function createPlayer(camera, domElement, physics, worldInfo, onModeChange) {
   const controls = new PointerLockControls(camera, domElement);
