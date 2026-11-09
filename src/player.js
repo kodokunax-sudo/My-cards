@@ -1,45 +1,37 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { POOL_RADIUS, EYE_HEIGHT } from './config.js';
+import { EYE_HEIGHT, PLAYER_HEIGHT, GRAVITY } from './config.js';
 
-const WALK_SPEED = 4.4;
-const RUN_SPEED = 11.0;
+const WALK_SPEED = 4.6;
+const RUN_SPEED = 8.8;
 const FLY_SPEED = 14.0;
-const FLY_FAST = 42.0;
+const FLY_FAST = 34.0;
+const BODY_RADIUS = 0.32;
+const STEP_UP = 0.46;
+const MAX_STEP_DOWN = 0.82;
+const JUMP_SPEED = 6.4;
+const AIR_CONTROL = 5.0;
+const GROUND_ACCELERATION = 15.0;
 
-/** Высота опоры под ногами. */
-export function groundHeight(x, z) {
-  const d = Math.hypot(x, z);
-  if (d < 14.2) return 4.2;            // площадка островка
-  if (d < 15.4) return 3.4;            // верхний ярус
-  if (d < 16.6) return 2.4;            // средний ярус
-  if (Math.abs(z) <= 3.0 && x > 15.0 && x < 57.0) {
-    if (x >= 53.2) return Math.max(0, 2.4 * (1 - (x - 53.2) / 2.4));
-    return 2.4;                        // настил моста
-  }
-  return 0;
-}
-
-function isValid(x, z) {
-  const d = Math.hypot(x, z);
-  const onIsland = d < 16.6;
-  const onDeck = Math.abs(z) <= 2.6 && x > 15.0 && x < 57.0;
-  if (onIsland) return onDeck || d <= 15.4;
-  if (onDeck) return true;
-  if (Math.abs(d - 132) < 3.2) return false;   // колоннада
-  return d >= POOL_RADIUS + 2.2;
-}
-
-export function createPlayer(camera, domElement, onModeChange) {
+export function createPlayer(camera, domElement, physics, onModeChange) {
   const controls = new PointerLockControls(camera, domElement);
-  camera.position.set(0, 1.62, 132);
-  camera.rotation.set(0.19, 0, 0);
+
+  // Spawn on the open plaza, facing the fountain. Eye height is derived
+  // from the real ground surface and the configured human body height.
+  const spawn = new THREE.Vector3(0, 0, 70);
+  const spawnFloor = physics.groundAt(spawn.x, spawn.z, 0, 0.5, 1.0) ?? 0;
+  let feetY = spawnFloor;
+  camera.position.set(spawn.x, feetY + EYE_HEIGHT, spawn.z);
+  camera.lookAt(0, 8, 0);
+  controls.getObject().position.copy(camera.position);
 
   const keys = Object.create(null);
-  const stick = { x: 0, y: 0 };     // виртуальный джойстик (тач)
-  let vertical = 0;                // вверх/вниз в режиме полёта (тач)
+  const stick = { x: 0, y: 0 };
+  let vertical = 0;
   let runToggle = false;
-  let mode = 'walk';           // walk | fly | cinematic
+  let mode = 'walk';
+  let grounded = true;
+  let jumpQueued = 0;
   let bobPhase = 0;
   let dragging = false;
   let pointerLocked = false;
@@ -47,136 +39,247 @@ export function createPlayer(camera, domElement, onModeChange) {
   const euler = new THREE.Euler(0, 0, 0, 'YXZ');
   const forward = new THREE.Vector3();
   const right = new THREE.Vector3();
-  const dir = new THREE.Vector3();
+  const direction = new THREE.Vector3();
+  const velocity = new THREE.Vector3();
 
-  // --- мышь: захват указателя + запасной вариант «перетаскивание» ---
-  domElement.addEventListener('mousedown', (e) => {
-    if (!pointerLocked && e.button === 0) dragging = true;
+  // Pointer lock is preferred; click-and-drag remains available on browsers
+  // that reject pointer lock.
+  domElement.addEventListener('mousedown', (event) => {
+    if (!pointerLocked && event.button === 0) dragging = true;
   });
   window.addEventListener('mouseup', () => { dragging = false; });
-  window.addEventListener('mousemove', (e) => {
+  window.addEventListener('mousemove', (event) => {
     if (pointerLocked || !dragging) return;
-    applyLook(e.movementX || 0, e.movementY || 0);
+    applyLook(event.movementX || 0, event.movementY || 0);
   });
 
   function applyLook(dx, dy) {
     euler.setFromQuaternion(camera.quaternion, 'YXZ');
     euler.y -= dx * 0.0022;
     euler.x -= dy * 0.0022;
-    euler.x = Math.max(-1.5, Math.min(1.5, euler.x));
+    euler.x = THREE.MathUtils.clamp(euler.x, -1.48, 1.48);
     camera.quaternion.setFromEuler(euler);
   }
-  controls.addEventListener('lock', () => { pointerLocked = true; });
-  controls.addEventListener('unlock', () => { pointerLocked = false; });
+
+  controls.addEventListener('lock', () => {
+    pointerLocked = true;
+    dragging = false;
+  });
+  controls.addEventListener('unlock', () => {
+    pointerLocked = false;
+  });
 
   function setMode(next) {
     if (mode === next) return;
+    const previous = mode;
     mode = next;
+
+    if (next === 'fly') {
+      velocity.set(0, 0, 0);
+      grounded = false;
+    } else if (previous === 'fly') {
+      velocity.set(0, 0, 0);
+      grounded = false;
+    }
+
     onModeChange?.(mode);
   }
 
-  const toggles = {
-    fly: () => setMode(mode === 'fly' ? 'walk' : 'fly'),
-    cinematic: () => setMode(mode === 'cinematic' ? 'walk' : 'cinematic'),
-  };
+  function onKeyDown(event) {
+    const key = event.code;
+    if (key === 'Space' && mode !== 'fly') {
+      event.preventDefault();
+      if (!event.repeat) jumpQueued = 0.16;
+    }
 
-  function onKeyDown(e) {
-    const k = e.code;
-    keys[k] = true;
-    if (k === 'KeyF') toggles.fly();
-    if (k === 'KeyT') toggles.cinematic();
-    if (mode === 'cinematic' && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) {
+    keys[key] = true;
+    if (key === 'KeyF') setMode(mode === 'fly' ? 'walk' : 'fly');
+    if (key === 'KeyT') setMode(mode === 'cinematic' ? 'walk' : 'cinematic');
+
+    if (mode === 'cinematic' &&
+      ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
       setMode('walk');
     }
   }
-  function onKeyUp(e) { keys[e.code] = false; }
+
+  function onKeyUp(event) {
+    keys[event.code] = false;
+  }
+
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
-  window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+  window.addEventListener('blur', () => {
+    for (const key in keys) keys[key] = false;
+    stick.x = 0;
+    stick.y = 0;
+    vertical = 0;
+    dragging = false;
+  });
 
   const cinematic = { angle: 0.7, t: 0 };
 
   function updateCinematic(dt) {
     cinematic.t += dt;
-    const t = cinematic.t;
     cinematic.angle += dt * 0.055;
-    const radius = 96 + 46 * Math.sin(t * 0.085);
-    const height = 7 + 40 * (0.5 + 0.5 * Math.sin(t * 0.13 + 0.7));
-    const look = 16 + 30 * (0.5 + 0.5 * Math.sin(t * 0.101 + 2.1));
+    const radius = 96 + 46 * Math.sin(cinematic.t * 0.085);
+    const height = 7 + 40 * (0.5 + 0.5 * Math.sin(cinematic.t * 0.13 + 0.7));
+    const lookHeight = 16 + 30 * (0.5 + 0.5 * Math.sin(cinematic.t * 0.101 + 2.1));
     camera.position.set(
       Math.cos(cinematic.angle) * radius,
       height,
       Math.sin(cinematic.angle) * radius
     );
-    camera.lookAt(0, look, 0);
+    camera.lookAt(0, lookHeight, 0);
+  }
+
+  function tryHorizontalMove(dx, dz) {
+    if (Math.abs(dx) + Math.abs(dz) < 1e-7) return false;
+
+    const nx = camera.position.x + dx;
+    const nz = camera.position.z + dz;
+    let nextFeet = feetY;
+
+    if (grounded) {
+      const floor = physics.groundAt(nx, nz, feetY, STEP_UP, MAX_STEP_DOWN);
+      if (floor === null) return false;
+      nextFeet = floor;
+    }
+
+    if (physics.isBlocked(nx, nextFeet, nz, BODY_RADIUS, PLAYER_HEIGHT)) return false;
+
+    camera.position.x = nx;
+    camera.position.z = nz;
+    if (grounded) feetY = nextFeet;
+    return true;
   }
 
   function update(dt) {
-    if (mode === 'cinematic') { updateCinematic(dt); return; }
+    if (mode === 'cinematic') {
+      updateCinematic(dt);
+      return;
+    }
 
-    euler.setFromQuaternion(camera.quaternion, 'YXZ');
-    const yaw = euler.y;
-
-    let mx = 0, mz = 0, my = 0;
-    if (keys.KeyW || keys.ArrowUp) mz += 1;
-    if (keys.KeyS || keys.ArrowDown) mz -= 1;
-    if (keys.KeyD || keys.ArrowRight) mx += 1;
-    if (keys.KeyA || keys.ArrowLeft) mx -= 1;
-    mx += stick.x;
-    mz += stick.y;
-    const sprinting = keys.ShiftLeft || keys.ShiftRight || runToggle;
+    const sprinting = !!(keys.ShiftLeft || keys.ShiftRight || runToggle);
+    const mx = THREE.MathUtils.clamp(
+      (keys.KeyD || keys.ArrowRight ? 1 : 0) -
+      (keys.KeyA || keys.ArrowLeft ? 1 : 0) + stick.x, -1, 1
+    );
+    const mz = THREE.MathUtils.clamp(
+      (keys.KeyW || keys.ArrowUp ? 1 : 0) -
+      (keys.KeyS || keys.ArrowDown ? 1 : 0) + stick.y, -1, 1
+    );
 
     if (mode === 'fly') {
       camera.getWorldDirection(forward);
       right.crossVectors(forward, camera.up).normalize();
       const speed = sprinting ? FLY_FAST : FLY_SPEED;
-      dir.set(0, 0, 0);
+      direction.set(0, 0, 0);
       if (mx || mz) {
-        dir.addScaledVector(forward, mz).addScaledVector(right, mx);
-        const mag = Math.min(1, Math.hypot(mx, mz));
-        dir.normalize().multiplyScalar(mag);
+        direction.addScaledVector(forward, mz).addScaledVector(right, mx);
+        direction.normalize().multiplyScalar(Math.min(1, Math.hypot(mx, mz)));
       }
-      if (keys.Space) my += 1;
-      if (keys.KeyC || keys.ControlLeft) my -= 1;
-      my += vertical;
-      camera.position.addScaledVector(dir, speed * dt);
-      camera.position.y += my * speed * dt;
-      const r = Math.hypot(camera.position.x, camera.position.z);
-      if (r > 600) { camera.position.x *= 600 / r; camera.position.z *= 600 / r; }
-      if (camera.position.y < 0.6) camera.position.y = 0.6;
-      if (camera.position.y > 400) camera.position.y = 400;
+      const lift = (keys.Space ? 1 : 0) - (keys.KeyC || keys.ControlLeft ? 1 : 0) + vertical;
+      camera.position.addScaledVector(direction, speed * dt);
+      camera.position.y = THREE.MathUtils.clamp(camera.position.y + lift * speed * dt, 0.5, 500);
+      feetY = camera.position.y - EYE_HEIGHT;
       return;
     }
 
-    // ходьба
-    const speed = sprinting ? RUN_SPEED : WALK_SPEED;
+    // Horizontal acceleration and friction. Air control is weaker than ground control.
+    euler.setFromQuaternion(camera.quaternion, 'YXZ');
+    const yaw = euler.y;
     forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
     right.set(Math.cos(yaw), 0, -Math.sin(yaw));
-    dir.set(0, 0, 0);
+
+    direction.set(0, 0, 0);
     if (mx || mz) {
-      dir.addScaledVector(forward, mz).addScaledVector(right, mx);
-      const mag = Math.min(1, Math.hypot(mx, mz));
-      dir.normalize().multiplyScalar(mag);
-    }
-    const moving = dir.lengthSq() > 0.0001;
-    if (moving) {
-      const nx = camera.position.x + dir.x * speed * dt;
-      const nz = camera.position.z + dir.z * speed * dt;
-      if (isValid(nx, nz)) { camera.position.x = nx; camera.position.z = nz; }
-      else if (isValid(nx, camera.position.z)) camera.position.x = nx;
-      else if (isValid(camera.position.x, nz)) camera.position.z = nz;
-      bobPhase += dt * (sprinting ? 12.0 : 8.0);
+      direction.addScaledVector(forward, mz).addScaledVector(right, mx);
+      direction.normalize().multiplyScalar(Math.min(1, Math.hypot(mx, mz)));
     }
 
-    const g = groundHeight(camera.position.x, camera.position.z);
-    const bob = moving ? Math.sin(bobPhase) * (sprinting ? 0.085 : 0.045) : 0;
-    const target = g + EYE_HEIGHT + bob;
-    camera.position.y += (target - camera.position.y) * Math.min(1, dt * 9);
+    const targetSpeed = sprinting ? RUN_SPEED : WALK_SPEED;
+    const desiredX = direction.x * targetSpeed;
+    const desiredZ = direction.z * targetSpeed;
+    const acceleration = grounded ? GROUND_ACCELERATION : AIR_CONTROL;
+    const blend = Math.min(1, acceleration * dt);
+    velocity.x += (desiredX - velocity.x) * blend;
+    velocity.z += (desiredZ - velocity.z) * blend;
 
-    // лёгкий крен при шаге
-    const roll = moving ? Math.sin(bobPhase * 0.5) * 0.004 : 0;
+    const moveX = velocity.x * dt;
+    const moveZ = velocity.z * dt;
+    const moveDistance = Math.hypot(moveX, moveZ);
+    const substeps = Math.max(1, Math.ceil(moveDistance / (BODY_RADIUS * 0.45)));
+    const stepX = moveX / substeps;
+    const stepZ = moveZ / substeps;
+
+    for (let i = 0; i < substeps; i++) {
+      if (!tryHorizontalMove(stepX, stepZ)) {
+        // Resolve each axis independently to slide along walls instead of sticking.
+        const movedX = tryHorizontalMove(stepX, 0);
+        const movedZ = tryHorizontalMove(0, stepZ);
+        if (!movedX) velocity.x = 0;
+        if (!movedZ) velocity.z = 0;
+      }
+    }
+
+    if (jumpQueued > 0) {
+      jumpQueued = Math.max(0, jumpQueued - dt);
+      if (grounded) {
+        velocity.y = JUMP_SPEED;
+        grounded = false;
+        jumpQueued = 0;
+      }
+    }
+
+    if (!grounded) {
+      const previousFeet = feetY;
+      velocity.y -= GRAVITY * dt;
+      let nextFeet = feetY + velocity.y * dt;
+
+      // Ceiling/head collision also uses the real scene geometry.
+      if (velocity.y > 0 &&
+        physics.isBlocked(camera.position.x, nextFeet, camera.position.z, BODY_RADIUS, PLAYER_HEIGHT)) {
+        velocity.y = 0;
+        nextFeet = previousFeet;
+      }
+
+      if (velocity.y <= 0) {
+        const floor = physics.groundAt(
+          camera.position.x, camera.position.z, previousFeet, 0.14,
+          Math.max(MAX_STEP_DOWN, previousFeet - nextFeet + 0.14)
+        );
+        if (floor !== null && nextFeet <= floor && previousFeet >= floor - 0.12) {
+          nextFeet = floor;
+          velocity.y = 0;
+          grounded = true;
+        }
+      }
+
+      feetY = nextFeet;
+    } else {
+      const floor = physics.groundAt(camera.position.x, camera.position.z, feetY, STEP_UP, MAX_STEP_DOWN);
+      if (floor !== null) feetY = floor;
+      velocity.y = 0;
+    }
+
+    // Safety recovery in case the player ever falls outside the walkable world.
+    if (feetY < -30) {
+      const floor = physics.groundAt(spawn.x, spawn.z, 0, 0.5, 2) ?? 0;
+      camera.position.set(spawn.x, floor + EYE_HEIGHT, spawn.z);
+      feetY = floor;
+      velocity.set(0, 0, 0);
+      grounded = true;
+    }
+
+    bobPhase += dt * (sprinting ? 11.5 : 8.0) * (direction.lengthSq() > 0.001 ? 1 : 0);
+    const bob = grounded && direction.lengthSq() > 0.001
+      ? Math.sin(bobPhase) * (sprinting ? 0.025 : 0.014)
+      : 0;
+    camera.position.y = feetY + EYE_HEIGHT + bob;
+
+    // Tiny step roll only; yaw and pitch remain controlled by the camera.
     euler.setFromQuaternion(camera.quaternion, 'YXZ');
-    euler.z = roll;
+    euler.z = grounded && direction.lengthSq() > 0.001 ? Math.sin(bobPhase * 0.5) * 0.002 : 0;
     camera.quaternion.setFromEuler(euler);
   }
 
@@ -185,9 +288,14 @@ export function createPlayer(camera, domElement, onModeChange) {
     update,
     get mode() { return mode; },
     get run() { return runToggle; },
+    get grounded() { return grounded; },
+    get feetY() { return feetY; },
     setMode,
-    setMoveVector(x, y) { stick.x = x; stick.y = y; },
-    setVertical(v) { vertical = v; },
+    setMoveVector(x, y) {
+      stick.x = THREE.MathUtils.clamp(x, -1, 1);
+      stick.y = THREE.MathUtils.clamp(y, -1, 1);
+    },
+    setVertical(value) { vertical = THREE.MathUtils.clamp(value, -1, 1); },
     setRun(on) { runToggle = !!on; },
     look(dx, dy) { applyLook(dx, dy); },
     lock: () => controls.lock(),
