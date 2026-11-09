@@ -10,6 +10,9 @@ const HILLS = [
   [300, -4050, 690, 92], [-4250, -750, 640, 76],
   [4420, 850, 580, 72], [900, 3970, 620, 84],
   [-1150, -3250, 540, 58], [1650, 950, 520, 48],
+  [-650, -920, 520, 116], [720, 680, 540, 138],
+  [-1850, 2350, 590, 132], [1220, -1580, 660, 142],
+  [2450, 820, 700, 158], [-2850, 1850, 640, 146],
 ];
 
 const RIDGES = [
@@ -268,7 +271,7 @@ function pointInReservedArea(x, z, routePoints) {
 
 function createForests(scene, heightAt, routePoints, rnd, renderables) {
   const trees = [];
-  const cell = 14;
+  const cell = 16;
   const half = GRASS_RADIUS - 80;
   for (let x0 = -half; x0 <= half; x0 += cell) {
     for (let z0 = -half; z0 <= half; z0 += cell) {
@@ -279,7 +282,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       const forestMask =
         valueNoise(x / 1250, z / 1250, 71) * 0.62 +
         valueNoise(x / 2650, z / 2650, 73) * 0.38;
-      if (forestMask < 0.32 || rnd() > 0.40) continue;
+      if (forestMask < 0.30 || rnd() > 0.44) continue;
 
       const groundY = heightAt(x, z) ?? 0;
       trees.push({
