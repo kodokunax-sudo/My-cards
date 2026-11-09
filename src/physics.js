@@ -10,9 +10,10 @@ const ROUND_GEOMETRIES = new Set([
 ]);
 
 /**
- * Builds a lightweight static collision world from the actual scene meshes.
- * Walkable surfaces are raycast for ground height; solid meshes use transformed
- * boxes or round horizontal bounds, including one shape per InstancedMesh item.
+ * Scene-wide static collision map.
+ * Every Mesh is solid by default. Only meshes explicitly tagged noCollider
+ * (water surfaces, water jets, sky dome and visual-only effects) are ignored.
+ * Meshes tagged collisionMode="ring" represent hollow circular walls.
  */
 export function createPhysicsWorld(scene) {
   scene.updateMatrixWorld(true);
@@ -33,38 +34,50 @@ export function createPhysicsWorld(scene) {
 
     if (object.userData.walkable) floors.push(object);
 
-    // Every opaque mesh is treated as a solid by default. Transparent
-    // effects (water jets, birds, glow shells) are visual-only; objects can
-    // explicitly opt out with userData.noCollider.
-    const materials = Array.isArray(object.material) ? object.material : [object.material];
-    if (!materials.length || materials.some((material) => !material || material.transparent)) return;
-
     const geometry = object.geometry;
     if (!geometry.boundingBox) geometry.computeBoundingBox();
     if (!geometry.boundingBox || geometry.boundingBox.isEmpty()) return;
-
-    const round = ROUND_GEOMETRIES.has(geometry.type);
-    const halfX = (geometry.boundingBox.max.x - geometry.boundingBox.min.x) * 0.5;
-    const halfZ = (geometry.boundingBox.max.z - geometry.boundingBox.min.z) * 0.5;
 
     const addShape = (matrix) => {
       const box = geometry.boundingBox.clone().applyMatrix4(matrix);
       if (box.max.y - box.min.y < 0.06) return;
 
-      if (round) {
+      if (object.userData.collisionMode === 'ring') {
         geometry.boundingBox.getCenter(center);
         center.applyMatrix4(matrix);
         matrix.decompose(position, rotation, scale);
         colliders.push({
-          round: true,
+          kind: 'ring',
           x: center.x,
           z: center.z,
-          radius: Math.max(halfX * Math.abs(scale.x), halfZ * Math.abs(scale.z)),
+          radius: (object.userData.collisionRadius ??
+            Math.max(geometry.boundingBox.max.x, geometry.boundingBox.max.z)) *
+            Math.max(Math.abs(scale.x), Math.abs(scale.z)),
+          thickness: (object.userData.collisionThickness ?? 0.8) *
+            Math.max(Math.abs(scale.x), Math.abs(scale.z)),
+          minY: box.min.y,
+          maxY: box.max.y,
+        });
+        return;
+      }
+
+      if (ROUND_GEOMETRIES.has(geometry.type)) {
+        geometry.boundingBox.getCenter(center);
+        center.applyMatrix4(matrix);
+        matrix.decompose(position, rotation, scale);
+        colliders.push({
+          kind: 'round',
+          x: center.x,
+          z: center.z,
+          radius: Math.max(
+            (geometry.boundingBox.max.x - geometry.boundingBox.min.x) * 0.5 * Math.abs(scale.x),
+            (geometry.boundingBox.max.z - geometry.boundingBox.min.z) * 0.5 * Math.abs(scale.z)
+          ),
           minY: box.min.y,
           maxY: box.max.y,
         });
       } else {
-        colliders.push(box);
+        colliders.push({ kind: 'box', box });
       }
     };
 
@@ -82,10 +95,7 @@ export function createPhysicsWorld(scene) {
   function groundAt(x, z, feetY, maxStepUp = 0.46, maxDrop = 0.8) {
     if (!floors.length) return null;
 
-    raycaster.set(
-      new THREE.Vector3(x, feetY + maxStepUp + 0.08, z),
-      down
-    );
+    raycaster.set(new THREE.Vector3(x, feetY + maxStepUp + 0.08, z), down);
     raycaster.near = 0;
     raycaster.far = maxStepUp + maxDrop + 0.16;
 
@@ -103,27 +113,32 @@ export function createPhysicsWorld(scene) {
     const headY = feetY + height;
 
     for (const shape of colliders) {
-      const minY = shape.round ? shape.minY : shape.min.y;
-      const maxY = shape.round ? shape.maxY : shape.max.y;
-      if (headY <= minY + EPSILON || feetY >= maxY - EPSILON) continue;
+      if (headY <= shape.minY + EPSILON || feetY >= shape.maxY - EPSILON) continue;
 
-      if (shape.round) {
-        const combinedRadius = radius + shape.radius;
-        const dx = x - shape.x;
-        const dz = z - shape.z;
-        if (dx * dx + dz * dz < combinedRadius * combinedRadius) return true;
+      const dx = x - shape.x;
+      const dz = z - shape.z;
+      const distance = Math.hypot(dx, dz);
+
+      if (shape.kind === 'ring') {
+        const halfWall = shape.thickness * 0.5;
+        if (Math.abs(distance - shape.radius) < radius + halfWall) return true;
         continue;
       }
 
-      const box = shape;
+      if (shape.kind === 'round') {
+        if (distance < radius + shape.radius) return true;
+        continue;
+      }
+
+      const box = shape.box;
       if (x + radius <= box.min.x || x - radius >= box.max.x) continue;
       if (z + radius <= box.min.z || z - radius >= box.max.z) continue;
 
       const closestX = THREE.MathUtils.clamp(x, box.min.x, box.max.x);
       const closestZ = THREE.MathUtils.clamp(z, box.min.z, box.max.z);
-      const dx = x - closestX;
-      const dz = z - closestZ;
-      if (dx * dx + dz * dz < radius * radius) return true;
+      const nearestX = x - closestX;
+      const nearestZ = z - closestZ;
+      if (nearestX * nearestX + nearestZ * nearestZ < radius * radius) return true;
     }
     return false;
   }
