@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import {
-  EYE_HEIGHT, PLAYER_HEIGHT, POOL_RADIUS, POOL_DEPTH, POOL_BOTTOM_Y,
-  WATER_Y, PLAZA_RADIUS, GRASS_RADIUS,
+  POOL_RADIUS, POOL_BOTTOM_Y, WATER_Y, GRASS_RADIUS,
 } from './config.js';
 
 function seededRandom(seed = 914207) {
@@ -288,8 +287,8 @@ function createRiver(scene, rnd) {
       id: 'river',
       surfaceY: 0.035,
       bottomY: -2.65,
-      exitFeetY: 0.85,
-      exitHeight: 0.85,
+      exitFeetY: 0.55,
+      exitHeight: 0.55,
       contains: (x, z) => Math.abs(x - centerX(z)) <= 28,
     },
   };
