@@ -226,12 +226,13 @@ function createTerrain(scene, heightAt, renderables) {
   return chunks;
 }
 
-function makeRibbon(points, halfWidth, y, heightAt = null) {
+function makeRibbon(points, halfWidth, y, heightAt = null, tangentPoints = points, indexOffset = 0) {
   const positions = [];
   const indices = [];
   for (let i = 0; i < points.length; i++) {
-    const prev = points[Math.max(0, i - 1)];
-    const next = points[Math.min(points.length - 1, i + 1)];
+    const globalIndex = i + indexOffset;
+    const prev = tangentPoints[Math.max(0, globalIndex - 1)];
+    const next = tangentPoints[Math.min(tangentPoints.length - 1, globalIndex + 1)];
     const dx = next.x - prev.x;
     const dz = next.z - prev.z;
     const length = Math.hypot(dx, dz) || 1;
@@ -629,7 +630,7 @@ function addRibbonChunks(scene, points, halfWidth, y, material, name, options = 
   for (let start = 0, part = 0; start < points.length - 1; start += pointsPerChunk, part++) {
     const end = Math.min(points.length - 1, start + pointsPerChunk);
     const mesh = new THREE.Mesh(
-      makeRibbon(points.slice(start, end + 1), halfWidth, y), material
+      makeRibbon(points.slice(start, end + 1), halfWidth, y, options.heightAt ?? null, points, start), material
     );
     mesh.name = `${name}-${part}`;
     mesh.frustumCulled = true;
@@ -769,20 +770,19 @@ export function createWorld(scene) {
     false, 'centripetal'
   );
   const roadPoints = routeCurve.getPoints(180).map((point) => ({ x: point.x, z: point.z }));
-  const road = new THREE.Mesh(
-    makeRibbon(roadPoints, 3.3, 0.065, heightAt),
-    new THREE.MeshStandardMaterial({ color: 0x85775e, roughness: 1 })
+  const road = addRibbonChunks(
+    scene, roadPoints, 3.3, 0.065,
+    new THREE.MeshStandardMaterial({ color: 0x85775e, roughness: 1 }),
+    'house-to-fountain-road',
+    { walkable: true, receiveShadow: true, heightAt }
   );
-  road.receiveShadow = true;
-  road.userData.walkable = true;
-  scene.add(road);
 
   const bridge = new THREE.Group();
   bridge.position.set(-692, 0, 300);
-  const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(118, 0.25, 10), new THREE.MeshStandardMaterial({
+  const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(90, 0.25, 10), new THREE.MeshStandardMaterial({
     color: 0x715239, roughness: 0.9,
   }));
-  bridgeDeck.position.y = 0.325;
+  bridgeDeck.position.y = 0.16;
   bridgeDeck.castShadow = true;
   bridgeDeck.receiveShadow = true;
   bridgeDeck.userData.walkable = true;
@@ -790,15 +790,15 @@ export function createWorld(scene) {
 
   const railMaterial = new THREE.MeshStandardMaterial({ color: 0x503a2b, roughness: 0.95 });
   for (const z of [-4.8, 4.8]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(118, 0.8, 0.28), railMaterial);
-    rail.position.set(0, 0.72, z);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(90, 0.8, 0.28), railMaterial);
+    rail.position.set(0, 0.62, z);
     rail.castShadow = true;
     bridge.add(rail);
   }
-  for (let x = -55; x <= 55; x += 10) {
+  for (let x = -42; x <= 42; x += 10) {
     for (const z of [-4.6, 4.6]) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.32, 1.2, 0.32), railMaterial);
-      post.position.set(x, 1.1, z);
+      post.position.set(x, 1.0, z);
       post.castShadow = true;
       bridge.add(post);
     }
