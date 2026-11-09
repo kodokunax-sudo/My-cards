@@ -125,9 +125,9 @@ export function createFountain(scene) {
       .replace('#include <map_fragment>', `#include <map_fragment>
         float r = length(vP.xz);
         float t = abs(fract(r / 3.0) - 0.5);
-        float ring = smoothstep(0.5, 0.42, t);
+        float ring = (1.0 - smoothstep(0.42, 0.5, t));
         float a = abs(fract(atan(vP.z, vP.x) * 40.0) - 0.5);
-        float rad = smoothstep(0.5, 0.44, a);
+        float rad = (1.0 - smoothstep(0.44, 0.5, a));
         diffuseColor.rgb *= mix(0.55, 1.05, min(ring, rad));
       `);
   };
