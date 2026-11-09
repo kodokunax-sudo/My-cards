@@ -175,7 +175,6 @@ export function createFountain(scene) {
     const torus = new THREE.Mesh(new THREE.TorusGeometry(r, t, 8, 96), marble);
     torus.rotation.x = Math.PI / 2; torus.position.y = y;
     torus.castShadow = true;
-    torus.userData.noCollider = true;
     group.add(torus);
   });
 
@@ -185,7 +184,6 @@ export function createFountain(scene) {
   const rail = new THREE.Mesh(new THREE.TorusGeometry(13.9, 0.17, 8, 120, Math.PI * 2 - 0.46), marble);
   rail.rotation.x = Math.PI / 2; rail.position.y = ISLAND_TOP + 1.0;
   rail.castShadow = true;
-  rail.userData.noCollider = true;
   const mat4 = new THREE.Matrix4();
   for (let i = 0; i < 40; i++) {
     const a = (i / 40) * Math.PI * 2;
