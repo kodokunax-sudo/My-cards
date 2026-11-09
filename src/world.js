@@ -204,7 +204,7 @@ function makeRibbon(points, halfWidth, y, heightAt = null) {
 
 function pointInReservedArea(x, z, routePoints) {
   if (Math.hypot(x, z) < 245) return true;
-  if (Math.hypot(x + 1600, z - 900) < 175) return true;
+  if (Math.hypot(x + 1600, z - 900) < 62) return true;
   if (distanceToPolyline(x, z, routePoints) < 22) return true;
   if (Math.abs(x - mainRiverX(z)) < 70) return true;
   if (Math.abs(z - tributaryZ(x)) < 52) return true;
