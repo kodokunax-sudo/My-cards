@@ -77,7 +77,10 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
     if (next === 'fly') {
       velocity.set(0, 0, 0);
       grounded = false;
-    } else if (previous === 'fly') {
+    } else if (previous === 'fly' || previous === 'cinematic') {
+      // Leaving a free-flight/cinematic camera re-enters the physical world
+      // from the camera's actual position, then gravity takes over.
+      feetY = camera.position.y - EYE_HEIGHT;
       velocity.set(0, 0, 0);
       grounded = false;
     }
