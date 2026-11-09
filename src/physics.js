@@ -117,30 +117,18 @@ export function createPhysicsWorld(scene, worldInfo = null) {
       return;
     }
 
-    if (geometry.type === 'BoxGeometry') {
-      const inverse = inverseMatrix.copy(matrix).invert().clone();
-      matrix.decompose(position, rotation, scale);
-      const minScale = Math.max(0.001, Math.min(
-        Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z)
-      ));
-      insertCollider({
-        kind: 'obb',
-        inverse,
-        bounds: localBounds.clone(),
-        localRadiusScale: minScale,
-        minY: bounds.min.y,
-        maxY: bounds.max.y,
-        minX: bounds.min.x,
-        maxX: bounds.max.x,
-        minZ: bounds.min.z,
-        maxZ: bounds.max.z,
-      });
-      return;
-    }
-
+    // Use the mesh-local bounds and inverse transform for every remaining
+    // model. A rotated prop can no longer create a huge world-axis-aligned wall.
+    const inverse = inverseMatrix.copy(matrix).invert().clone();
+    matrix.decompose(position, rotation, scale);
+    const minScale = Math.max(0.001, Math.min(
+      Math.abs(scale.x), Math.abs(scale.z)
+    ));
     insertCollider({
-      kind: 'box',
-      box: bounds,
+      kind: 'obb',
+      inverse,
+      bounds: localBounds.clone(),
+      localRadiusScale: minScale,
       minY: bounds.min.y,
       maxY: bounds.max.y,
       minX: bounds.min.x,
