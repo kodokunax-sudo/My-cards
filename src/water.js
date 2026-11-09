@@ -335,6 +335,7 @@ export function createWater(scene, fountain, camera, renderer) {
     uniforms: waterUniforms,
     vertexShader: WATER_VERT,
     fragmentShader: WATER_FRAG,
+    side: THREE.DoubleSide,
   });
 
   const pool = new THREE.Mesh(discGeometry(POOL_RADIUS - 1.25, 120, 180), waterMaterial);
@@ -412,6 +413,7 @@ export function createWater(scene, fountain, camera, renderer) {
     }
     const geo = tubeGeometry(pts, (u) => 0.30 - 0.17 * u + 0.035 * Math.sin(u * Math.PI));
     const mesh = new THREE.Mesh(geo, jetMat);
+    mesh.userData.noCollider = true; // flowing water is not a solid object
     mesh.renderOrder = 3;
     group.add(mesh);
     jetPaths.push({ pts, vx, vz, vy, p0 });
@@ -427,6 +429,7 @@ export function createWater(scene, fountain, camera, renderer) {
   }
   const plumeGeo = tubeGeometry(plumePts, (u) => 0.55 * (1 - u) + 0.14, 8);
   const plume = new THREE.Mesh(plumeGeo, jetMat);
+  plume.userData.noCollider = true; // the vertical water stream is liquid
   plume.renderOrder = 3;
   group.add(plume);
 
