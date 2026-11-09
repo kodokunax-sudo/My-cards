@@ -91,6 +91,14 @@ function createHeightFunction(routePoints) {
     const flatten = Math.max(parkBlend, houseBlend, trailBlend, riverBlend, tributaryBlend);
     height *= 1 - flatten;
 
+    // Carve the channels below the water line. The crossing itself stays
+    // level so the timber bridge remains the natural walking route.
+    const mainCut = 1 - smoothstep(23, 44, Math.abs(x - mainRiverX(z)));
+    const tributaryCut = 1 - smoothstep(17, 34, Math.abs(z - tributaryZ(x)));
+    height -= mainCut * 2.82 + tributaryCut * 2.22;
+    const bridgeBlend = 1 - smoothstep(7, 24, Math.hypot(x + 692, z - 300));
+    height *= 1 - bridgeBlend;
+
     // A few shallow gullies keep the valleys from reading as smooth bumps.
     const gully = Math.pow(Math.max(0, 1 - Math.abs(valueNoise(x / 720, z / 720, 49) * 2 - 1)), 5);
     height -= gully * 5.5 * (1 - parkBlend);
@@ -207,8 +215,8 @@ function createForests(scene, heightAt, routePoints, rnd) {
   const trees = [];
   const cell = 25;
   const half = GRASS_RADIUS - 80;
-  for (let x0 = -half; x0 <= half && trees.length < 42000; x0 += cell) {
-    for (let z0 = -half; z0 <= half && trees.length < 42000; z0 += cell) {
+  for (let x0 = -half; x0 <= half; x0 += cell) {
+    for (let z0 = -half; z0 <= half; z0 += cell) {
       const x = x0 + (rnd() - 0.5) * cell * 0.82;
       const z = z0 + (rnd() - 0.5) * cell * 0.82;
       if (Math.hypot(x, z) > half || pointInReservedArea(x, z, routePoints)) continue;
@@ -216,7 +224,7 @@ function createForests(scene, heightAt, routePoints, rnd) {
       const forestMask =
         valueNoise(x / 1250, z / 1250, 71) * 0.62 +
         valueNoise(x / 2650, z / 2650, 73) * 0.38;
-      if (forestMask < 0.35 || rnd() > 0.74) continue;
+      if (forestMask < 0.38 || rnd() > 0.53) continue;
 
       const groundY = heightAt(x, z) ?? 0;
       trees.push({
