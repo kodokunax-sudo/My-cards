@@ -22,7 +22,7 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
   const spawnFloor = physics.groundAt(spawn.x, spawn.z, 0, 0.5, 1.0) ?? 0;
   let feetY = spawnFloor;
   camera.position.set(spawn.x, feetY + EYE_HEIGHT, spawn.z);
-  camera.lookAt(0, 8, 0);
+  camera.lookAt(0, 25, 0);
   controls.getObject().position.copy(camera.position);
 
   const keys = Object.create(null);
