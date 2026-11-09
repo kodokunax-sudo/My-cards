@@ -59,7 +59,6 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
   const right = new THREE.Vector3();
   const direction = new THREE.Vector3();
   const velocity = new THREE.Vector3();
-  const waterTarget = new THREE.Vector3();
 
   domElement.addEventListener('mousedown', (event) => {
     if (!pointerLocked && event.button === 0) dragging = true;
@@ -209,7 +208,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     const nextRegion = waterAt(nx, nz);
 
     if (nextRegion?.id !== activeWater?.id) {
-      const exitHeight = activeWater?.exitFeetY ?? activeWater.surfaceY + 1.75;
+      const exitHeight = activeWater?.exitFeetY ?? ((activeWater?.surfaceY ?? 0) + 1.75);
       if (feetY < exitHeight) return false;
       clearWaterState();
       grounded = false;
