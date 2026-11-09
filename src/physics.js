@@ -125,7 +125,10 @@ export function createPhysicsWorld(scene) {
         if (shape.gapStart !== null && shape.gapEnd !== null) {
           let angle = Math.atan2(dz, dx);
           if (angle < 0) angle += Math.PI * 2;
-          if (angle >= shape.gapStart && angle <= shape.gapEnd) continue;
+          const inGap = shape.gapStart <= shape.gapEnd
+            ? angle >= shape.gapStart && angle <= shape.gapEnd
+            : angle >= shape.gapStart || angle <= shape.gapEnd;
+          if (inGap) continue;
         }
         if (Math.abs(distance - shape.radius) < radius + shape.thickness * 0.5) return true;
         continue;
