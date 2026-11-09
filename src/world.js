@@ -596,6 +596,27 @@ function createHouse(scene, materials, baseY = 0) {
   };
 }
 
+function addRibbonChunks(scene, points, halfWidth, y, material, name, options = {}) {
+  const meshes = [];
+  const pointsPerChunk = 12;
+  for (let start = 0, part = 0; start < points.length - 1; start += pointsPerChunk, part++) {
+    const end = Math.min(points.length - 1, start + pointsPerChunk);
+    const mesh = new THREE.Mesh(
+      makeRibbon(points.slice(start, end + 1), halfWidth, y), material
+    );
+    mesh.name = `${name}-${part}`;
+    mesh.frustumCulled = true;
+    mesh.geometry.computeBoundingSphere();
+    if (options.noCollider) mesh.userData.noCollider = true;
+    if (options.walkable) mesh.userData.walkable = true;
+    if (options.receiveShadow) mesh.receiveShadow = true;
+    if (options.renderOrder !== undefined) mesh.renderOrder = options.renderOrder;
+    scene.add(mesh);
+    meshes.push(mesh);
+  }
+  return meshes;
+}
+
 function createRiver(scene, rnd) {
   const centerX = mainRiverX;
   const points = [];
@@ -604,46 +625,54 @@ function createRiver(scene, rnd) {
     points.push({ x: centerX(z), z });
   }
 
-  const water = new THREE.Mesh(
-    makeRibbon(points, 30, 0.035),
-    new THREE.MeshStandardMaterial({
-      color: 0x347f8b, roughness: 0.22, metalness: 0.18,
-      transparent: true, opacity: 0.88, side: THREE.DoubleSide,
-    })
-  );
-  water.userData.noCollider = true;
-  water.renderOrder = 2;
-  scene.add(water);
+  const waterMaterial = new THREE.MeshStandardMaterial({
+    color: 0x347f8b, roughness: 0.22, metalness: 0.18,
+    transparent: true, opacity: 0.88, side: THREE.DoubleSide,
+  });
+  const water = addRibbonChunks(scene, points, 30, 0.035, waterMaterial,
+    'main-river-water', { noCollider: true, renderOrder: 2 });
 
-  const bed = new THREE.Mesh(
-    makeRibbon(points, 29, -2.65),
-    new THREE.MeshStandardMaterial({ color: 0x394d46, roughness: 1 })
-  );
-  bed.receiveShadow = true;
-  bed.userData.walkable = true;
-  scene.add(bed);
+  const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x394d46, roughness: 1 });
+  const bed = addRibbonChunks(scene, points, 29, -2.65, bedMaterial,
+    'main-river-bed', { walkable: true, receiveShadow: true });
 
   const pebbleGeo = new THREE.IcosahedronGeometry(2.2, 0);
   const pebbleMat = new THREE.MeshStandardMaterial({ color: 0x756c56, roughness: 1 });
-  const pebbles = new THREE.InstancedMesh(pebbleGeo, pebbleMat, 340);
-  pebbles.userData.noCollider = true;
-  pebbles.castShadow = true;
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const p = new THREE.Vector3();
-  const s = new THREE.Vector3();
+  const pebbleBuckets = new Map();
   for (let i = 0; i < 340; i++) {
     const z = -4400 + rnd() * 8800;
     const side = rnd() < 0.5 ? -1 : 1;
     const x = centerX(z) + side * (32 + rnd() * 7);
-    p.set(x, 0.3 + rnd() * 0.6, z);
-    s.set(0.55 + rnd() * 0.85, 0.35 + rnd() * 0.55, 0.55 + rnd() * 0.85);
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * TAU);
-    m.compose(p, q, s);
-    pebbles.setMatrixAt(i, m);
+    const key = `${Math.floor(x / 640)},${Math.floor(z / 640)}`;
+    let bucket = pebbleBuckets.get(key);
+    if (!bucket) { bucket = []; pebbleBuckets.set(key, bucket); }
+    bucket.push({ x, z, y: 0.3 + rnd() * 0.6, scale: 0.55 + rnd() * 0.85, angle: rnd() * TAU });
   }
-  pebbles.instanceMatrix.needsUpdate = true;
-  scene.add(pebbles);
+
+  const pebbleMeshes = [];
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const p = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+  for (const [key, data] of pebbleBuckets) {
+    const pebbles = new THREE.InstancedMesh(pebbleGeo, pebbleMat, data.length);
+    pebbles.userData.noCollider = true;
+    pebbles.name = `river-pebbles-${key}`;
+    pebbles.castShadow = false;
+    for (let i = 0; i < data.length; i++) {
+      const pebble = data[i];
+      p.set(pebble.x, pebble.y, pebble.z);
+      scale.set(pebble.scale, 0.35 + pebble.scale * 0.5, pebble.scale);
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), pebble.angle);
+      m.compose(p, q, scale);
+      pebbles.setMatrixAt(i, m);
+    }
+    pebbles.instanceMatrix.needsUpdate = true;
+    pebbles.computeBoundingSphere();
+    pebbles.frustumCulled = true;
+    scene.add(pebbles);
+    pebbleMeshes.push(pebbles);
+  }
 
   return {
     water, bed, centerX, halfWidth: 30,
@@ -666,24 +695,16 @@ function createTributary(scene) {
     points.push({ x, z: centerZ(x) });
   }
 
-  const water = new THREE.Mesh(
-    makeRibbon(points, 22, 0.035),
-    new THREE.MeshStandardMaterial({
-      color: 0x3c8992, roughness: 0.24, metalness: 0.14,
-      transparent: true, opacity: 0.88, side: THREE.DoubleSide,
-    })
-  );
-  water.userData.noCollider = true;
-  water.renderOrder = 2;
-  scene.add(water);
+  const waterMaterial = new THREE.MeshStandardMaterial({
+    color: 0x3c8992, roughness: 0.24, metalness: 0.14,
+    transparent: true, opacity: 0.88, side: THREE.DoubleSide,
+  });
+  const water = addRibbonChunks(scene, points, 22, 0.035, waterMaterial,
+    'tributary-water', { noCollider: true, renderOrder: 2 });
 
-  const bed = new THREE.Mesh(
-    makeRibbon(points, 21, -2.1),
-    new THREE.MeshStandardMaterial({ color: 0x45564c, roughness: 1 })
-  );
-  bed.userData.walkable = true;
-  bed.receiveShadow = true;
-  scene.add(bed);
+  const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x45564c, roughness: 1 });
+  const bed = addRibbonChunks(scene, points, 21, -2.1, bedMaterial,
+    'tributary-bed', { walkable: true, receiveShadow: true });
 
   return {
     water, bed,
