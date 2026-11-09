@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { EYE_HEIGHT, PLAYER_HEIGHT, GRAVITY } from './config.js';
+import {
+  EYE_HEIGHT, PLAYER_HEIGHT, GRAVITY, POOL_RADIUS, WATER_Y, POOL_BOTTOM_Y,
+} from './config.js';
 
 const WALK_SPEED = 4.6;
 const RUN_SPEED = 8.8;
@@ -13,14 +15,22 @@ const JUMP_SPEED = 6.4;
 const AIR_CONTROL = 5.0;
 const GROUND_ACCELERATION = 15.0;
 
+// The circular wall is just inside the water mesh. Keep the player's centre
+// a little farther in so the capsule never clips through the basin wall.
+const WATER_RADIUS = POOL_RADIUS - 1.25 - 0.8;
+const SWIM_SURFACE_FEET = WATER_Y + 0.12 - EYE_HEIGHT;
+const SWIM_TOP_FEET = WATER_Y + 1.05;
+const MAX_OXYGEN = 24;
+const SWIM_SPEED = 2.8;
+const SWIM_RUN_SPEED = 4.0;
+
 export function createPlayer(camera, domElement, physics, onModeChange) {
   const controls = new PointerLockControls(camera, domElement);
 
-  // Spawn on the open plaza, facing the fountain. Eye height is derived
-  // from the real ground surface and the configured human body height.
   const spawn = new THREE.Vector3(0, 0, 70);
   const spawnFloor = physics.groundAt(spawn.x, spawn.z, 0, 0.5, 1.0) ?? 0;
   let feetY = spawnFloor;
+
   camera.position.set(spawn.x, feetY + EYE_HEIGHT, spawn.z);
   camera.lookAt(0, 25, 0);
   controls.getObject().position.copy(camera.position);
@@ -31,10 +41,14 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
   let runToggle = false;
   let mode = 'walk';
   let grounded = true;
+  let swimming = false;
+  let underwater = false;
+  let oxygen = MAX_OXYGEN;
   let jumpQueued = 0;
   let bobPhase = 0;
   let dragging = false;
   let pointerLocked = false;
+  let drownedEvent = false;
 
   const euler = new THREE.Euler(0, 0, 0, 'YXZ');
   const forward = new THREE.Vector3();
@@ -77,12 +91,16 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
     if (next === 'fly') {
       velocity.set(0, 0, 0);
       grounded = false;
+      swimming = false;
+      underwater = false;
     } else if (previous === 'fly' || previous === 'cinematic') {
       // Leaving a free-flight/cinematic camera re-enters the physical world
-      // from the camera's actual position, then gravity takes over.
+      // from the camera's actual position, then gravity/buoyancy takes over.
       feetY = camera.position.y - EYE_HEIGHT;
       velocity.set(0, 0, 0);
       grounded = false;
+      swimming = false;
+      underwater = false;
     }
 
     onModeChange?.(mode);
@@ -90,7 +108,7 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
 
   function onKeyDown(event) {
     const key = event.code;
-    if (key === 'Space' && mode !== 'fly') {
+    if (key === 'Space' && mode !== 'fly' && !swimming) {
       event.preventDefault();
       if (!event.repeat) jumpQueued = 0.16;
     }
@@ -135,25 +153,136 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
     camera.lookAt(0, lookHeight, 0);
   }
 
-  function tryHorizontalMove(dx, dz) {
+  function tryHorizontalMove(dx, dz, allowLeavingWater = false) {
     if (Math.abs(dx) + Math.abs(dz) < 1e-7) return false;
 
     const nx = camera.position.x + dx;
     const nz = camera.position.z + dz;
-    let nextFeet = feetY;
+    const distance = Math.hypot(nx, nz);
+    const nextInsideWater = distance < WATER_RADIUS + 0.35;
 
-    if (grounded) {
+    if (swimming && !nextInsideWater && !allowLeavingWater) return false;
+
+    let nextFeet = feetY;
+    if (!swimming || allowLeavingWater) {
       const floor = physics.groundAt(nx, nz, feetY, STEP_UP, MAX_STEP_DOWN);
-      if (floor === null) return false;
-      nextFeet = floor;
+      if (grounded && floor === null && !swimming) return false;
+      if (grounded && floor !== null) nextFeet = floor;
     }
 
     if (physics.isBlocked(nx, nextFeet, nz, BODY_RADIUS, PLAYER_HEIGHT)) return false;
 
     camera.position.x = nx;
     camera.position.z = nz;
-    if (grounded) feetY = nextFeet;
+    if (grounded && nextFeet !== feetY) feetY = nextFeet;
     return true;
+  }
+
+  function respawnAfterDrowning() {
+    drownedEvent = true;
+    swimming = false;
+    underwater = false;
+    grounded = true;
+    oxygen = MAX_OXYGEN;
+    feetY = spawnFloor;
+    velocity.set(0, 0, 0);
+    jumpQueued = 0;
+    camera.position.set(spawn.x, spawnFloor + EYE_HEIGHT, spawn.z);
+    camera.lookAt(0, 25, 0);
+  }
+
+  function updateSwimming(dt, mx, mz, sprinting) {
+    euler.setFromQuaternion(camera.quaternion, 'YXZ');
+    const yaw = euler.y;
+    forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+    right.set(Math.cos(yaw), 0, -Math.sin(yaw));
+
+    direction.set(0, 0, 0);
+    if (mx || mz) {
+      direction.addScaledVector(forward, mz).addScaledVector(right, mx);
+      direction.normalize().multiplyScalar(Math.min(1, Math.hypot(mx, mz)));
+    }
+
+    const swimSpeed = sprinting ? SWIM_RUN_SPEED : SWIM_SPEED;
+    const blend = Math.min(1, 4.5 * dt);
+    velocity.x += (direction.x * swimSpeed - velocity.x) * blend;
+    velocity.z += (direction.z * swimSpeed - velocity.z) * blend;
+
+    const moveX = velocity.x * dt;
+    const moveZ = velocity.z * dt;
+    const distance = Math.hypot(moveX, moveZ);
+    const substeps = Math.max(1, Math.ceil(distance / (BODY_RADIUS * 0.4)));
+    for (let i = 0; i < substeps; i++) {
+      const sx = moveX / substeps;
+      const sz = moveZ / substeps;
+      if (!tryHorizontalMove(sx, sz)) {
+        const movedX = tryHorizontalMove(sx, 0);
+        const movedZ = tryHorizontalMove(0, sz);
+        if (!movedX) velocity.x = 0;
+        if (!movedZ) velocity.z = 0;
+      }
+    }
+
+    // Space swims upward, C/Control dives. Releasing both lets buoyancy
+    // carry the player back toward the surface.
+    const verticalInput = THREE.MathUtils.clamp(
+      (keys.Space ? 1 : 0) -
+      ((keys.KeyC || keys.ControlLeft) ? 1 : 0) + vertical, -1, 1
+    );
+
+    if (Math.abs(verticalInput) > 0.01) {
+      const desiredVertical = verticalInput * 2.65;
+      velocity.y += (desiredVertical - velocity.y) * Math.min(1, 4.2 * dt);
+    } else {
+      const buoyancy = (SWIM_SURFACE_FEET - feetY) * 3.0;
+      velocity.y += (buoyancy - velocity.y) * Math.min(1, 2.4 * dt);
+    }
+
+    const previousFeet = feetY;
+    let nextFeet = feetY + velocity.y * dt;
+    nextFeet = Math.min(nextFeet, SWIM_TOP_FEET);
+
+    // The pool floor is a real walkable mesh, 28 metres below the waterline.
+    const bottom = physics.groundAt(
+      camera.position.x, camera.position.z, previousFeet, 0.16,
+      Math.max(0.3, previousFeet - POOL_BOTTOM_Y + 0.3)
+    );
+    if (bottom !== null && nextFeet < bottom + 0.18) {
+      nextFeet = bottom + 0.18;
+      velocity.y = Math.max(0, velocity.y);
+    }
+
+    // Prevent swimming through the bridge, fountain structure or basin walls.
+    if (nextFeet > previousFeet &&
+      physics.isBlocked(camera.position.x, nextFeet, camera.position.z, BODY_RADIUS, PLAYER_HEIGHT)) {
+      nextFeet = previousFeet;
+      velocity.y = 0;
+    }
+    feetY = nextFeet;
+
+    const distanceFromCentre = Math.hypot(camera.position.x, camera.position.z);
+    if (distanceFromCentre > WATER_RADIUS + 0.35 && feetY > WATER_Y + 0.45) {
+      swimming = false;
+      grounded = false;
+      velocity.y = Math.min(velocity.y, 0);
+      return;
+    }
+
+    camera.position.y = feetY + EYE_HEIGHT;
+    underwater = camera.position.y < WATER_Y - 0.08;
+
+    if (underwater) {
+      oxygen = Math.max(0, oxygen - dt);
+      if (oxygen <= 0) {
+        respawnAfterDrowning();
+        return;
+      }
+    } else {
+      oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 5.5);
+    }
+
+    bobPhase += dt * (sprinting ? 5.0 : 3.6);
+    camera.position.y += Math.sin(bobPhase) * 0.012;
   }
 
   function update(dt) {
@@ -185,8 +314,29 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
       camera.position.addScaledVector(direction, speed * dt);
       camera.position.y = THREE.MathUtils.clamp(camera.position.y + lift * speed * dt, 0.5, 500);
       feetY = camera.position.y - EYE_HEIGHT;
+      swimming = false;
+      underwater = false;
+      oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 5.5);
       return;
     }
+
+    const insideWater = Math.hypot(camera.position.x, camera.position.z) < WATER_RADIUS;
+    if (!swimming && insideWater && feetY < WATER_Y + 0.28) {
+      swimming = true;
+      grounded = false;
+      // The character becomes buoyant when entering the pool.
+      feetY = Math.min(feetY, SWIM_SURFACE_FEET);
+      velocity.y = 0;
+      velocity.x *= 0.35;
+      velocity.z *= 0.35;
+    }
+
+    if (swimming) {
+      updateSwimming(dt, mx, mz, sprinting);
+      return;
+    }
+
+    underwater = false;
 
     // Horizontal acceleration and friction. Air control is weaker than ground control.
     euler.setFromQuaternion(camera.quaternion, 'YXZ');
@@ -217,7 +367,6 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
 
     for (let i = 0; i < substeps; i++) {
       if (!tryHorizontalMove(stepX, stepZ)) {
-        // Resolve each axis independently to slide along walls instead of sticking.
         const movedX = tryHorizontalMove(stepX, 0);
         const movedZ = tryHorizontalMove(0, stepZ);
         if (!movedX) velocity.x = 0;
@@ -239,7 +388,6 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
       velocity.y -= GRAVITY * dt;
       let nextFeet = feetY + velocity.y * dt;
 
-      // Ceiling/head collision also uses the real scene geometry.
       if (velocity.y > 0 &&
         physics.isBlocked(camera.position.x, nextFeet, camera.position.z, BODY_RADIUS, PLAYER_HEIGHT)) {
         velocity.y = 0;
@@ -265,13 +413,9 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
       velocity.y = 0;
     }
 
-    // Safety recovery in case the player ever falls outside the walkable world.
     if (feetY < -30) {
-      const floor = physics.groundAt(spawn.x, spawn.z, 0, 0.5, 2) ?? 0;
-      camera.position.set(spawn.x, floor + EYE_HEIGHT, spawn.z);
-      feetY = floor;
-      velocity.set(0, 0, 0);
-      grounded = true;
+      respawnAfterDrowning();
+      return;
     }
 
     bobPhase += dt * (sprinting ? 11.5 : 8.0) * (direction.lengthSq() > 0.001 ? 1 : 0);
@@ -280,10 +424,11 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
       : 0;
     camera.position.y = feetY + EYE_HEIGHT + bob;
 
-    // Tiny step roll only; yaw and pitch remain controlled by the camera.
     euler.setFromQuaternion(camera.quaternion, 'YXZ');
     euler.z = grounded && direction.lengthSq() > 0.001 ? Math.sin(bobPhase * 0.5) * 0.002 : 0;
     camera.quaternion.setFromEuler(euler);
+
+    oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 5.5);
   }
 
   return {
@@ -293,8 +438,21 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
     get run() { return runToggle; },
     get grounded() { return grounded; },
     get feetY() { return feetY; },
+    get swimming() { return swimming; },
+    get underwater() { return underwater; },
+    get oxygen() { return oxygen; },
+    get maxOxygen() { return MAX_OXYGEN; },
+    get oxygenRatio() { return oxygen / MAX_OXYGEN; },
+    consumeDrownedEvent() {
+      const value = drownedEvent;
+      drownedEvent = false;
+      return value;
+    },
     setMode,
-    jump() { if (mode !== 'fly' && !grounded) jumpQueued = Math.max(jumpQueued, 0.16); else if (mode !== 'fly') jumpQueued = 0.16; },
+    jump() {
+      if (mode !== 'fly' && !swimming && !grounded) jumpQueued = Math.max(jumpQueued, 0.16);
+      else if (mode !== 'fly' && !swimming) jumpQueued = 0.16;
+    },
     setMoveVector(x, y) {
       stick.x = THREE.MathUtils.clamp(x, -1, 1);
       stick.y = THREE.MathUtils.clamp(y, -1, 1);
