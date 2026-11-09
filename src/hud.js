@@ -8,6 +8,9 @@ export function createHud() {
     mode: document.getElementById('stat-mode'),
     toast: document.getElementById('toast'),
     compass: document.getElementById('compass'),
+    oxygen: document.getElementById('oxygen-indicator'),
+    oxygenText: document.getElementById('oxygen-text'),
+    oxygenFill: document.getElementById('oxygen-fill'),
   };
 
   const ctx = el.compass.getContext('2d');
@@ -67,7 +70,7 @@ export function createHud() {
   }
 
   return {
-    update(camera) {
+    update(camera, player = null) {
       const dx = camera.position.x;
       const dz = camera.position.z;
       const dist = Math.hypot(dx, dz);
@@ -77,6 +80,23 @@ export function createHud() {
       el.dist.textContent = `${fmt(dist)} м`;
       el.angle.textContent = `${fmt(angle)}°`;
       el.height.textContent = `${fmt(camera.position.y)} м`;
+
+      const inWater = !!player?.swimming;
+      el.oxygen?.classList.toggle('active', inWater);
+      if (el.oxygenFill && el.oxygenText && inWater) {
+        const ratio = Math.max(0, Math.min(1, player.oxygenRatio));
+        el.oxygenFill.style.width = `${ratio * 100}%`;
+        el.oxygen.classList.toggle('low', ratio < 0.28);
+        el.oxygenText.textContent = player.underwater
+          ? `${Math.ceil(player.oxygen)} СЕК`
+          : 'НА ПОВЕРХНОСТИ';
+      }
+      if (el.mode && player?.swimming) el.mode.textContent = 'плавание';
+      else if (el.mode && player?.mode) {
+        const names = { walk: 'пешком', fly: 'полёт', cinematic: 'облёт' };
+        el.mode.textContent = names[player.mode] || player.mode;
+      }
+
       drawCompass(camera.rotation.y, bearing);
     },
     setMode(mode) {
