@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PLAZA_RADIUS, GRASS_RADIUS, PALETTE, SUN_DIR } from './config.js';
+import { PLAZA_RADIUS, GRASS_RADIUS, POOL_RADIUS, PALETTE, SUN_DIR } from './config.js';
 
 const NOISE_GLSL = /* glsl */ `
   float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
@@ -80,14 +80,22 @@ export function createEnvironment(scene) {
   const rnd = seededRandom(20261109);
 
   // ---------- земля и площадь ----------
-  const grass = new THREE.Mesh(new THREE.CircleGeometry(GRASS_RADIUS, 96), grassMaterial());
+  // Grass begins outside the plaza; keep the entire park interior open.
+  const grass = new THREE.Mesh(
+    new THREE.RingGeometry(PLAZA_RADIUS, GRASS_RADIUS, 128),
+    grassMaterial()
+  );
   grass.rotation.x = -Math.PI / 2;
   grass.position.y = -0.06;
   grass.receiveShadow = true;
   grass.userData.walkable = true;
   group.add(grass);
 
-  const plaza = new THREE.Mesh(new THREE.CircleGeometry(PLAZA_RADIUS, 128), plazaMaterial());
+  // The plaza is an annulus, leaving a real opening for the deep fountain pool.
+  const plaza = new THREE.Mesh(
+    new THREE.RingGeometry(POOL_RADIUS + 1.0, PLAZA_RADIUS, 160),
+    plazaMaterial()
+  );
   plaza.rotation.x = -Math.PI / 2;
   plaza.receiveShadow = true;
   plaza.userData.walkable = true;
