@@ -172,6 +172,10 @@ function animate() {
   frames++;
 
   player.update(dt);
+  touch?.setSwimState(player.swimming);
+  if (player.consumeDrownedEvent()) {
+    hud.toast('Вы утонули: закончился кислород. Вы вернулись к началу парка.');
+  }
 
   // The park starts changing at exactly 03:00 of session time.
   const nightLinear = THREE.MathUtils.clamp(
@@ -182,14 +186,19 @@ function animate() {
   env.setTimeOfDay(nightProgress);
   env.update(elapsed, renderer.getPixelRatio());
   water.setNight(nightProgress);
-  scene.fog.color.copy(dayFog).lerp(nightFog, nightProgress);
-  scene.fog.density = THREE.MathUtils.lerp(0.00115, 0.00175, nightProgress);
+  if (player.underwater) {
+    scene.fog.color.set(0x063248);
+    scene.fog.density = 0.055;
+  } else {
+    scene.fog.color.copy(dayFog).lerp(nightFog, nightProgress);
+    scene.fog.density = THREE.MathUtils.lerp(0.00115, 0.00175, nightProgress);
+  }
   if (elapsed >= NIGHT_START_SECONDS && !nightStartedMessageShown) {
     nightStartedMessageShown = true;
     hud.toast('Солнце садится. Наступает ночь.');
   }
   water.update(elapsed, dt, renderer.getPixelRatio());
-  hud.update(camera);
+  hud.update(camera, player);
   audio.setDistance(Math.hypot(camera.position.x, camera.position.z));
   sampleQuality(dt);
 
