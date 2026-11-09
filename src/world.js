@@ -178,7 +178,7 @@ function createForests(scene, routePoints, rnd) {
       attempts++;
       const x = zone.x0 + rnd() * (zone.x1 - zone.x0);
       const z = zone.z0 + rnd() * (zone.z1 - zone.z0);
-      if (Math.hypot(x, z) < 460) continue;
+      if (Math.hypot(x, z) < 460 || Math.hypot(x, z) > GRASS_RADIUS - 180) continue;
       if (Math.hypot(x + 1600, z - 900) < 145) continue;
       if (routePoints.some((point, i) => i < routePoints.length - 1 &&
         distanceToSegment2D(x, z, point, routePoints[i + 1]) < 48)) continue;
@@ -378,7 +378,7 @@ export function createWorld(scene) {
     false, 'centripetal'
   );
   const roadPoints = routeCurve.getPoints(150).map((point) => ({ x: point.x, z: point.z }));
-  const road = new THREE.Mesh(makeRibbon(roadPoints, 5.2, 0.065), new THREE.MeshStandardMaterial({
+  const road = new THREE.Mesh(makeRibbon(roadPoints, 3.3, 0.065), new THREE.MeshStandardMaterial({
     color: 0x85775e, roughness: 1,
   }));
   road.receiveShadow = true;
