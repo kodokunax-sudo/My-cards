@@ -112,7 +112,6 @@ function createHouse(scene, materials) {
   for (const z of [-3.8, 3.8]) {
     const pane = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.5, 1.9), glass);
     pane.position.set(8.27, 2.65, z);
-    pane.userData.noCollider = true;
     house.add(pane);
     const frame = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.8, 2.2), trim);
     frame.position.set(8.2, 2.65, z);
