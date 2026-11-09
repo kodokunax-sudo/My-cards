@@ -130,8 +130,10 @@ export function createEnvironment(scene) {
   outer.position.y = 17.6; outer.castShadow = true;
   const inner = new THREE.Mesh(new THREE.CylinderGeometry(128.8, 128.8, 2.6, 128, 1, true), entMat);
   inner.position.y = 17.6; inner.material.side = THREE.DoubleSide;
+  inner.userData.solid = true;
   const topRing = new THREE.Mesh(new THREE.RingGeometry(128.8, 135.2, 128), entMat);
   topRing.rotation.x = -Math.PI / 2; topRing.position.y = 18.9;
+  topRing.userData.solid = true;
   group.add(outer, inner, topRing);
 
   // ---------- фонари по колоннаде ----------
@@ -188,6 +190,7 @@ export function createEnvironment(scene) {
   // ---------- дальний силуэт города ----------
   const cityMat = new THREE.MeshStandardMaterial({ color: PALETTE.city, roughness: 0.9 });
   const city = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), cityMat, 90);
+  city.userData.solid = true;
   for (let i = 0; i < 90; i++) {
     const a = rnd() * Math.PI * 2;
     const r = 430 + rnd() * 420;
@@ -209,6 +212,7 @@ export function createEnvironment(scene) {
     const cone = new THREE.Mesh(new THREE.ConeGeometry(h * 1.25, h, 7), mountainMat);
     cone.position.set(Math.cos(a) * r, h / 2 - 20, Math.sin(a) * r);
     cone.rotation.y = rnd() * 6.28;
+    cone.userData.solid = true;
     group.add(cone);
   }
 
