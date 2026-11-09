@@ -144,6 +144,7 @@ export function createEnvironment(scene) {
   const lamps = new THREE.InstancedMesh(lampGeo, lampMat, 20);
   const postGeo = new THREE.CylinderGeometry(0.16, 0.22, 5.2, 8);
   const posts = new THREE.InstancedMesh(postGeo, entMat, 20);
+  posts.userData.solid = true;
   for (let i = 0; i < 20; i++) {
     const a = (i / 20) * Math.PI * 2 + 0.078;
     const x = Math.cos(a) * 122, z = Math.sin(a) * 122;
