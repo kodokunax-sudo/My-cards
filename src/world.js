@@ -67,6 +67,17 @@ function distanceToPolyline(x, z, points) {
   return best;
 }
 
+function registerChunkMesh(mesh, renderables, maxDistance) {
+  mesh.frustumCulled = true;
+  if (mesh.isInstancedMesh) mesh.computeBoundingSphere();
+  else mesh.geometry.computeBoundingSphere();
+
+  // Kept for diagnostics and optional distance-based LOD later. Actual
+  // visibility is decided by Three.js per camera, including reflection cameras.
+  mesh.userData.maxDrawDistance = maxDistance;
+  renderables.push(mesh);
+}
+
 function createHeightFunction(routePoints) {
   return (x, z) => {
     if (Math.hypot(x, z) > GRASS_RADIUS + 30) return null;
@@ -106,70 +117,86 @@ function createHeightFunction(routePoints) {
   };
 }
 
-function createTerrain(scene, heightAt) {
-  const segments = 420;
-  const size = GRASS_RADIUS * 2;
-  const step = size / segments;
-  const positions = new Float32Array((segments + 1) * (segments + 1) * 3);
-  const colors = new Float32Array((segments + 1) * (segments + 1) * 3);
-  const indices = [];
+function createTerrain(scene, heightAt, renderables) {
+  const chunksPerAxis = 14;
+  const cellsPerChunk = 30;
+  const chunkSize = (GRASS_RADIUS * 2) / chunksPerAxis;
+  const step = chunkSize / cellsPerChunk;
 
   const low = new THREE.Color(0x3c5a32);
   const grass = new THREE.Color(0x557542);
   const high = new THREE.Color(0x64704b);
   const rock = new THREE.Color(0x777461);
   const color = new THREE.Color();
-
-  for (let iz = 0; iz <= segments; iz++) {
-    const z = -GRASS_RADIUS + iz * step;
-    for (let ix = 0; ix <= segments; ix++) {
-      const x = -GRASS_RADIUS + ix * step;
-      const index = (iz * (segments + 1) + ix) * 3;
-      const h = heightAt(x, z) ?? 0;
-      positions[index] = x;
-      positions[index + 1] = h;
-      positions[index + 2] = z;
-
-      const variation = valueNoise(x / 115, z / 115, 61);
-      color.copy(grass).lerp(low, (1 - variation) * 0.32);
-      color.lerp(high, smoothstep(35, 90, h) * 0.62);
-      color.lerp(rock, smoothstep(0.12, 0.42, Math.abs(h) / 148) * smoothstep(65, 120, h) * 0.46);
-      const tint = 0.92 + variation * 0.16;
-      colors[index] = color.r * tint;
-      colors[index + 1] = color.g * tint;
-      colors[index + 2] = color.b * tint;
-    }
-  }
-
-  for (let iz = 0; iz < segments; iz++) {
-    const z = -GRASS_RADIUS + (iz + 0.5) * step;
-    for (let ix = 0; ix < segments; ix++) {
-      const x = -GRASS_RADIUS + (ix + 0.5) * step;
-      const radius = Math.hypot(x, z);
-      if (radius < 176 || radius > GRASS_RADIUS - 1) continue;
-      const a = iz * (segments + 1) + ix;
-      const b = a + 1;
-      const c = a + segments + 1;
-      const d = c + 1;
-      indices.push(a, c, b, b, c, d);
-    }
-  }
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-
-  const terrain = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+  const material = new THREE.MeshStandardMaterial({
     vertexColors: true, roughness: 1, metalness: 0,
-  }));
-  terrain.receiveShadow = true;
-  terrain.userData.noCollider = true;
-  terrain.frustumCulled = true;
-  terrain.name = 'procedural-hilly-terrain';
-  scene.add(terrain);
-  return terrain;
+  });
+  const chunks = [];
+
+  for (let cz = 0; cz < chunksPerAxis; cz++) {
+    for (let cx = 0; cx < chunksPerAxis; cx++) {
+      const originX = -GRASS_RADIUS + cx * chunkSize;
+      const originZ = -GRASS_RADIUS + cz * chunkSize;
+      const side = cellsPerChunk + 1;
+      const positions = new Float32Array(side * side * 3);
+      const colors = new Float32Array(side * side * 3);
+      const indices = [];
+
+      for (let iz = 0; iz <= cellsPerChunk; iz++) {
+        const z = originZ + iz * step;
+        for (let ix = 0; ix <= cellsPerChunk; ix++) {
+          const x = originX + ix * step;
+          const index = (iz * side + ix) * 3;
+          const h = heightAt(x, z) ?? 0;
+          positions[index] = x;
+          positions[index + 1] = h;
+          positions[index + 2] = z;
+
+          const variation = valueNoise(x / 115, z / 115, 61);
+          color.copy(grass).lerp(low, (1 - variation) * 0.32);
+          color.lerp(high, smoothstep(35, 90, h) * 0.62);
+          color.lerp(rock, smoothstep(0.12, 0.42, Math.abs(h) / 148) * smoothstep(65, 120, h) * 0.46);
+          const tint = 0.92 + variation * 0.16;
+          colors[index] = color.r * tint;
+          colors[index + 1] = color.g * tint;
+          colors[index + 2] = color.b * tint;
+        }
+      }
+
+      for (let iz = 0; iz < cellsPerChunk; iz++) {
+        const z = originZ + (iz + 0.5) * step;
+        for (let ix = 0; ix < cellsPerChunk; ix++) {
+          const x = originX + (ix + 0.5) * step;
+          const radius = Math.hypot(x, z);
+          if (radius < 176 || radius > GRASS_RADIUS - 1) continue;
+          const a = iz * side + ix;
+          const b = a + 1;
+          const c = a + side;
+          const d = c + 1;
+          indices.push(a, c, b, b, c, d);
+        }
+      }
+
+      // Skip empty central / outer chunks.
+      if (!indices.length) continue;
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+
+      const terrain = new THREE.Mesh(geometry, material);
+      terrain.receiveShadow = true;
+      terrain.castShadow = false;
+      terrain.userData.noCollider = true;
+      terrain.name = `terrain-chunk-${cx}-${cz}`;
+      registerChunkMesh(terrain, renderables, 6200);
+      scene.add(terrain);
+      chunks.push(terrain);
+    }
+  }
+  return chunks;
 }
 
 function makeRibbon(points, halfWidth, y, heightAt = null) {
@@ -211,7 +238,7 @@ function pointInReservedArea(x, z, routePoints) {
   return false;
 }
 
-function createForests(scene, heightAt, routePoints, rnd) {
+function createForests(scene, heightAt, routePoints, rnd, renderables) {
   const trees = [];
   const cell = 25;
   const half = GRASS_RADIUS - 80;
@@ -237,47 +264,58 @@ function createForests(scene, heightAt, routePoints, rnd) {
     }
   }
 
-  const trunks = new THREE.InstancedMesh(
-    new THREE.CylinderGeometry(0.25, 0.48, 8, 7),
-    new THREE.MeshStandardMaterial({ color: 0x59432f, roughness: 1 }),
-    trees.length
-  );
-  const roundCrowns = new THREE.InstancedMesh(
-    new THREE.IcosahedronGeometry(5.3, 0),
-    new THREE.MeshStandardMaterial({ color: 0x315b35, roughness: 0.98, flatShading: true }),
-    trees.filter((tree) => !tree.pine).length
-  );
-  const pineCrowns = new THREE.InstancedMesh(
-    new THREE.ConeGeometry(4.9, 10.8, 7, 1),
-    new THREE.MeshStandardMaterial({ color: 0x294b32, roughness: 0.98, flatShading: true }),
-    trees.filter((tree) => tree.pine).length
-  );
+  const chunkSize = 640;
+  const buckets = new Map();
+  for (const tree of trees) {
+    const cx = Math.floor(tree.x / chunkSize);
+    const cz = Math.floor(tree.z / chunkSize);
+    const key = `${cx},${cz}`;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { deciduous: [], pine: [] };
+      buckets.set(key, bucket);
+    }
+    bucket[tree.pine ? 'pine' : 'deciduous'].push(tree);
+  }
+
+  const trunkGeometry = new THREE.CylinderGeometry(0.25, 0.48, 8, 7);
+  const deciduousGeometry = new THREE.IcosahedronGeometry(5.3, 0);
+  const pineGeometry = new THREE.ConeGeometry(4.9, 10.8, 7, 1);
+  const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x59432f, roughness: 1 });
+  const deciduousMaterial = new THREE.MeshStandardMaterial({
+    color: 0x315b35, roughness: 0.98, flatShading: true,
+  });
+  const pineMaterial = new THREE.MeshStandardMaterial({
+    color: 0x294b32, roughness: 0.98, flatShading: true,
+  });
 
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const position = new THREE.Vector3();
   const scale = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
-  let roundIndex = 0, pineIndex = 0;
+  const meshes = [];
 
-  for (let i = 0; i < trees.length; i++) {
-    const tree = trees[i];
-    quaternion.setFromAxisAngle(up, tree.rotation);
-    position.set(tree.x, tree.y + 4 * tree.scale, tree.z);
-    scale.set(tree.scale, tree.scale, tree.scale);
-    matrix.compose(position, quaternion, scale);
-    trunks.setMatrixAt(i, matrix);
+  for (const [key, bucket] of buckets) {
+    const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, bucket.deciduous.length + bucket.pine.length);
+    const roundCrowns = bucket.deciduous.length
+      ? new THREE.InstancedMesh(deciduousGeometry, deciduousMaterial, bucket.deciduous.length)
+      : null;
+    const pineCrowns = bucket.pine.length
+      ? new THREE.InstancedMesh(pineGeometry, pineMaterial, bucket.pine.length)
+      : null;
 
-    if (tree.pine) {
-      position.set(tree.x, tree.y + 9.6 * tree.scale, tree.z);
-      scale.set(tree.scale * 1.18, tree.scale * 1.12, tree.scale * 1.18);
+    let trunkIndex = 0, roundIndex = 0, pineIndex = 0;
+    for (const tree of bucket.deciduous.concat(bucket.pine)) {
+      quaternion.setFromAxisAngle(up, tree.rotation);
+      position.set(tree.x, tree.y + 4 * tree.scale, tree.z);
+      scale.set(tree.scale, tree.scale, tree.scale);
       matrix.compose(position, quaternion, scale);
-      pineCrowns.setMatrixAt(pineIndex, matrix);
-      pineCrowns.setColorAt(pineIndex, new THREE.Color().setHSL(
-        0.31 + tree.hue * 0.035, 0.34 + tree.hue * 0.18, 0.14 + tree.hue * 0.11
-      ));
-      pineIndex++;
-    } else {
+      trunks.setMatrixAt(trunkIndex++, matrix);
+    }
+
+    for (const tree of bucket.deciduous) {
+      quaternion.setFromAxisAngle(up, tree.rotation);
       position.set(tree.x, tree.y + 8.2 * tree.scale, tree.z);
       scale.set(tree.scale * 1.25, tree.scale * 1.25, tree.scale * 1.25);
       matrix.compose(position, quaternion, scale);
@@ -287,30 +325,56 @@ function createForests(scene, heightAt, routePoints, rnd) {
       ));
       roundIndex++;
     }
+
+    for (const tree of bucket.pine) {
+      quaternion.setFromAxisAngle(up, tree.rotation);
+      position.set(tree.x, tree.y + 9.6 * tree.scale, tree.z);
+      scale.set(tree.scale * 1.18, tree.scale * 1.12, tree.scale * 1.18);
+      matrix.compose(position, quaternion, scale);
+      pineCrowns.setMatrixAt(pineIndex, matrix);
+      pineCrowns.setColorAt(pineIndex, new THREE.Color().setHSL(
+        0.31 + tree.hue * 0.035, 0.34 + tree.hue * 0.18, 0.14 + tree.hue * 0.11
+      ));
+      pineIndex++;
+    }
+
+    trunks.instanceMatrix.needsUpdate = true;
+    trunks.castShadow = false;
+    trunks.receiveShadow = false;
+    trunks.name = `forest-trunks-${key}`;
+    registerChunkMesh(trunks, renderables, 2800);
+    scene.add(trunks);
+    meshes.push(trunks);
+
+    if (roundCrowns) {
+      roundCrowns.instanceMatrix.needsUpdate = true;
+      if (roundCrowns.instanceColor) roundCrowns.instanceColor.needsUpdate = true;
+      roundCrowns.userData.noCollider = true;
+      roundCrowns.castShadow = false;
+      roundCrowns.receiveShadow = false;
+      roundCrowns.name = `forest-crowns-${key}`;
+      registerChunkMesh(roundCrowns, renderables, 2800);
+      scene.add(roundCrowns);
+      meshes.push(roundCrowns);
+    }
+
+    if (pineCrowns) {
+      pineCrowns.instanceMatrix.needsUpdate = true;
+      if (pineCrowns.instanceColor) pineCrowns.instanceColor.needsUpdate = true;
+      pineCrowns.userData.noCollider = true;
+      pineCrowns.castShadow = false;
+      pineCrowns.receiveShadow = false;
+      pineCrowns.name = `forest-pines-${key}`;
+      registerChunkMesh(pineCrowns, renderables, 2800);
+      scene.add(pineCrowns);
+      meshes.push(pineCrowns);
+    }
   }
 
-  trunks.instanceMatrix.needsUpdate = true;
-  roundCrowns.instanceMatrix.needsUpdate = true;
-  pineCrowns.instanceMatrix.needsUpdate = true;
-  if (roundCrowns.instanceColor) roundCrowns.instanceColor.needsUpdate = true;
-  if (pineCrowns.instanceColor) pineCrowns.instanceColor.needsUpdate = true;
-
-  // Only the trunks collide. The canopy is visual foliage and can never trap the player.
-  roundCrowns.userData.noCollider = true;
-  pineCrowns.userData.noCollider = true;
-  // Keep the huge forest cheap to render: the individual canopy meshes are
-  // already lit, while the park architecture and boulders provide scene shadows.
-  trunks.castShadow = false;
-  roundCrowns.castShadow = false;
-  pineCrowns.castShadow = false;
-  roundCrowns.receiveShadow = false;
-  pineCrowns.receiveShadow = false;
-  scene.add(trunks, roundCrowns, pineCrowns);
-
-  return { count: trees.length, trunks, roundCrowns, pineCrowns };
+  return { count: trees.length, chunks: buckets.size, meshes };
 }
 
-function createRocks(scene, heightAt, routePoints, rnd) {
+function createRocks(scene, heightAt, routePoints, rnd, renderables) {
   const boulderData = [];
   const smallData = [];
   let attempts = 0;
@@ -343,49 +407,83 @@ function createRocks(scene, heightAt, routePoints, rnd) {
     });
   }
 
-  const rockGeometry = new THREE.IcosahedronGeometry(1, 0);
-  const largeRocks = new THREE.InstancedMesh(
-    rockGeometry,
-    new THREE.MeshStandardMaterial({ color: 0x777568, roughness: 1, flatShading: true }),
-    boulderData.length
-  );
-  const smallRocks = new THREE.InstancedMesh(
-    rockGeometry,
-    new THREE.MeshStandardMaterial({ color: 0x827d6b, roughness: 1, flatShading: true }),
-    smallData.length
-  );
+  const chunkSize = 640;
+  const buckets = new Map();
+  const addToBucket = (rock, type) => {
+    const cx = Math.floor(rock.x / chunkSize);
+    const cz = Math.floor(rock.z / chunkSize);
+    const key = `${cx},${cz}`;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { large: [], small: [] };
+      buckets.set(key, bucket);
+    }
+    bucket[type].push(rock);
+  };
+  for (const rock of boulderData) addToBucket(rock, 'large');
+  for (const rock of smallData) addToBucket(rock, 'small');
 
+  const rockGeometry = new THREE.IcosahedronGeometry(1, 0);
+  const largeMaterial = new THREE.MeshStandardMaterial({
+    color: 0x777568, roughness: 1, flatShading: true,
+  });
+  const smallMaterial = new THREE.MeshStandardMaterial({
+    color: 0x827d6b, roughness: 1, flatShading: true,
+  });
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const position = new THREE.Vector3();
   const scale = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
+  const meshes = [];
 
-  for (let i = 0; i < boulderData.length; i++) {
-    const rock = boulderData[i];
-    quaternion.setFromAxisAngle(up, rock.angle);
-    position.set(rock.x, rock.y + rock.sy * 0.48, rock.z);
-    scale.set(rock.sx, rock.sy, rock.sz);
-    matrix.compose(position, quaternion, scale);
-    largeRocks.setMatrixAt(i, matrix);
-  }
-  for (let i = 0; i < smallData.length; i++) {
-    const rock = smallData[i];
-    quaternion.setFromAxisAngle(up, rock.angle);
-    position.set(rock.x, rock.y + rock.sy * 0.38, rock.z);
-    scale.set(rock.sx, rock.sy, rock.sz);
-    matrix.compose(position, quaternion, scale);
-    smallRocks.setMatrixAt(i, matrix);
+  for (const [key, bucket] of buckets) {
+    if (bucket.large.length) {
+      const largeRocks = new THREE.InstancedMesh(rockGeometry, largeMaterial, bucket.large.length);
+      for (let i = 0; i < bucket.large.length; i++) {
+        const rock = bucket.large[i];
+        quaternion.setFromAxisAngle(up, rock.angle);
+        position.set(rock.x, rock.y + rock.sy * 0.48, rock.z);
+        scale.set(rock.sx, rock.sy, rock.sz);
+        matrix.compose(position, quaternion, scale);
+        largeRocks.setMatrixAt(i, matrix);
+      }
+      largeRocks.instanceMatrix.needsUpdate = true;
+      largeRocks.castShadow = true;
+      largeRocks.receiveShadow = true;
+      largeRocks.name = `boulders-${key}`;
+      registerChunkMesh(largeRocks, renderables, 2500);
+      scene.add(largeRocks);
+      meshes.push(largeRocks);
+    }
+
+    if (bucket.small.length) {
+      const smallRocks = new THREE.InstancedMesh(rockGeometry, smallMaterial, bucket.small.length);
+      for (let i = 0; i < bucket.small.length; i++) {
+        const rock = bucket.small[i];
+        quaternion.setFromAxisAngle(up, rock.angle);
+        position.set(rock.x, rock.y + rock.sy * 0.38, rock.z);
+        scale.set(rock.sx, rock.sy, rock.sz);
+        matrix.compose(position, quaternion, scale);
+        smallRocks.setMatrixAt(i, matrix);
+      }
+      smallRocks.instanceMatrix.needsUpdate = true;
+      smallRocks.userData.noCollider = true;
+      smallRocks.castShadow = false;
+      smallRocks.receiveShadow = false;
+      smallRocks.name = `stones-${key}`;
+      registerChunkMesh(smallRocks, renderables, 1500);
+      scene.add(smallRocks);
+      meshes.push(smallRocks);
+    }
   }
 
-  largeRocks.instanceMatrix.needsUpdate = true;
-  smallRocks.instanceMatrix.needsUpdate = true;
-  smallRocks.userData.noCollider = true;
-  largeRocks.castShadow = true;
-  smallRocks.castShadow = false;
-  largeRocks.receiveShadow = true;
-  scene.add(largeRocks, smallRocks);
-  return { boulders: largeRocks, stones: smallRocks, count: boulderData.length + smallData.length };
+  return {
+    boulders: boulderData.length,
+    stones: smallData.length,
+    chunks: buckets.size,
+    meshes,
+  };
 }
 
 function createHouse(scene, materials, baseY = 0) {
@@ -615,7 +713,8 @@ export function createWorld(scene) {
   ];
 
   const heightAt = createHeightFunction(routePoints);
-  createTerrain(scene, heightAt);
+  const renderables = [];
+  const terrain = createTerrain(scene, heightAt, renderables);
 
   const routeCurve = new THREE.CatmullRomCurve3(
     routePoints.map((point) => new THREE.Vector3(point.x, heightAt(point.x, point.z) ?? 0, point.z)),
@@ -673,8 +772,8 @@ export function createWorld(scene) {
 
   const river = createRiver(scene, rnd);
   const tributary = createTributary(scene);
-  const forests = createForests(scene, heightAt, routePoints, rnd);
-  const rocks = createRocks(scene, heightAt, routePoints, rnd);
+  const forests = createForests(scene, heightAt, routePoints, rnd, renderables);
+  const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables);
 
   return {
     house: house.house,
@@ -683,6 +782,8 @@ export function createWorld(scene) {
     tributary,
     forests,
     rocks,
+    terrain,
+    renderables,
     route: road,
     bridge,
     heightAt,
