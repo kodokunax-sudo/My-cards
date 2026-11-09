@@ -33,7 +33,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(new THREE.Color(0xd9ae86), 0.00115);
+scene.fog = new THREE.FogExp2(new THREE.Color(0xd9ae86), 0.00020);
 
 const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 12000);
 camera.layers.enable(2);   // слой 2 — поверхность воды (исключается из отражений)
@@ -193,7 +193,7 @@ function animate() {
     scene.fog.density = 0.055;
   } else {
     scene.fog.color.copy(dayFog).lerp(nightFog, nightProgress);
-    scene.fog.density = THREE.MathUtils.lerp(0.00115, 0.00175, nightProgress);
+    scene.fog.density = THREE.MathUtils.lerp(0.00020, 0.00038, nightProgress);
   }
   if (elapsed >= NIGHT_START_SECONDS && !nightStartedMessageShown) {
     nightStartedMessageShown = true;
