@@ -295,6 +295,47 @@ function createRiver(scene, rnd) {
   };
 }
 
+function createTributary(scene) {
+  const centerZ = (x) => 4200 + 180 * Math.sin(x / 650);
+  const points = [];
+  for (let i = 0; i <= 100; i++) {
+    const x = -2800 + (5600 * i) / 100;
+    points.push({ x, z: centerZ(x) });
+  }
+
+  const water = new THREE.Mesh(
+    makeRibbon(points, 22, 0.035),
+    new THREE.MeshStandardMaterial({
+      color: 0x3c8992, roughness: 0.24, metalness: 0.14,
+      transparent: true, opacity: 0.88, side: THREE.DoubleSide,
+    })
+  );
+  water.userData.noCollider = true;
+  water.renderOrder = 2;
+  scene.add(water);
+
+  const bed = new THREE.Mesh(
+    makeRibbon(points, 21, -2.1),
+    new THREE.MeshStandardMaterial({ color: 0x45564c, roughness: 1 })
+  );
+  bed.userData.walkable = true;
+  bed.receiveShadow = true;
+  scene.add(bed);
+
+  return {
+    water,
+    bed,
+    region: {
+      id: 'south-river',
+      surfaceY: 0.035,
+      bottomY: -2.1,
+      exitFeetY: 0.85,
+      exitHeight: 0.85,
+      contains: (x, z) => Math.abs(z - centerZ(x)) <= 20,
+    },
+  };
+}
+
 function createPlains(scene) {
   const patches = [
     { x: -3000, z: -400, r: 900, color: 0x62774a },
@@ -386,6 +427,7 @@ export function createWorld(scene) {
   });
 
   const river = createRiver(scene, rnd);
+  const tributary = createTributary(scene);
   createForests(scene, routePoints, rnd);
   const plains = createPlains(scene);
 
@@ -393,6 +435,7 @@ export function createWorld(scene) {
     house: house.house,
     spawn: house.spawn,
     river,
+    tributary,
     plains,
     route: road,
     bridge,
@@ -406,6 +449,7 @@ export function createWorld(scene) {
         contains: (x, z) => Math.hypot(x, z) < POOL_RADIUS - 2.0,
       },
       river.region,
+      tributary.region,
     ],
     getWaterRegionAt(x, z) {
       return this.waterRegions.find((region) => region.contains(x, z)) || null;
