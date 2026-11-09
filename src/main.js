@@ -176,7 +176,7 @@ function animate() {
   player.update(dt);
   touch?.setSwimState(player.swimming);
   if (player.consumeDrownedEvent()) {
-    hud.toast('Вы утонули: закончился кислород. Вы вернулись к началу парка.');
+    hud.toast('Вы утонули: закончился кислород. Вы вернулись к стартовому дому.');
   }
 
   // The park starts changing at exactly 03:00 of session time.
