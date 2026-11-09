@@ -207,11 +207,18 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     const nz = camera.position.z + dz;
     const nextRegion = waterAt(nx, nz);
 
-    if (nextRegion?.id !== activeWater?.id) {
+    const connectedRivers = !!(
+      nextRegion && activeWater &&
+      nextRegion.id !== 'fountain' && activeWater.id !== 'fountain'
+    );
+    if (nextRegion?.id !== activeWater?.id && !connectedRivers) {
       const exitHeight = activeWater?.exitFeetY ?? ((activeWater?.surfaceY ?? 0) + 1.75);
       if (feetY < exitHeight) return false;
       clearWaterState();
       grounded = false;
+    } else if (connectedRivers) {
+      // The main river and its tributary join into one continuous waterway.
+      activeWater = nextRegion;
     }
 
     if (physics.isBlocked(nx, feetY, nz, BODY_RADIUS, PLAYER_HEIGHT)) return false;
