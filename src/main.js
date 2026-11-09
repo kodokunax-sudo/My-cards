@@ -46,7 +46,7 @@ const water = createWater(scene, fountain, camera, renderer);
 const world = createWorld(scene);
 const hud = createHud();
 const audio = createAmbience();
-const physics = createPhysicsWorld(scene);
+const physics = createPhysicsWorld(scene, world);
 const player = createPlayer(camera, canvas, physics, world, (mode) => {
   hud.setMode(mode);
   touch?.setFlyState(mode === 'fly');
