@@ -93,8 +93,8 @@ function createHeightFunction(routePoints) {
 
     // Carve the channels below the water line. The crossing itself stays
     // level so the timber bridge remains the natural walking route.
-    const mainCut = 1 - smoothstep(23, 44, Math.abs(x - mainRiverX(z)));
-    const tributaryCut = 1 - smoothstep(17, 34, Math.abs(z - tributaryZ(x)));
+    const mainCut = 1 - smoothstep(20, 32, Math.abs(x - mainRiverX(z)));
+    const tributaryCut = 1 - smoothstep(14, 24, Math.abs(z - tributaryZ(x)));
     height -= mainCut * 2.82 + tributaryCut * 2.22;
     const bridgeBlend = 1 - smoothstep(7, 24, Math.hypot(x + 692, z - 300));
     height *= 1 - bridgeBlend;
@@ -298,10 +298,13 @@ function createForests(scene, heightAt, routePoints, rnd) {
   // Only the trunks collide. The canopy is visual foliage and can never trap the player.
   roundCrowns.userData.noCollider = true;
   pineCrowns.userData.noCollider = true;
-  trunks.castShadow = true;
-  roundCrowns.castShadow = true;
-  pineCrowns.castShadow = true;
-  roundCrowns.receiveShadow = true;
+  // Keep the huge forest cheap to render: the individual canopy meshes are
+  // already lit, while the park architecture and boulders provide scene shadows.
+  trunks.castShadow = false;
+  roundCrowns.castShadow = false;
+  pineCrowns.castShadow = false;
+  roundCrowns.receiveShadow = false;
+  pineCrowns.receiveShadow = false;
   scene.add(trunks, roundCrowns, pineCrowns);
 
   return { count: trees.length, trunks, roundCrowns, pineCrowns };
@@ -379,7 +382,7 @@ function createRocks(scene, heightAt, routePoints, rnd) {
   smallRocks.instanceMatrix.needsUpdate = true;
   smallRocks.userData.noCollider = true;
   largeRocks.castShadow = true;
-  smallRocks.castShadow = true;
+  smallRocks.castShadow = false;
   largeRocks.receiveShadow = true;
   scene.add(largeRocks, smallRocks);
   return { boulders: largeRocks, stones: smallRocks, count: boulderData.length + smallData.length };
