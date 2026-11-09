@@ -180,8 +180,8 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
     return true;
   }
 
-  function respawnAfterDrowning() {
-    drownedEvent = true;
+  function resetToSpawn(drowned = false) {
+    if (drowned) drownedEvent = true;
     swimming = false;
     underwater = false;
     grounded = true;
@@ -191,6 +191,10 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
     jumpQueued = 0;
     camera.position.set(spawn.x, spawnFloor + EYE_HEIGHT, spawn.z);
     camera.lookAt(0, 25, 0);
+  }
+
+  function respawnAfterDrowning() {
+    resetToSpawn(true);
   }
 
   function updateSwimming(dt, mx, mz, sprinting) {
@@ -417,7 +421,8 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
     }
 
     if (feetY < -30) {
-      respawnAfterDrowning();
+      // Falling out of the level is a recovery, not an oxygen death.
+      resetToSpawn(false);
       return;
     }
 
