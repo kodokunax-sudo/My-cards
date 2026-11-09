@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
-  FOUNTAIN_HEIGHT, POOL_RADIUS, WATER_Y, ISLAND_RADIUS, ISLAND_TOP,
-  BOWLS, PALETTE, jetTrajectory,
+  FOUNTAIN_HEIGHT, POOL_RADIUS, POOL_DEPTH, POOL_BOTTOM_Y, WATER_Y,
+  ISLAND_RADIUS, ISLAND_TOP, BOWLS, PALETTE, jetTrajectory,
 } from './config.js';
 
 /** Радиальная фрезеровка (каннелюры) на токарном профиле. */
@@ -112,6 +112,10 @@ export function createFountain(scene) {
   ];
   const basin = new THREE.Mesh(lathe(basinProfile, 160), basinMat);
   basin.castShadow = true; basin.receiveShadow = true;
+  // The outer lip is an annular wall, not a solid cylinder.
+  basin.userData.collisionMode = 'ring';
+  basin.userData.collisionRadius = POOL_RADIUS - 0.1;
+  basin.userData.collisionThickness = 2.2;
   group.add(basin);
 
   // тёмное дно бассейна с кольцевой плиткой
@@ -131,10 +135,26 @@ export function createFountain(scene) {
         diffuseColor.rgb *= mix(0.55, 1.05, min(ring, rad));
       `);
   };
-  const poolFloor = new THREE.Mesh(new THREE.CircleGeometry(POOL_RADIUS - 1.3, 128), floorMat);
+  // A 28-metre-deep basin replaces the old ankle-deep floor.
+  const poolWallRadius = POOL_RADIUS - 1.25;
+  const poolWall = new THREE.Mesh(
+    new THREE.CylinderGeometry(poolWallRadius, poolWallRadius, POOL_DEPTH + WATER_Y, 160, 1, true),
+    new THREE.MeshStandardMaterial({
+      color: 0x102d38, roughness: 0.94, metalness: 0.04, side: THREE.DoubleSide,
+    })
+  );
+  poolWall.position.y = (POOL_BOTTOM_Y + WATER_Y) * 0.5;
+  poolWall.userData.collisionMode = 'ring';
+  poolWall.userData.collisionRadius = poolWallRadius;
+  poolWall.userData.collisionThickness = 0.65;
+  poolWall.receiveShadow = true;
+  group.add(poolWall);
+
+  const poolFloor = new THREE.Mesh(new THREE.CircleGeometry(poolWallRadius, 160), floorMat);
   poolFloor.rotation.x = -Math.PI / 2;
-  poolFloor.position.y = 0.03;
+  poolFloor.position.y = POOL_BOTTOM_Y;
   poolFloor.receiveShadow = true;
+  poolFloor.userData.walkable = true;
   group.add(poolFloor);
 
   // ---------------- островок ----------------
