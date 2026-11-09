@@ -39,7 +39,7 @@ const WATER_VERT = /* glsl */ `
 const WATER_FRAG = /* glsl */ `
   uniform samplerCube uEnv;
   uniform vec3 uSunDir, uSunColor, uDeep, uShallow, uSkyTop, uSkyHorizon, uCamPos;
-  uniform float uTime, uPoolRadius, uIslandRadius, uUseEnv;
+  uniform float uTime, uPoolRadius, uIslandRadius, uUseEnv, uUnderwater;
   uniform vec4 uImpacts[8];
   uniform int uImpactCount;
   varying vec3 vWPos;
@@ -85,6 +85,9 @@ const WATER_FRAG = /* glsl */ `
 
     vec3 body = mix(uShallow, uDeep, smoothstep(10.0, 44.0, vRad));
     vec3 col = mix(body, refl, fres * 0.88);
+    // From beneath the surface, suppress the bright sky reflection and tint
+    // the water ceiling blue-green so the player can tell they are submerged.
+    col = mix(col, vec3(0.012, 0.105, 0.145), uUnderwater * 0.72);
 
     vec3 H = normalize(uSunDir + V);
     float ndh = max(dot(N, H), 0.0);
@@ -312,6 +315,7 @@ export function createWater(scene, fountain, camera, renderer) {
     uPoolRadius: { value: POOL_RADIUS - 1.2 },
     uIslandRadius: { value: ISLAND_RADIUS },
     uUseEnv: { value: 1 },
+    uUnderwater: { value: 0 },
     uImpacts: { value: impacts },
     uImpactCount: { value: Math.min(8, fountain.rippleRings.length) },
   };
@@ -359,6 +363,7 @@ export function createWater(scene, fountain, camera, renderer) {
     uPoolRadius: { value: 6 },
     uIslandRadius: { value: 0 },
     uUseEnv: { value: 0 },
+    uUnderwater: waterUniforms.uUnderwater,
     uImpacts: { value: impacts },
     uImpactCount: { value: 0 },
   };
@@ -537,6 +542,7 @@ export function createWater(scene, fountain, camera, renderer) {
     update(t, dt, pixelRatio) {
       waterUniforms.uTime.value = t;
       waterUniforms.uCamPos.value.copy(camera.position);
+      waterUniforms.uUnderwater.value = camera.position.y < WATER_Y - 0.08 ? 1 : 0;
       jetUniforms.uTime.value = t;
       jetUniforms.uCamPos.value.copy(camera.position);
       spray.mat.uniforms.uTime.value = t;
