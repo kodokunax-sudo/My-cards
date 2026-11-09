@@ -197,7 +197,7 @@ function animate() {
     nightStartedMessageShown = true;
     hud.toast('Солнце садится. Наступает ночь.');
   }
-  water.update(elapsed, dt, renderer.getPixelRatio());
+  water.update(elapsed, dt, renderer.getPixelRatio(), player.underwater);
   hud.update(camera, player);
   audio.setDistance(Math.hypot(camera.position.x, camera.position.z));
   sampleQuality(dt);
