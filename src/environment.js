@@ -79,19 +79,10 @@ export function createEnvironment(scene) {
   scene.add(group);
   const rnd = seededRandom(20261109);
 
-  // ---------- земля и площадь ----------
-  // Grass begins outside the plaza; keep the entire park interior open.
-  const grass = new THREE.Mesh(
-    new THREE.RingGeometry(PLAZA_RADIUS, GRASS_RADIUS, 128),
-    grassMaterial()
-  );
-  grass.rotation.x = -Math.PI / 2;
-  grass.position.y = -0.06;
-  grass.receiveShadow = true;
-  grass.userData.walkable = true;
-  group.add(grass);
-
-  // The plaza is an annulus, leaving a real opening for the deep fountain pool.
+  // ---------- площадь ----------
+  // The large grass ring was removed. src/world.js now supplies a displaced
+  // heightfield, so a flat disk can no longer cover valleys and hills.
+  // The plaza remains flat and leaves a real opening for the deep fountain pool.
   const plaza = new THREE.Mesh(
     new THREE.RingGeometry(POOL_RADIUS + 1.0, PLAZA_RADIUS, 160),
     plazaMaterial()
