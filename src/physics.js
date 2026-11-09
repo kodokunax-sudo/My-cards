@@ -3,13 +3,10 @@ import * as THREE from 'three';
 const EPSILON = 0.035;
 const CELL_SIZE = 32;
 const ROUND_GEOMETRIES = new Set([
-  'CylinderGeometry',
-  'ConeGeometry',
-  'SphereGeometry',
-  'IcosahedronGeometry',
-  'DodecahedronGeometry',
-  'OctahedronGeometry',
-  'LatheGeometry',
+  'CylinderGeometry', 'ConeGeometry', 'SphereGeometry', 'LatheGeometry',
+]);
+const ELLIPSOID_GEOMETRIES = new Set([
+  'IcosahedronGeometry', 'DodecahedronGeometry', 'OctahedronGeometry',
 ]);
 
 function cellKey(x, z) {
@@ -93,6 +90,35 @@ export function createPhysicsWorld(scene, worldInfo = null) {
         maxX: center.x + radius + thickness,
         minZ: center.z - radius - thickness,
         maxZ: center.z + radius + thickness,
+      });
+      return;
+    }
+
+    if (ELLIPSOID_GEOMETRIES.has(geometry.type)) {
+      localBounds.getCenter(center);
+      const localCenterX = center.x;
+      const localCenterZ = center.z;
+      const radiusX = (localBounds.max.x - localBounds.min.x) * 0.5;
+      const radiusZ = (localBounds.max.z - localBounds.min.z) * 0.5;
+      const inverse = inverseMatrix.copy(matrix).invert().clone();
+      const forward = matrix.clone();
+      matrix.decompose(position, rotation, scale);
+      insertCollider({
+        kind: 'ellipsoid',
+        inverse,
+        forward,
+        localCenterX,
+        localCenterZ,
+        radiusX,
+        radiusZ,
+        scaleX: Math.max(0.001, Math.abs(scale.x)),
+        scaleZ: Math.max(0.001, Math.abs(scale.z)),
+        minY: bounds.min.y,
+        maxY: bounds.max.y,
+        minX: bounds.min.x,
+        maxX: bounds.max.x,
+        minZ: bounds.min.z,
+        maxZ: bounds.max.z,
       });
       return;
     }
@@ -222,6 +248,15 @@ export function createPhysicsWorld(scene, worldInfo = null) {
       return (dx * dx) / (rx * rx) + (dz * dz) / (rz * rz) < 1;
     }
 
+    if (shape.kind === 'ellipsoid') {
+      const local = new THREE.Vector3(x, feetY + height * 0.5, z).applyMatrix4(shape.inverse);
+      const dx = local.x - shape.localCenterX;
+      const dz = local.z - shape.localCenterZ;
+      const rx = shape.radiusX + radius / shape.scaleX;
+      const rz = shape.radiusZ + radius / shape.scaleZ;
+      return (dx * dx) / (rx * rx) + (dz * dz) / (rz * rz) < 1;
+    }
+
     if (shape.kind === 'obb') {
       const local = new THREE.Vector3(x, feetY + height * 0.5, z).applyMatrix4(shape.inverse);
       const closestX = THREE.MathUtils.clamp(local.x, shape.bounds.min.x, shape.bounds.max.x);
@@ -270,6 +305,30 @@ export function createPhysicsWorld(scene, worldInfo = null) {
       for (const shape of nearbyShapes(px, pz, radius + 8)) {
         const headY = feetY + height;
         if (headY <= shape.minY + EPSILON || feetY >= shape.maxY - EPSILON) continue;
+
+        if (shape.kind === 'ellipsoid') {
+          const local = new THREE.Vector3(px, feetY + height * 0.5, pz).applyMatrix4(shape.inverse);
+          let dx = local.x - shape.localCenterX;
+          let dz = local.z - shape.localCenterZ;
+          let rx = shape.radiusX + radius / shape.scaleX;
+          let rz = shape.radiusZ + radius / shape.scaleZ;
+          let normalized = Math.sqrt((dx * dx) / (rx * rx) + (dz * dz) / (rz * rz));
+          if (normalized < 1) {
+            if (normalized < 0.0001) {
+              dx = rx;
+              dz = 0;
+              normalized = 1;
+            }
+            const factor = 1.015 / normalized;
+            local.x = shape.localCenterX + dx * factor;
+            local.z = shape.localCenterZ + dz * factor;
+            const candidate = local.applyMatrix4(shape.forward);
+            px = candidate.x;
+            pz = candidate.z;
+            pushed = changed = true;
+          }
+          continue;
+        }
 
         if (shape.kind === 'ring' || shape.kind === 'ellipse') {
           let dx = px - shape.x;
