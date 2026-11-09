@@ -296,6 +296,8 @@ export function createEnvironment(scene) {
     `,
   });
   const birds = new THREE.InstancedMesh(birdGeo, birdMat, birdCount);
+  // Animated birds are visual effects rather than fixed collision obstacles.
+  birds.userData.noCollider = true;
   birds.frustumCulled = false;
   const birdData = [];
   for (let i = 0; i < birdCount; i++) {
