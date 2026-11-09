@@ -188,20 +188,39 @@ export function createEnvironment(scene) {
   group.add(trunks, crowns);
 
   // ---------- дальний силуэт города ----------
+  // Split the skyline into angular sectors. Each sector has its own bounds,
+  // so Three.js can skip buildings behind the camera instead of keeping one
+  // giant InstancedMesh alive around the entire map.
   const cityMat = new THREE.MeshStandardMaterial({ color: PALETTE.city, roughness: 0.9 });
-  const city = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), cityMat, 90);
-  city.userData.solid = true;
+  const cityGeometry = new THREE.BoxGeometry(1, 1, 1);
+  const cityBuckets = Array.from({ length: 8 }, () => []);
   for (let i = 0; i < 90; i++) {
     const a = rnd() * Math.PI * 2;
     const r = 3900 + rnd() * 900;
     const h = 45 + rnd() * 180;
     const w = 26 + rnd() * 60;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const sector = Math.floor((((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * 8);
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * 6.28);
-    pos.set(x, h / 2, z); scl.set(w, h, w * (0.7 + rnd() * 0.6));
-    m.compose(pos, q, scl); city.setMatrixAt(i, m);
+    pos.set(x, h / 2, z);
+    scl.set(w, h, w * (0.7 + rnd() * 0.6));
+    const matrix = new THREE.Matrix4().compose(pos, q, scl);
+    cityBuckets[sector].push(matrix);
   }
-  group.add(city);
+
+  for (let sector = 0; sector < cityBuckets.length; sector++) {
+    const transforms = cityBuckets[sector];
+    if (!transforms.length) continue;
+    const cityPart = new THREE.InstancedMesh(cityGeometry, cityMat, transforms.length);
+    for (let i = 0; i < transforms.length; i++) cityPart.setMatrixAt(i, transforms[i]);
+    cityPart.instanceMatrix.needsUpdate = true;
+    cityPart.castShadow = false;
+    cityPart.receiveShadow = false;
+    cityPart.name = `distant-city-sector-${sector}`;
+    cityPart.computeBoundingSphere();
+    cityPart.frustumCulled = true;
+    group.add(cityPart);
+  }
 
   // ---------- горы на горизонте ----------
   const mountainMat = new THREE.MeshStandardMaterial({ color: PALETTE.mountain, roughness: 1.0, flatShading: true });
