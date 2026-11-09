@@ -368,6 +368,7 @@ export function createWater(scene, fountain, camera, renderer) {
   });
   BOWLS.forEach((b) => {
     const m = new THREE.Mesh(discGeometry(b.r * 0.9, 26, 72), bowlWaterMat);
+    m.userData.noCollider = true;
     m.position.y = b.y - 0.16;
     m.layers.set(2);
     group.add(m);
