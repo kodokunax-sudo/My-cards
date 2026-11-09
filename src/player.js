@@ -60,7 +60,6 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
   const direction = new THREE.Vector3();
   const velocity = new THREE.Vector3();
   const waterTarget = new THREE.Vector3();
-  const worldUp = new THREE.Vector3(0, 1, 0);
 
   domElement.addEventListener('mousedown', (event) => {
     if (!pointerLocked && event.button === 0) dragging = true;
@@ -283,11 +282,17 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       const pitchDrive = direction.y * speed * 2.1;
       const buoyancyAssist = THREE.MathUtils.clamp((targetFeet - feetY) * 0.42, -2.0, 2.0);
       const verticalAcceleration = verticalInput * 8.5 + pitchDrive + buoyancyAssist - velocity.y * 2.1;
-      velocity.y += verticalAcceleration * dt;
+      velocity.y = THREE.MathUtils.clamp(
+        velocity.y + verticalAcceleration * dt, -4.2, 4.2
+      );
     } else {
       const pitchDrive = direction.y * speed * 1.4;
-      const buoyancyAcceleration = (targetFeet - feetY) * 7.2 - velocity.y * 4.0 + pitchDrive;
-      velocity.y += buoyancyAcceleration * dt;
+      const buoyancyAcceleration =
+        THREE.MathUtils.clamp((targetFeet - feetY) * 7.2, -12, 12) -
+        velocity.y * 4.0 + pitchDrive;
+      velocity.y = THREE.MathUtils.clamp(
+        velocity.y + buoyancyAcceleration * dt, -4.2, 4.2
+      );
     }
 
     // Sub-stepping keeps the swimmer from tunnelling through the pool wall.
