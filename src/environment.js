@@ -84,11 +84,13 @@ export function createEnvironment(scene) {
   grass.rotation.x = -Math.PI / 2;
   grass.position.y = -0.06;
   grass.receiveShadow = true;
+  grass.userData.walkable = true;
   group.add(grass);
 
   const plaza = new THREE.Mesh(new THREE.CircleGeometry(PLAZA_RADIUS, 128), plazaMaterial());
   plaza.rotation.x = -Math.PI / 2;
   plaza.receiveShadow = true;
+  plaza.userData.walkable = true;
   group.add(plaza);
 
   // ---------- колоннада ----------
@@ -149,6 +151,16 @@ export function createEnvironment(scene) {
   }
   lamps.castShadow = false;
   group.add(lamps, posts);
+
+  // Park lanterns become the warm night lighting.
+  const lampLights = [];
+  for (let i = 0; i < 20; i++) {
+    const a = (i / 20) * Math.PI * 2 + 0.078;
+    const light = new THREE.PointLight(0xffbd72, 0, 34, 2);
+    light.position.set(Math.cos(a) * 122, 5.6, Math.sin(a) * 122);
+    group.add(light);
+    lampLights.push(light);
+  }
 
   // ---------- деревья ----------
   const treeCount = 64;
@@ -313,6 +325,9 @@ export function createEnvironment(scene) {
   const bounce = new THREE.DirectionalLight(0xffd9b0, 0.35);
   bounce.position.set(0, -120, 60);
   scene.add(bounce);
+  const moon = new THREE.DirectionalLight(0x7896d8, 0);
+  moon.position.set(-140, 220, -180);
+  scene.add(moon);
 
   const tmpM = new THREE.Matrix4();
   const tmpQ = new THREE.Quaternion();
@@ -322,6 +337,15 @@ export function createEnvironment(scene) {
   return {
     group,
     sun,
+    setTimeOfDay(nightProgress = 0) {
+      const n = THREE.MathUtils.clamp(nightProgress, 0, 1);
+      sun.intensity = THREE.MathUtils.lerp(3.1, 0.12, n);
+      hemi.intensity = THREE.MathUtils.lerp(1.55, 0.34, n);
+      fill.intensity = THREE.MathUtils.lerp(0.85, 0.08, n);
+      bounce.intensity = THREE.MathUtils.lerp(0.35, 0.025, n);
+      moon.intensity = 0.48 * n;
+      for (const light of lampLights) light.intensity = 13 * n;
+    },
     setShadowSize(size) {
       if (sun.shadow.mapSize.width === size) return;
       sun.shadow.mapSize.set(size, size);
