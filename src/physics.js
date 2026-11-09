@@ -111,6 +111,41 @@ export function createPhysicsWorld(scene) {
     return best;
   }
 
+  function isHeadBlocked(x, headY, z, radius) {
+    for (const shape of colliders) {
+      if (headY <= shape.minY + EPSILON || headY >= shape.maxY - EPSILON) continue;
+
+      const dx = x - shape.x;
+      const dz = z - shape.z;
+      const distance = Math.hypot(dx, dz);
+
+      if (shape.kind === 'ring') {
+        if (shape.gapStart !== null && shape.gapEnd !== null) {
+          let angle = Math.atan2(dz, dx);
+          if (angle < 0) angle += Math.PI * 2;
+          if (angle >= shape.gapStart && angle <= shape.gapEnd) continue;
+        }
+        if (Math.abs(distance - shape.radius) < radius + shape.thickness * 0.5) return true;
+        continue;
+      }
+
+      if (shape.kind === 'round') {
+        if (distance < radius + shape.radius) return true;
+        continue;
+      }
+
+      const box = shape.box;
+      if (x + radius <= box.min.x || x - radius >= box.max.x) continue;
+      if (z + radius <= box.min.z || z - radius >= box.max.z) continue;
+      const closestX = THREE.MathUtils.clamp(x, box.min.x, box.max.x);
+      const closestZ = THREE.MathUtils.clamp(z, box.min.z, box.max.z);
+      const nearestX = x - closestX;
+      const nearestZ = z - closestZ;
+      if (nearestX * nearestX + nearestZ * nearestZ < radius * radius) return true;
+    }
+    return false;
+  }
+
   function isBlocked(x, feetY, z, radius, height) {
     const headY = feetY + height;
 
@@ -153,6 +188,7 @@ export function createPhysicsWorld(scene) {
   return {
     groundAt,
     isBlocked,
+    isHeadBlocked,
     stats: { floorMeshes: floors.length, colliderShapes: colliders.length },
   };
 }
