@@ -279,9 +279,14 @@ export function createPhysicsWorld(scene, worldInfo = null) {
         if (headY <= shape.minY + EPSILON || feetY >= shape.maxY - EPSILON) continue;
 
         if (shape.kind === 'round' || shape.kind === 'ring') {
-          const dx = px - shape.x;
-          const dz = pz - shape.z;
-          const distance = Math.hypot(dx, dz) || 0.0001;
+          let dx = px - shape.x;
+          let dz = pz - shape.z;
+          let distance = Math.hypot(dx, dz);
+          if (distance < 0.0001) {
+            dx = 1;
+            dz = 0;
+            distance = 1;
+          }
           if (shape.kind === 'ring') {
             if (shape.gapStart !== null && shape.gapEnd !== null &&
               angleInGap(Math.atan2(dz, dx), shape.gapStart, shape.gapEnd)) continue;
