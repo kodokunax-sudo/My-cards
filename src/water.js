@@ -539,10 +539,10 @@ export function createWater(scene, fountain, camera, renderer) {
       waterUniforms.uSkyTop.value.copy(dayPalette.skyTop).lerp(nightPalette.skyTop, n);
       waterUniforms.uSkyHorizon.value.copy(dayPalette.skyHorizon).lerp(nightPalette.skyHorizon, n);
     },
-    update(t, dt, pixelRatio) {
+    update(t, dt, pixelRatio, isUnderwater = false) {
       waterUniforms.uTime.value = t;
       waterUniforms.uCamPos.value.copy(camera.position);
-      waterUniforms.uUnderwater.value = camera.position.y < WATER_Y - 0.08 ? 1 : 0;
+      waterUniforms.uUnderwater.value = isUnderwater ? 1 : 0;
       jetUniforms.uTime.value = t;
       jetUniforms.uCamPos.value.copy(camera.position);
       spray.mat.uniforms.uTime.value = t;
