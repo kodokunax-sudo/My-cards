@@ -32,7 +32,9 @@ export function createPhysicsWorld(scene) {
   scene.traverse((object) => {
     if (!object.isMesh || object.userData.noCollider || !object.visible) return;
 
-    if (object.userData.walkable) floors.push(object);
+    // Every solid object is also a possible landing surface. This means
+    // players can stand on props and platforms instead of falling through them.
+    floors.push(object);
 
     const geometry = object.geometry;
     if (!geometry.boundingBox) geometry.computeBoundingBox();
