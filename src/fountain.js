@@ -175,6 +175,9 @@ export function createFountain(scene) {
     const torus = new THREE.Mesh(new THREE.TorusGeometry(r, t, 8, 96), marble);
     torus.rotation.x = Math.PI / 2; torus.position.y = y;
     torus.castShadow = true;
+    torus.userData.collisionMode = 'ring';
+    torus.userData.collisionRadius = r;
+    torus.userData.collisionThickness = t * 2;
     group.add(torus);
   });
 
@@ -184,6 +187,11 @@ export function createFountain(scene) {
   const rail = new THREE.Mesh(new THREE.TorusGeometry(13.9, 0.17, 8, 120, Math.PI * 2 - 0.46), marble);
   rail.rotation.x = Math.PI / 2; rail.position.y = ISLAND_TOP + 1.0;
   rail.castShadow = true;
+  rail.userData.collisionMode = 'ring';
+  rail.userData.collisionRadius = 13.9;
+  rail.userData.collisionThickness = 0.34;
+  rail.userData.collisionGapStart = rail.geometry.parameters.arc;
+  rail.userData.collisionGapEnd = Math.PI * 2;
   const mat4 = new THREE.Matrix4();
   for (let i = 0; i < 40; i++) {
     const a = (i / 40) * Math.PI * 2;
@@ -220,6 +228,9 @@ export function createFountain(scene) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(r + 0.12, 0.22, 8, 64), marble);
     ring.rotation.x = Math.PI / 2; ring.position.y = y;
     ring.castShadow = true;
+    ring.userData.collisionMode = 'ring';
+    ring.userData.collisionRadius = r + 0.12;
+    ring.userData.collisionThickness = 0.44;
     group.add(ring);
   }
 
@@ -251,6 +262,9 @@ export function createFountain(scene) {
     const rim = new THREE.Mesh(new THREE.TorusGeometry(R * 1.01, 0.18, 8, 120), gold);
     rim.rotation.x = Math.PI / 2; rim.position.y = y + 0.22;
     rim.castShadow = true;
+    rim.userData.collisionMode = 'ring';
+    rim.userData.collisionRadius = R * 1.01;
+    rim.userData.collisionThickness = 0.36;
     group.add(rim);
 
     // золотая бахрома под чашей — видно, когда смотришь снизу вверх
@@ -276,6 +290,9 @@ export function createFountain(scene) {
     underRing.rotation.x = Math.PI / 2;
     underRing.position.y = y - 1.55;
     underRing.castShadow = true;
+    underRing.userData.collisionMode = 'ring';
+    underRing.userData.collisionRadius = R * 0.55;
+    underRing.userData.collisionThickness = 0.28;
     group.add(underRing);
   });
 
