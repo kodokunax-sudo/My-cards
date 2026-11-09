@@ -289,6 +289,8 @@ function createRiver(scene, rnd) {
       id: 'river',
       surfaceY: 0.035,
       bottomY: -2.65,
+      exitFeetY: 0.85,
+      exitHeight: 0.85,
       contains: (x, z) => Math.abs(x - centerX(z)) <= 28,
     },
   };
@@ -347,7 +349,7 @@ export function createWorld(scene) {
   const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(118, 0.25, 10), new THREE.MeshStandardMaterial({
     color: 0x715239, roughness: 0.9,
   }));
-  bridgeDeck.position.y = 0.05;
+  bridgeDeck.position.y = 0.325;
   bridgeDeck.castShadow = true;
   bridgeDeck.receiveShadow = true;
   bridgeDeck.userData.walkable = true;
@@ -398,6 +400,8 @@ export function createWorld(scene) {
         id: 'fountain',
         surfaceY: WATER_Y,
         bottomY: POOL_BOTTOM_Y,
+        exitFeetY: WATER_Y + 1.9,
+        exitHeight: 1.9,
         contains: (x, z) => Math.hypot(x, z) < POOL_RADIUS - 2.0,
       },
       river.region,
