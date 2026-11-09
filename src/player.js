@@ -17,7 +17,7 @@ const GROUND_ACCELERATION = 15.0;
 
 // The circular wall is just inside the water mesh. Keep the player's centre
 // a little farther in so the capsule never clips through the basin wall.
-const WATER_RADIUS = POOL_RADIUS - 1.25 - 0.8;
+const WATER_RADIUS = POOL_RADIUS - 1.25 - 0.7;
 const SWIM_SURFACE_FEET = WATER_Y + 0.12 - EYE_HEIGHT;
 const SWIM_TOP_FEET = WATER_Y + 1.05;
 const MAX_OXYGEN = 24;
