@@ -108,9 +108,9 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
 
   function onKeyDown(event) {
     const key = event.code;
-    if (key === 'Space' && mode !== 'fly' && !swimming) {
+    if (key === 'Space' && mode !== 'fly') {
       event.preventDefault();
-      if (!event.repeat) jumpQueued = 0.16;
+      if (!swimming && !event.repeat) jumpQueued = 0.16;
     }
 
     keys[key] = true;
@@ -263,7 +263,7 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
     feetY = nextFeet;
 
     const distanceFromCentre = Math.hypot(camera.position.x, camera.position.z);
-    if (distanceFromCentre > WATER_RADIUS + 0.35 && feetY > WATER_Y + 0.45) {
+    if (distanceFromCentre > POOL_RADIUS + 1.6 && feetY > WATER_Y + 0.45) {
       swimming = false;
       grounded = false;
       velocity.y = Math.min(velocity.y, 0);
@@ -329,6 +329,7 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
       // The character becomes buoyant when entering the pool.
       feetY = Math.min(feetY, SWIM_SURFACE_FEET);
       velocity.y = 0;
+      jumpQueued = 0;
       velocity.x *= 0.35;
       velocity.z *= 0.35;
     }
