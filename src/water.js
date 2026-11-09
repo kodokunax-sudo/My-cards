@@ -316,6 +316,21 @@ export function createWater(scene, fountain, camera, renderer) {
     uImpactCount: { value: Math.min(8, fountain.rippleRings.length) },
   };
 
+  const nightPalette = {
+    sun: new THREE.Color(0x5e79b9),
+    deep: new THREE.Color(0x031321),
+    shallow: new THREE.Color(0x0b3447),
+    skyTop: new THREE.Color(0x07152d),
+    skyHorizon: new THREE.Color(0x172642),
+  };
+  const dayPalette = {
+    sun: waterUniforms.uSunColor.value.clone(),
+    deep: waterUniforms.uDeep.value.clone(),
+    shallow: waterUniforms.uShallow.value.clone(),
+    skyTop: waterUniforms.uSkyTop.value.clone(),
+    skyHorizon: waterUniforms.uSkyHorizon.value.clone(),
+  };
+
   const waterMaterial = new THREE.ShaderMaterial({
     uniforms: waterUniforms,
     vertexShader: WATER_VERT,
@@ -506,6 +521,14 @@ export function createWater(scene, fountain, camera, renderer) {
     group,
     pool,
     setCubeInterval(n) { cubeInterval = Math.max(1, n); },
+    setNight(progress = 0) {
+      const n = THREE.MathUtils.clamp(progress, 0, 1);
+      waterUniforms.uSunColor.value.copy(dayPalette.sun).lerp(nightPalette.sun, n);
+      waterUniforms.uDeep.value.copy(dayPalette.deep).lerp(nightPalette.deep, n);
+      waterUniforms.uShallow.value.copy(dayPalette.shallow).lerp(nightPalette.shallow, n);
+      waterUniforms.uSkyTop.value.copy(dayPalette.skyTop).lerp(nightPalette.skyTop, n);
+      waterUniforms.uSkyHorizon.value.copy(dayPalette.skyHorizon).lerp(nightPalette.skyHorizon, n);
+    },
     update(t, dt, pixelRatio) {
       waterUniforms.uTime.value = t;
       waterUniforms.uCamPos.value.copy(camera.position);
@@ -523,8 +546,11 @@ export function createWater(scene, fountain, camera, renderer) {
         cubeCam.updateMatrixWorld(true);
         const prevTone = renderer.toneMapping;
         renderer.toneMapping = THREE.NoToneMapping;
-        cubeCam.update(renderer, scene);
-        renderer.toneMapping = prevTone;
+        try {
+          cubeCam.update(renderer, scene);
+        } finally {
+          renderer.toneMapping = prevTone;
+        }
       }
     },
   };
