@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  POOL_RADIUS, POOL_BOTTOM_Y, WATER_Y, GRASS_RADIUS,
+  POOL_RADIUS, POOL_BOTTOM_Y, WATER_Y, GRASS_RADIUS, PLAZA_RADIUS,
 } from './config.js';
 
 const TAU = Math.PI * 2;
@@ -10,6 +10,16 @@ const HILLS = [
   [300, -4050, 690, 92], [-4250, -750, 640, 76],
   [4420, 850, 580, 72], [900, 3970, 620, 84],
   [-1150, -3250, 540, 58], [1650, 950, 520, 48],
+];
+
+const RIDGES = [
+  [-5100, -4200, -3150, -2500, 230, 132],
+  [250, -5250, 1850, -3650, 270, 158],
+  [1780, -1050, 3850, 1650, 250, 150],
+  [-4550, 1050, -2920, 3700, 245, 128],
+  [-1650, 3900, 250, 5050, 210, 105],
+  [2650, 3150, 4450, 4300, 180, 96],
+  [-3500, -500, -2550, 1250, 165, 88],
 ];
 
 function seededRandom(seed = 914207) {
@@ -82,44 +92,54 @@ function createHeightFunction(routePoints) {
   return (x, z) => {
     if (Math.hypot(x, z) > GRASS_RADIUS + 30) return null;
 
-    const broad = (valueNoise(x / 1550, z / 1550, 11) - 0.5) * 86;
-    const rolling = (valueNoise(x / 560, z / 560, 17) - 0.5) * 32;
-    const detail = (valueNoise(x / 205, z / 205, 23) - 0.5) * 8;
-    const ridgeNoise = 1 - Math.abs(valueNoise(x / 880, z / 880, 31) * 2 - 1);
-    let height = broad + rolling + detail + (ridgeNoise - 0.48) * 15;
+    const broad = (valueNoise(x / 1750, z / 1750, 11) - 0.5) * 104;
+    const rolling = (valueNoise(x / 520, z / 520, 17) - 0.5) * 42;
+    const detail = (valueNoise(x / 175, z / 175, 23) - 0.5) * 13;
+    const ridgeNoise = 1 - Math.abs(valueNoise(x / 760, z / 760, 31) * 2 - 1);
+    let height = broad + rolling + detail + (ridgeNoise - 0.44) * 20;
 
     for (const [hx, hz, radius, peak] of HILLS) {
       const dx = x - hx, dz = z - hz;
       height += peak * Math.exp(-(dx * dx + dz * dz) / (2 * radius * radius));
     }
 
-    // A low natural valley, plus flatter ground around the fountain, house and trail.
+    // Long ridge chains create actual mountain silhouettes instead of isolated bumps.
+    for (const [ax, az, bx, bz, width, peak] of RIDGES) {
+      const dx = bx - ax, dz = bz - az;
+      const lengthSq = dx * dx + dz * dz;
+      const t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / lengthSq, 0, 1);
+      const nearestX = ax + dx * t, nearestZ = az + dz * t;
+      const distance = Math.hypot(x - nearestX, z - nearestZ);
+      const endFade = Math.min(1, 0.28 + Math.min(t, 1 - t) * 4.2);
+      height += peak * Math.exp(-(distance * distance) / (2 * width * width)) * endFade;
+    }
+
+    // Preserve a flat central park and a compact clearing around the house.
     const parkBlend = 1 - smoothstep(210, 390, Math.hypot(x, z));
-    const houseBlend = 1 - smoothstep(78, 175, Math.hypot(x + 1600, z - 900));
-    const trailBlend = 1 - smoothstep(18, 100, distanceToPolyline(x, z, routePoints));
-    const riverBlend = 1 - smoothstep(42, 112, Math.abs(x - mainRiverX(z)));
-    const tributaryBlend = 1 - smoothstep(34, 92, Math.abs(z - tributaryZ(x)));
+    const houseBlend = 1 - smoothstep(38, 82, Math.hypot(x + 1600, z - 900));
+    const trailBlend = 1 - smoothstep(12, 34, distanceToPolyline(x, z, routePoints));
+    const riverBlend = 1 - smoothstep(38, 68, Math.abs(x - mainRiverX(z)));
+    const tributaryBlend = 1 - smoothstep(30, 58, Math.abs(z - tributaryZ(x)));
     const flatten = Math.max(parkBlend, houseBlend, trailBlend, riverBlend, tributaryBlend);
     height *= 1 - flatten;
 
-    // Carve the channels below the water line. The crossing itself stays
-    // level so the timber bridge remains the natural walking route.
+    // Carve deep, narrow river channels and a level approach at the bridge.
     const mainCut = 1 - smoothstep(20, 32, Math.abs(x - mainRiverX(z)));
     const tributaryCut = 1 - smoothstep(14, 24, Math.abs(z - tributaryZ(x)));
     height -= mainCut * 2.82 + tributaryCut * 2.22;
     const bridgeBlend = 1 - smoothstep(7, 24, Math.hypot(x + 692, z - 300));
     height *= 1 - bridgeBlend;
 
-    // A few shallow gullies keep the valleys from reading as smooth bumps.
-    const gully = Math.pow(Math.max(0, 1 - Math.abs(valueNoise(x / 720, z / 720, 49) * 2 - 1)), 5);
-    height -= gully * 5.5 * (1 - parkBlend);
-    return THREE.MathUtils.clamp(height, -18, 148);
+    const gully = Math.pow(Math.max(0, 1 - Math.abs(valueNoise(x / 610, z / 610, 49) * 2 - 1)), 5);
+    height -= gully * 8.5 * (1 - parkBlend);
+    return THREE.MathUtils.clamp(height, -22, 225);
   };
 }
 
 function createTerrain(scene, heightAt, renderables) {
   const chunksPerAxis = 14;
-  const cellsPerChunk = 30;
+  // 64 cells in each 800m chunk => 12.5m spacing (was 26.7m).
+  const cellsPerChunk = 64;
   const chunkSize = (GRASS_RADIUS * 2) / chunksPerAxis;
   const step = chunkSize / cellsPerChunk;
 
@@ -147,15 +167,20 @@ function createTerrain(scene, heightAt, renderables) {
         for (let ix = 0; ix <= cellsPerChunk; ix++) {
           const x = originX + ix * step;
           const index = (iz * side + ix) * 3;
+          const radius = Math.hypot(x, z);
           const h = heightAt(x, z) ?? 0;
+
+          // Terrain continues underneath the plaza rim. The plaza tile sits
+          // above it, eliminating the exposed triangular gap at its perimeter.
+          const underPlaza = 1 - smoothstep(PLAZA_RADIUS - 8, PLAZA_RADIUS + 26, radius);
           positions[index] = x;
-          positions[index + 1] = h;
+          positions[index + 1] = h - 0.62 * underPlaza;
           positions[index + 2] = z;
 
           const variation = valueNoise(x / 115, z / 115, 61);
           color.copy(grass).lerp(low, (1 - variation) * 0.32);
           color.lerp(high, smoothstep(35, 90, h) * 0.62);
-          color.lerp(rock, smoothstep(0.12, 0.42, Math.abs(h) / 148) * smoothstep(65, 120, h) * 0.46);
+          color.lerp(rock, smoothstep(0.12, 0.42, Math.abs(h) / 225) * smoothstep(75, 145, h) * 0.58);
           const tint = 0.92 + variation * 0.16;
           colors[index] = color.r * tint;
           colors[index + 1] = color.g * tint;
@@ -165,10 +190,13 @@ function createTerrain(scene, heightAt, renderables) {
 
       for (let iz = 0; iz < cellsPerChunk; iz++) {
         const z = originZ + (iz + 0.5) * step;
+        const nearestZ = THREE.MathUtils.clamp(0, z - step * 0.5, z + step * 0.5);
         for (let ix = 0; ix < cellsPerChunk; ix++) {
           const x = originX + (ix + 0.5) * step;
-          const radius = Math.hypot(x, z);
-          if (radius < 176 || radius > GRASS_RADIUS - 1) continue;
+          const nearestX = THREE.MathUtils.clamp(0, x - step * 0.5, x + step * 0.5);
+          const nearestRadius = Math.hypot(nearestX, nearestZ);
+          if (nearestRadius < POOL_RADIUS + 0.8 || nearestRadius > GRASS_RADIUS) continue;
+
           const a = iz * side + ix;
           const b = a + 1;
           const c = a + side;
@@ -177,7 +205,6 @@ function createTerrain(scene, heightAt, renderables) {
         }
       }
 
-      // Skip empty central / outer chunks.
       if (!indices.length) continue;
 
       const geometry = new THREE.BufferGeometry();
@@ -240,7 +267,7 @@ function pointInReservedArea(x, z, routePoints) {
 
 function createForests(scene, heightAt, routePoints, rnd, renderables) {
   const trees = [];
-  const cell = 25;
+  const cell = 14;
   const half = GRASS_RADIUS - 80;
   for (let x0 = -half; x0 <= half; x0 += cell) {
     for (let z0 = -half; z0 <= half; z0 += cell) {
@@ -251,7 +278,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       const forestMask =
         valueNoise(x / 1250, z / 1250, 71) * 0.62 +
         valueNoise(x / 2650, z / 2650, 73) * 0.38;
-      if (forestMask < 0.38 || rnd() > 0.53) continue;
+      if (forestMask < 0.32 || rnd() > 0.40) continue;
 
       const groundY = heightAt(x, z) ?? 0;
       trees.push({
