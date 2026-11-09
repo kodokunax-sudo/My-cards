@@ -1,199 +1,365 @@
 import * as THREE from 'three';
 
 const EPSILON = 0.035;
+const CELL_SIZE = 32;
 const ROUND_GEOMETRIES = new Set([
   'CylinderGeometry',
   'ConeGeometry',
   'SphereGeometry',
   'IcosahedronGeometry',
+  'DodecahedronGeometry',
   'LatheGeometry',
 ]);
 
+function cellKey(x, z) {
+  return `${x},${z}`;
+}
+
+function angleInGap(angle, start, end) {
+  if (angle < 0) angle += Math.PI * 2;
+  return start <= end
+    ? angle >= start && angle <= end
+    : angle >= start || angle <= end;
+}
+
 /**
- * Scene-wide static collision map.
- * Every Mesh is solid by default. Only meshes explicitly tagged noCollider
- * (water surfaces, water jets, sky dome and visual-only effects) are ignored.
- * Meshes tagged collisionMode="ring" represent hollow circular walls.
+ * Static collision world with a spatial grid.
+ * Only explicitly walkable meshes are floor candidates. Decorative foliage,
+ * water surfaces and the terrain render mesh do not become accidental floors.
  */
-export function createPhysicsWorld(scene) {
+export function createPhysicsWorld(scene, worldInfo = null) {
   scene.updateMatrixWorld(true);
 
   const floors = [];
   const colliders = [];
+  const grid = new Map();
   const raycaster = new THREE.Raycaster();
   const down = new THREE.Vector3(0, -1, 0);
   const instanceMatrix = new THREE.Matrix4();
   const worldMatrix = new THREE.Matrix4();
+  const inverseMatrix = new THREE.Matrix4();
   const center = new THREE.Vector3();
   const position = new THREE.Vector3();
   const rotation = new THREE.Quaternion();
   const scale = new THREE.Vector3();
 
+  function insertCollider(shape) {
+    colliders.push(shape);
+    const minCellX = Math.floor(shape.minX / CELL_SIZE);
+    const maxCellX = Math.floor(shape.maxX / CELL_SIZE);
+    const minCellZ = Math.floor(shape.minZ / CELL_SIZE);
+    const maxCellZ = Math.floor(shape.maxZ / CELL_SIZE);
+
+    for (let cx = minCellX; cx <= maxCellX; cx++) {
+      for (let cz = minCellZ; cz <= maxCellZ; cz++) {
+        const key = cellKey(cx, cz);
+        let bucket = grid.get(key);
+        if (!bucket) {
+          bucket = [];
+          grid.set(key, bucket);
+        }
+        bucket.push(shape);
+      }
+    }
+  }
+
+  function addShape(object, matrix) {
+    const geometry = object.geometry;
+    const localBounds = geometry.boundingBox;
+    const bounds = localBounds.clone().applyMatrix4(matrix);
+    if (bounds.max.y - bounds.min.y < 0.06) return;
+
+    if (object.userData.collisionMode === 'ring') {
+      localBounds.getCenter(center);
+      center.applyMatrix4(matrix);
+      matrix.decompose(position, rotation, scale);
+      const radius = (object.userData.collisionRadius ??
+        Math.max(localBounds.max.x, localBounds.max.z)) *
+        Math.max(Math.abs(scale.x), Math.abs(scale.z));
+      const thickness = (object.userData.collisionThickness ?? 0.8) *
+        Math.max(Math.abs(scale.x), Math.abs(scale.z));
+      insertCollider({
+        kind: 'ring',
+        x: center.x,
+        z: center.z,
+        radius,
+        thickness,
+        gapStart: object.userData.collisionGapStart ?? null,
+        gapEnd: object.userData.collisionGapEnd ?? null,
+        minY: bounds.min.y,
+        maxY: bounds.max.y,
+        minX: center.x - radius - thickness,
+        maxX: center.x + radius + thickness,
+        minZ: center.z - radius - thickness,
+        maxZ: center.z + radius + thickness,
+      });
+      return;
+    }
+
+    if (ROUND_GEOMETRIES.has(geometry.type)) {
+      bounds.getCenter(center);
+      const radius = Math.max(
+        (bounds.max.x - bounds.min.x) * 0.5,
+        (bounds.max.z - bounds.min.z) * 0.5
+      );
+      insertCollider({
+        kind: 'round',
+        x: center.x,
+        z: center.z,
+        radius,
+        minY: bounds.min.y,
+        maxY: bounds.max.y,
+        minX: center.x - radius,
+        maxX: center.x + radius,
+        minZ: center.z - radius,
+        maxZ: center.z + radius,
+      });
+      return;
+    }
+
+    if (geometry.type === 'BoxGeometry') {
+      const inverse = inverseMatrix.copy(matrix).invert().clone();
+      matrix.decompose(position, rotation, scale);
+      const minScale = Math.max(0.001, Math.min(
+        Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z)
+      ));
+      insertCollider({
+        kind: 'obb',
+        inverse,
+        bounds: localBounds.clone(),
+        localRadiusScale: minScale,
+        minY: bounds.min.y,
+        maxY: bounds.max.y,
+        minX: bounds.min.x,
+        maxX: bounds.max.x,
+        minZ: bounds.min.z,
+        maxZ: bounds.max.z,
+      });
+      return;
+    }
+
+    insertCollider({
+      kind: 'box',
+      box: bounds,
+      minY: bounds.min.y,
+      maxY: bounds.max.y,
+      minX: bounds.min.x,
+      maxX: bounds.max.x,
+      minZ: bounds.min.z,
+      maxZ: bounds.max.z,
+    });
+  }
+
   scene.traverse((object) => {
     if (!object.isMesh || object.userData.noCollider || !object.visible) return;
 
-    // Every solid object is also a possible landing surface. This means
-    // players can stand on props and platforms instead of falling through them.
-    floors.push(object);
+    if (object.userData.walkable) floors.push(object);
 
     const geometry = object.geometry;
     if (!geometry.boundingBox) geometry.computeBoundingBox();
     if (!geometry.boundingBox || geometry.boundingBox.isEmpty()) return;
 
-    const addShape = (matrix) => {
-      const box = geometry.boundingBox.clone().applyMatrix4(matrix);
-      if (box.max.y - box.min.y < 0.06) return;
-
-      if (object.userData.collisionMode === 'ring') {
-        geometry.boundingBox.getCenter(center);
-        center.applyMatrix4(matrix);
-        matrix.decompose(position, rotation, scale);
-        colliders.push({
-          kind: 'ring',
-          x: center.x,
-          z: center.z,
-          radius: (object.userData.collisionRadius ??
-            Math.max(geometry.boundingBox.max.x, geometry.boundingBox.max.z)) *
-            Math.max(Math.abs(scale.x), Math.abs(scale.z)),
-          thickness: (object.userData.collisionThickness ?? 0.8) *
-            Math.max(Math.abs(scale.x), Math.abs(scale.z)),
-          gapStart: object.userData.collisionGapStart ?? null,
-          gapEnd: object.userData.collisionGapEnd ?? null,
-          minY: box.min.y,
-          maxY: box.max.y,
-        });
-        return;
-      }
-
-      if (ROUND_GEOMETRIES.has(geometry.type)) {
-        geometry.boundingBox.getCenter(center);
-        center.applyMatrix4(matrix);
-        matrix.decompose(position, rotation, scale);
-        colliders.push({
-          kind: 'round',
-          x: center.x,
-          z: center.z,
-          radius: Math.max(
-            (geometry.boundingBox.max.x - geometry.boundingBox.min.x) * 0.5 * Math.abs(scale.x),
-            (geometry.boundingBox.max.z - geometry.boundingBox.min.z) * 0.5 * Math.abs(scale.z)
-          ),
-          minY: box.min.y,
-          maxY: box.max.y,
-        });
-      } else {
-        colliders.push({ kind: 'box', box });
-      }
-    };
-
     if (object.isInstancedMesh) {
       for (let i = 0; i < object.count; i++) {
         object.getMatrixAt(i, instanceMatrix);
         worldMatrix.multiplyMatrices(object.matrixWorld, instanceMatrix);
-        addShape(worldMatrix);
+        addShape(object, worldMatrix);
       }
     } else {
-      addShape(object.matrixWorld);
+      addShape(object, object.matrixWorld);
     }
   });
 
-  function groundAt(x, z, feetY, maxStepUp = 0.46, maxDrop = 0.8) {
-    if (!floors.length) return null;
+  function nearbyShapes(x, z, radius = 0.5) {
+    const minX = Math.floor((x - radius) / CELL_SIZE);
+    const maxX = Math.floor((x + radius) / CELL_SIZE);
+    const minZ = Math.floor((z - radius) / CELL_SIZE);
+    const maxZ = Math.floor((z + radius) / CELL_SIZE);
+    const found = new Set();
 
-    raycaster.set(new THREE.Vector3(x, feetY + maxStepUp + 0.08, z), down);
-    raycaster.near = 0;
-    raycaster.far = maxStepUp + maxDrop + 0.16;
-
-    const hits = raycaster.intersectObjects(floors, false);
-    let best = null;
-    for (const hit of hits) {
-      const y = hit.point.y;
-      if (y > feetY + maxStepUp || y < feetY - maxDrop) continue;
-      if (best === null || y > best) best = y;
+    for (let cx = minX; cx <= maxX; cx++) {
+      for (let cz = minZ; cz <= maxZ; cz++) {
+        const bucket = grid.get(cellKey(cx, cz));
+        if (!bucket) continue;
+        for (const shape of bucket) found.add(shape);
+      }
     }
+    return found;
+  }
+
+  function groundAt(x, z, feetY, maxStepUp = 0.9, maxDrop = 1.35) {
+    const low = feetY - maxDrop;
+    const high = feetY + maxStepUp;
+    let best = null;
+
+    // The analytic height sampler is the real terrain collision surface.
+    const terrainY = worldInfo?.heightAt?.(x, z);
+    if (Number.isFinite(terrainY) && terrainY >= low && terrainY <= high) {
+      best = terrainY;
+    }
+
+    if (floors.length) {
+      raycaster.set(new THREE.Vector3(x, high + 0.08, z), down);
+      raycaster.near = 0;
+      raycaster.far = maxStepUp + maxDrop + 0.16;
+      const hits = raycaster.intersectObjects(floors, false);
+      for (const hit of hits) {
+        const y = hit.point.y;
+        if (y < low || y > high) continue;
+        if (best === null || y > best) best = y;
+      }
+    }
+
     return best;
   }
 
-  function isHeadBlocked(x, headY, z, radius) {
-    for (const shape of colliders) {
-      if (headY <= shape.minY + EPSILON || headY >= shape.maxY - EPSILON) continue;
+  function shapeBlocks(shape, x, feetY, z, radius, height) {
+    const headY = feetY + height;
+    if (headY <= shape.minY + EPSILON || feetY >= shape.maxY - EPSILON) return false;
 
+    if (shape.kind === 'ring') {
       const dx = x - shape.x;
       const dz = z - shape.z;
       const distance = Math.hypot(dx, dz);
+      if (shape.gapStart !== null && shape.gapEnd !== null &&
+        angleInGap(Math.atan2(dz, dx), shape.gapStart, shape.gapEnd)) return false;
+      return Math.abs(distance - shape.radius) < radius + shape.thickness * 0.5;
+    }
 
-      if (shape.kind === 'ring') {
-        if (shape.gapStart !== null && shape.gapEnd !== null) {
-          let angle = Math.atan2(dz, dx);
-          if (angle < 0) angle += Math.PI * 2;
-          const inGap = shape.gapStart <= shape.gapEnd
-            ? angle >= shape.gapStart && angle <= shape.gapEnd
-            : angle >= shape.gapStart || angle <= shape.gapEnd;
-          if (inGap) continue;
-        }
-        if (Math.abs(distance - shape.radius) < radius + shape.thickness * 0.5) return true;
-        continue;
-      }
+    if (shape.kind === 'round') {
+      return Math.hypot(x - shape.x, z - shape.z) < radius + shape.radius;
+    }
 
-      if (shape.kind === 'round') {
-        if (distance < radius + shape.radius) return true;
-        continue;
-      }
+    if (shape.kind === 'obb') {
+      const local = new THREE.Vector3(x, feetY + height * 0.5, z).applyMatrix4(shape.inverse);
+      const localRadius = radius / shape.localRadiusScale;
+      const closestX = THREE.MathUtils.clamp(local.x, shape.bounds.min.x, shape.bounds.max.x);
+      const closestZ = THREE.MathUtils.clamp(local.z, shape.bounds.min.z, shape.bounds.max.z);
+      const dx = local.x - closestX;
+      const dz = local.z - closestZ;
+      return dx * dx + dz * dz < localRadius * localRadius;
+    }
 
-      const box = shape.box;
-      if (x + radius <= box.min.x || x - radius >= box.max.x) continue;
-      if (z + radius <= box.min.z || z - radius >= box.max.z) continue;
-      const closestX = THREE.MathUtils.clamp(x, box.min.x, box.max.x);
-      const closestZ = THREE.MathUtils.clamp(z, box.min.z, box.max.z);
-      const nearestX = x - closestX;
-      const nearestZ = z - closestZ;
-      if (nearestX * nearestX + nearestZ * nearestZ < radius * radius) return true;
+    const box = shape.box;
+    if (x + radius <= box.min.x || x - radius >= box.max.x) return false;
+    if (z + radius <= box.min.z || z - radius >= box.max.z) return false;
+    const closestX = THREE.MathUtils.clamp(x, box.min.x, box.max.x);
+    const closestZ = THREE.MathUtils.clamp(z, box.min.z, box.max.z);
+    const dx = x - closestX;
+    const dz = z - closestZ;
+    return dx * dx + dz * dz < radius * radius;
+  }
+
+  function isHeadBlocked(x, headY, z, radius) {
+    const minY = headY - 0.55;
+    for (const shape of nearbyShapes(x, z, radius + 1)) {
+      if (headY <= shape.minY + EPSILON || minY >= shape.maxY - EPSILON) continue;
+      if (shapeBlocks(shape, x, headY - 0.55, z, radius, 0.55)) return true;
     }
     return false;
   }
 
   function isBlocked(x, feetY, z, radius, height) {
-    const headY = feetY + height;
-
-    for (const shape of colliders) {
-      if (headY <= shape.minY + EPSILON || feetY >= shape.maxY - EPSILON) continue;
-
-      const dx = x - shape.x;
-      const dz = z - shape.z;
-      const distance = Math.hypot(dx, dz);
-
-      if (shape.kind === 'ring') {
-        if (shape.gapStart !== null && shape.gapEnd !== null) {
-          let angle = Math.atan2(dz, dx);
-          if (angle < 0) angle += Math.PI * 2;
-          if (angle >= shape.gapStart && angle <= shape.gapEnd) continue;
-        }
-        const halfWall = shape.thickness * 0.5;
-        if (Math.abs(distance - shape.radius) < radius + halfWall) return true;
-        continue;
-      }
-
-      if (shape.kind === 'round') {
-        if (distance < radius + shape.radius) return true;
-        continue;
-      }
-
-      const box = shape.box;
-      if (x + radius <= box.min.x || x - radius >= box.max.x) continue;
-      if (z + radius <= box.min.z || z - radius >= box.max.z) continue;
-
-      const closestX = THREE.MathUtils.clamp(x, box.min.x, box.max.x);
-      const closestZ = THREE.MathUtils.clamp(z, box.min.z, box.max.z);
-      const nearestX = x - closestX;
-      const nearestZ = z - closestZ;
-      if (nearestX * nearestX + nearestZ * nearestZ < radius * radius) return true;
+    for (const shape of nearbyShapes(x, z, radius + 1)) {
+      if (shapeBlocks(shape, x, feetY, z, radius, height)) return true;
     }
     return false;
+  }
+
+  function resolvePosition(x, z, feetY, radius, height) {
+    let px = x, pz = z;
+    let changed = false;
+
+    // Recover gently if a spawn, a slope correction or a previous collision
+    // ever leaves the player slightly inside a solid object.
+    for (let iteration = 0; iteration < 5; iteration++) {
+      let pushed = false;
+      for (const shape of nearbyShapes(px, pz, radius + 8)) {
+        const headY = feetY + height;
+        if (headY <= shape.minY + EPSILON || feetY >= shape.maxY - EPSILON) continue;
+
+        if (shape.kind === 'round' || shape.kind === 'ring') {
+          const dx = px - shape.x;
+          const dz = pz - shape.z;
+          const distance = Math.hypot(dx, dz) || 0.0001;
+          if (shape.kind === 'ring') {
+            if (shape.gapStart !== null && shape.gapEnd !== null &&
+              angleInGap(Math.atan2(dz, dx), shape.gapStart, shape.gapEnd)) continue;
+            const penetration = radius + shape.thickness * 0.5 - Math.abs(distance - shape.radius);
+            if (penetration > 0) {
+              const direction = distance >= shape.radius ? 1 : -1;
+              px += (dx / distance) * penetration * direction;
+              pz += (dz / distance) * penetration * direction;
+              pushed = changed = true;
+            }
+          } else {
+            const penetration = radius + shape.radius - distance;
+            if (penetration > 0) {
+              px += (dx / distance) * penetration;
+              pz += (dz / distance) * penetration;
+              pushed = changed = true;
+            }
+          }
+          continue;
+        }
+
+        if (shape.kind === 'obb') {
+          const local = new THREE.Vector3(px, feetY + height * 0.5, pz).applyMatrix4(shape.inverse);
+          const r = radius / shape.localRadiusScale;
+          const minX = shape.bounds.min.x - r, maxX = shape.bounds.max.x + r;
+          const minZ = shape.bounds.min.z - r, maxZ = shape.bounds.max.z + r;
+          if (local.x > minX && local.x < maxX && local.z > minZ && local.z < maxZ) {
+            const options = [
+              { d: local.x - minX, x: minX - 0.02, z: local.z },
+              { d: maxX - local.x, x: maxX + 0.02, z: local.z },
+              { d: local.z - minZ, x: local.x, z: minZ - 0.02 },
+              { d: maxZ - local.z, x: local.x, z: maxZ + 0.02 },
+            ].sort((a, b) => a.d - b.d);
+            const candidate = new THREE.Vector3(options[0].x, local.y, options[0].z).applyMatrix4(
+              new THREE.Matrix4().copy(shape.inverse).invert()
+            );
+            px = candidate.x;
+            pz = candidate.z;
+            pushed = changed = true;
+          }
+          continue;
+        }
+
+        const box = shape.box;
+        const closestX = THREE.MathUtils.clamp(px, box.min.x, box.max.x);
+        const closestZ = THREE.MathUtils.clamp(pz, box.min.z, box.max.z);
+        let dx = px - closestX;
+        let dz = pz - closestZ;
+        let distance = Math.hypot(dx, dz);
+        if (distance < radius) {
+          if (distance < 0.0001) {
+            const sides = [
+              { d: px - box.min.x, x: box.min.x - radius - 0.02, z: pz },
+              { d: box.max.x - px, x: box.max.x + radius + 0.02, z: pz },
+              { d: pz - box.min.z, x: px, z: box.min.z - radius - 0.02 },
+              { d: box.max.z - pz, x: px, z: box.max.z + radius + 0.02 },
+            ].sort((a, b) => a.d - b.d);
+            px = sides[0].x;
+            pz = sides[0].z;
+          } else {
+            const penetration = radius - distance;
+            px += (dx / distance) * penetration;
+            pz += (dz / distance) * penetration;
+          }
+          pushed = changed = true;
+        }
+      }
+      if (!pushed) break;
+    }
+
+    return { x: px, z: pz, changed };
   }
 
   return {
     groundAt,
     isBlocked,
     isHeadBlocked,
-    stats: { floorMeshes: floors.length, colliderShapes: colliders.length },
+    resolvePosition,
+    stats: { floorMeshes: floors.length, colliderShapes: colliders.length, gridCells: grid.size },
   };
 }
