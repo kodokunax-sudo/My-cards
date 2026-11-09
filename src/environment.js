@@ -38,13 +38,13 @@ function plazaMaterial() {
           float ang = atan(vWPos.z, vWPos.x);
           float slab = abs(fract(ang * 14.0) - 0.5);
           float ring = abs(fract(r / 7.5) - 0.5);
-          float seam = smoothstep(0.5, 0.465, slab) * 0.30 + smoothstep(0.5, 0.455, ring) * 0.26;
+          float seam = (1.0 - smoothstep(0.465, 0.5, slab)) * 0.30 + (1.0 - smoothstep(0.455, 0.5, ring)) * 0.26;
           float grain = vnoise(vWPos.xz * 0.55) * 0.13 + vnoise(vWPos.xz * 6.0) * 0.05;
           diffuseColor.rgb *= (1.0 - seam);
           diffuseColor.rgb += vec3(0.030, 0.024, 0.012) * grain;
-          float band = smoothstep(1.6, 0.0, abs(r - 118.0)) + smoothstep(1.6, 0.0, abs(r - 59.0));
+          float band = (1.0 - smoothstep(0.0, 1.6, abs(r - 118.0))) + (1.0 - smoothstep(0.0, 1.6, abs(r - 59.0)));
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.30, 0.25, 0.21), band * 0.45);
-          float shade = smoothstep(170.0, 90.0, r);
+          float shade = (1.0 - smoothstep(90.0, 170.0, r));
           diffuseColor.rgb *= mix(0.82, 1.0, shade);
         }
       `);
@@ -250,7 +250,7 @@ export function createEnvironment(scene) {
       varying float vGlow;
       void main(){
         vec2 d = gl_PointCoord - 0.5;
-        float a = smoothstep(0.5, 0.0, length(d));
+        float a = (1.0 - smoothstep(0.0, 0.5, length(d)));
         gl_FragColor = vec4(vec3(1.0, 0.86, 0.45), a * vGlow * 0.85);
       }
     `,
