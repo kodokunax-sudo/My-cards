@@ -77,6 +77,7 @@ export function createSky(scene) {
   });
 
   const dome = new THREE.Mesh(new THREE.SphereGeometry(3000, 48, 32), material);
+  dome.userData.noCollider = true;
   dome.frustumCulled = false;
   dome.renderOrder = -1000;
   scene.add(dome);
