@@ -147,6 +147,7 @@ export function createFountain(scene) {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(t.r1, t.r0, t.h, 72), stone);
     m.position.y = t.y;
     m.castShadow = true; m.receiveShadow = true;
+    m.userData.walkable = true;
     group.add(m);
   });
   // карнизы по краям ярусов
@@ -154,6 +155,7 @@ export function createFountain(scene) {
     const torus = new THREE.Mesh(new THREE.TorusGeometry(r, t, 8, 96), marble);
     torus.rotation.x = Math.PI / 2; torus.position.y = y;
     torus.castShadow = true;
+    torus.userData.noCollider = true;
     group.add(torus);
   });
 
@@ -163,6 +165,7 @@ export function createFountain(scene) {
   const rail = new THREE.Mesh(new THREE.TorusGeometry(13.9, 0.17, 8, 120, Math.PI * 2 - 0.46), marble);
   rail.rotation.x = Math.PI / 2; rail.position.y = ISLAND_TOP + 1.0;
   rail.castShadow = true;
+  rail.userData.noCollider = true;
   const mat4 = new THREE.Matrix4();
   for (let i = 0; i < 40; i++) {
     const a = (i / 40) * Math.PI * 2;
@@ -324,6 +327,7 @@ export function createFountain(scene) {
   const deck = new THREE.Mesh(new THREE.BoxGeometry(deckLen, 0.6, 6.4), deckMat);
   deck.position.set(DECK_X0 + deckLen / 2, DECK_TOP - 0.3, 0);
   deck.castShadow = true; deck.receiveShadow = true;
+  deck.userData.walkable = true;
   group.add(deck);
 
   [-3.1, 3.1].forEach((z) => {
@@ -343,6 +347,7 @@ export function createFountain(scene) {
     const step = new THREE.Mesh(new THREE.BoxGeometry(0.4, h, 6.4), deckMat);
     step.position.set(DECK_X1 + 0.2 + i * 0.4, h / 2, 0);
     step.castShadow = true; step.receiveShadow = true;
+    step.userData.walkable = true;
     group.add(step);
   }
 
