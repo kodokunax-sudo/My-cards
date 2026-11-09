@@ -161,7 +161,9 @@ export function createPlayer(camera, domElement, physics, onModeChange) {
     const distance = Math.hypot(nx, nz);
     const nextInsideWater = distance < WATER_RADIUS + 0.35;
 
-    if (swimming && !nextInsideWater && !allowLeavingWater) return false;
+    // The player may leave the pool only after swimming above its stone rim.
+    if (swimming && !nextInsideWater && feetY < WATER_Y + 0.65) return false;
+    if (swimming && !nextInsideWater) allowLeavingWater = true;
 
     let nextFeet = feetY;
     if (!swimming || allowLeavingWater) {
