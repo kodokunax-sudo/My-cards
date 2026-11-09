@@ -133,8 +133,9 @@ function createHeightFunction(routePoints) {
     const bridgeBlend = 1 - smoothstep(7, 24, Math.hypot(x + 692, z - 300));
     height *= 1 - bridgeBlend;
 
+    const protectedFlat = Math.max(parkBlend, houseBlend, trailBlend);
     const gully = Math.pow(Math.max(0, 1 - Math.abs(valueNoise(x / 610, z / 610, 49) * 2 - 1)), 5);
-    height -= gully * 8.5 * (1 - parkBlend);
+    height -= gully * 8.5 * (1 - protectedFlat);
     return THREE.MathUtils.clamp(height, -22, 225);
   };
 }
