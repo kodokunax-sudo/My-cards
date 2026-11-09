@@ -156,7 +156,7 @@ function createHouse(scene, materials) {
     spawn: {
       x: -1600,
       y: 0.30,
-      z: 903.2,
+      z: 903.8,
       lookAt: { x: 0, y: 24, z: 0 },
     },
   };
