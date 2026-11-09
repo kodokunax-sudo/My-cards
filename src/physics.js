@@ -55,6 +55,8 @@ export function createPhysicsWorld(scene) {
             Math.max(Math.abs(scale.x), Math.abs(scale.z)),
           thickness: (object.userData.collisionThickness ?? 0.8) *
             Math.max(Math.abs(scale.x), Math.abs(scale.z)),
+          gapStart: object.userData.collisionGapStart ?? null,
+          gapEnd: object.userData.collisionGapEnd ?? null,
           minY: box.min.y,
           maxY: box.max.y,
         });
@@ -120,6 +122,11 @@ export function createPhysicsWorld(scene) {
       const distance = Math.hypot(dx, dz);
 
       if (shape.kind === 'ring') {
+        if (shape.gapStart !== null && shape.gapEnd !== null) {
+          let angle = Math.atan2(dz, dx);
+          if (angle < 0) angle += Math.PI * 2;
+          if (angle >= shape.gapStart && angle <= shape.gapEnd) continue;
+        }
         const halfWall = shape.thickness * 0.5;
         if (Math.abs(distance - shape.radius) < radius + halfWall) return true;
         continue;
