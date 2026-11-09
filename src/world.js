@@ -161,15 +161,19 @@ function createTerrain(scene, heightAt, renderables) {
     for (let cx = 0; cx < chunksPerAxis; cx++) {
       const originX = -GRASS_RADIUS + cx * chunkSize;
       const originZ = -GRASS_RADIUS + cz * chunkSize;
-      const side = cellsPerChunk + 1;
+      // One-cell halo around every chunk. It participates in normal
+      // calculation but its triangles are not rendered, so adjacent chunks
+      // share the same smooth edge normals and do not form visible seams.
+      const side = cellsPerChunk + 3;
       const positions = new Float32Array(side * side * 3);
       const colors = new Float32Array(side * side * 3);
+      const normalIndices = [];
       const indices = [];
 
-      for (let iz = 0; iz <= cellsPerChunk; iz++) {
-        const z = originZ + iz * step;
-        for (let ix = 0; ix <= cellsPerChunk; ix++) {
-          const x = originX + ix * step;
+      for (let iz = 0; iz < side; iz++) {
+        const z = originZ + (iz - 1) * step;
+        for (let ix = 0; ix < side; ix++) {
+          const x = originX + (ix - 1) * step;
           const index = (iz * side + ix) * 3;
           const radius = Math.hypot(x, z);
           const h = heightAt(x, z) ?? 0;
@@ -192,11 +196,11 @@ function createTerrain(scene, heightAt, renderables) {
         }
       }
 
-      for (let iz = 0; iz < cellsPerChunk; iz++) {
-        const z = originZ + (iz + 0.5) * step;
+      for (let iz = 0; iz < cellsPerChunk + 2; iz++) {
+        const z = originZ + (iz - 0.5) * step;
         const nearestZ = THREE.MathUtils.clamp(0, z - step * 0.5, z + step * 0.5);
-        for (let ix = 0; ix < cellsPerChunk; ix++) {
-          const x = originX + (ix + 0.5) * step;
+        for (let ix = 0; ix < cellsPerChunk + 2; ix++) {
+          const x = originX + (ix - 0.5) * step;
           const nearestX = THREE.MathUtils.clamp(0, x - step * 0.5, x + step * 0.5);
           const nearestRadius = Math.hypot(nearestX, nearestZ);
           if (nearestRadius < POOL_RADIUS + 0.8 || nearestRadius > GRASS_RADIUS) continue;
@@ -205,7 +209,10 @@ function createTerrain(scene, heightAt, renderables) {
           const b = a + 1;
           const c = a + side;
           const d = c + 1;
-          indices.push(a, c, b, b, c, d);
+          normalIndices.push(a, c, b, b, c, d);
+          if (ix >= 1 && ix <= cellsPerChunk && iz >= 1 && iz <= cellsPerChunk) {
+            indices.push(a, c, b, b, c, d);
+          }
         }
       }
 
@@ -214,8 +221,10 @@ function createTerrain(scene, heightAt, renderables) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      geometry.setIndex(indices);
+      geometry.setIndex(normalIndices);
       geometry.computeVertexNormals();
+      // Keep halo triangles out of the draw call while retaining their normals.
+      geometry.setIndex(indices);
 
       const terrain = new THREE.Mesh(geometry, material);
       terrain.receiveShadow = true;
