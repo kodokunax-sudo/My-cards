@@ -224,7 +224,6 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   let messageCooldown = 0;
   const raycaster = new THREE.Raycaster();
   const center = new THREE.Vector2(0, 0);
-  const hitMeshes = world.forests.interactiveMeshes.concat(stoneMesh);
 
   function nearWorkbench() {
     return !!workbench && Math.hypot(camera.position.x - workbench.x, camera.position.z - workbench.z) <= 4.2;
@@ -364,7 +363,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
   function currentTarget() {
     raycaster.setFromCamera(center, camera);
-    const hits = raycaster.intersectObjects(hitMeshes, false);
+    const localTrees = world.forests.getInteractiveMeshes(camera.position.x, camera.position.z);
+    const hits = raycaster.intersectObjects(localTrees.concat(stoneMesh), false);
     for (const hit of hits) {
       if (hit.distance > 6.2 || hit.instanceId === undefined) continue;
       if (hit.object === stoneMesh) {
