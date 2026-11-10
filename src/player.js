@@ -320,7 +320,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     const targetFeet = surfaceY - EYE_HEIGHT + EYE_WATER_OFFSET;
     const verticalInput = THREE.MathUtils.clamp(
       (keys.Space ? 1 : 0) -
-      (keys.KeyC ? 1 : 0) * -1 + vertical,
+      (keys.KeyC ? 1 : 0) + vertical,
       -1, 1
     );
 
