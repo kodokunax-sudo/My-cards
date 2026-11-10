@@ -997,7 +997,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     const key = `${cx},${cz}`;
     let bucket = buckets.get(key);
     if (!bucket) {
-      bucket = { trees: [], variants: [[], [], [], [], [], [], [], []] };
+      bucket = { trees: [], variants: [[], [], [], [], [], [], [], []], interactiveMeshes: [] };
       buckets.set(key, bucket);
     }
     bucket.trees.push(tree);
@@ -1050,6 +1050,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     registerChunkMesh(trunks, renderables, 2800, true);
     scene.add(trunks);
     meshes.push(trunks);
+    bucket.interactiveMeshes.push(trunks);
 
     for (let variant = 0; variant < bucket.variants.length; variant++) {
       const group = bucket.variants[variant];
@@ -1089,6 +1090,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       registerChunkMesh(crowns, renderables, 2800, true);
       scene.add(crowns);
       meshes.push(crowns);
+      bucket.interactiveMeshes.push(crowns);
     }
   }
 
@@ -1101,6 +1103,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     let bucket = collisionGrid.get(key);
     if (!bucket) { bucket = []; collisionGrid.set(key, bucket); }
     tree.radius = 0.48 * tree.scale;
+    tree.seed = tree.rotation;
     tree.minY = tree.y;
     tree.maxY = tree.y + 8 * tree.scale;
     tree.removed = false;
@@ -1171,9 +1174,23 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     return false;
   }
 
+  function getInteractiveMeshes(x, z) {
+    const cx = Math.floor(x / chunkSize);
+    const cz = Math.floor(z / chunkSize);
+    const nearby = [];
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const bucket = buckets.get(`${cx + dx},${cz + dz}`);
+        if (bucket) nearby.push(...bucket.interactiveMeshes);
+      }
+    }
+    return nearby;
+  }
+
   return {
     count: trees.length, chunks: buckets.size, meshes,
     interactiveMeshes: meshes,
+    getInteractiveMeshes,
     trees,
     remove: removeTree,
     removeById(id) { return removeTree(trees[id]); },
