@@ -57,20 +57,7 @@ function valueNoise(x, z, seed = 1) {
   );
 }
 
-const RIVER_SURFACE_Y = 0.035;
-const RIVER_LEVEL_OFFSET = -4.0;
-const RIVER_EXTRA_DROP = 8.0;
 const RIVER_WATER_WIDTH_SCALE = 1.2;
-const RIVER_DEEPENING_FACTOR = 3.0;
-const MAIN_DEEP_REACH_START = -3600;
-const MAIN_DEEP_REACH_END = 3600;
-const TRIBUTARY_DEEP_REACH_START = -2240;
-const TRIBUTARY_DEEP_REACH_END = 2240;
-
-function deepReachBlend(station, start, end, fade = 600) {
-  return smoothstep(start - fade, start, station) *
-    (1 - smoothstep(end, end + fade, station));
-}
 
 function mainRiverX(z) {
   return -900 + 840 * Math.sin(z / 1200);
@@ -117,22 +104,6 @@ function mainRiverHalfWidth(z) {
   );
 }
 
-function mainRiverSurface(z) {
-  const downstreamDrop = (z + 4500) * 0.00008;
-  const bridgeCut = 3.8 * gaussian(z, 300, 190);
-  const lowerReach = 1.25 * gaussian(z, -2050, 460);
-  const raisedReach = 1.05 * gaussian(z, 1550, 540);
-  const shallowReach = 0.85 * gaussian(z, 3400, 510);
-
-  // Most of the river runs eight metres lower. Soft transitions preserve
-  // the remaining 20% as higher reaches instead of creating hard water steps.
-  const deepReach = deepReachBlend(z, MAIN_DEEP_REACH_START, MAIN_DEEP_REACH_END);
-  return RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET - downstreamDrop - bridgeCut +
-    lowerReach + raisedReach - shallowReach +
-    0.34 * Math.sin(z / 1280 + 0.25) +
-    0.17 * Math.sin(z / 455 + 0.8) - RIVER_EXTRA_DROP * deepReach;
-}
-
 function tributaryZ(x) {
   return 4200 + 180 * Math.sin(x / 650);
 }
@@ -169,51 +140,101 @@ function tributaryHalfWidth(x) {
   );
 }
 
-function tributarySurface(x) {
-  const junctionZ = tributaryZ(x);
-  const deepReach = deepReachBlend(x, TRIBUTARY_DEEP_REACH_START, TRIBUTARY_DEEP_REACH_END);
-  return mainRiverSurface(junctionZ - 120) - RIVER_EXTRA_DROP * deepReach +
-    0.06 * Math.sin(x / 880 + 0.4);
-}
-
 function gaussian(value, center, width) {
   const t = (value - center) / width;
   return Math.exp(-0.5 * t * t);
 }
 
-// Река состоит из глубоких плёсов и мелких перекатов, а не из одной
-// одинаковой ванны по всей длине.
-function mainRiverDepth(z) {
-  const longPool = 9.4 + 1.45 * Math.sin(z / 1350 + 0.55) +
-    0.85 * Math.sin(z / 470 - 0.3);
-  const deepPools = Math.max(
-    gaussian(z, -2850, 310),
-    gaussian(z, 250, 390),
-    gaussian(z, 2380, 330)
-  );
-  const shallowBars = Math.max(
-    gaussian(z, -1580, 245),
-    gaussian(z, 1280, 270),
-    gaussian(z, 3550, 210)
-  );
-  return THREE.MathUtils.clamp(
-    (longPool + deepPools * 1.4 - shallowBars * 6.1) * RIVER_DEEPENING_FACTOR,
-    9.3, 38.4
-  );
-}
+// Water levels and channel depth are measured from the actual terrain on
+// both sides of each river. The terrain is sampled before the channel is cut,
+// so these values cannot depend on a fixed world-space Y level or recurse.
+function createRiverProfiles(baseHeightAt) {
+  function measureBanks(centerX, centerZ, normalX, normalZ, waterHalfWidth) {
+    const nearOffset = waterHalfWidth + 3.5;
+    const shoulderOffset = waterHalfWidth + 48;
+    const sample = (offset) => baseHeightAt(
+      centerX + normalX * offset,
+      centerZ + normalZ * offset
+    ) ?? 0;
+    const nearLeft = sample(nearOffset);
+    const nearRight = sample(-nearOffset);
+    const shoulderLeft = sample(shoulderOffset);
+    const shoulderRight = sample(-shoulderOffset);
+    const meanNear = (nearLeft + nearRight) * 0.5;
+    const meanShoulder = (shoulderLeft + shoulderRight) * 0.5;
+    const bankRise = Math.max(
+      0,
+      meanShoulder - meanNear,
+      shoulderLeft - nearLeft,
+      shoulderRight - nearRight
+    );
+    return {
+      lowerBank: Math.min(nearLeft, nearRight),
+      bankRise,
+      bankDifference: Math.abs(nearLeft - nearRight),
+    };
+  }
 
-function tributaryDepth(x) {
-  const longPool = 6.9 + 1.05 * Math.sin(x / 820 - 0.7);
-  const deepPool = Math.max(gaussian(x, -1450, 370), gaussian(x, 900, 330));
-  const shallowBar = Math.max(gaussian(x, -300, 235), gaussian(x, 2050, 260));
-  return THREE.MathUtils.clamp(
-    (longPool + deepPool * 1.15 - shallowBar * 4.5) * RIVER_DEEPENING_FACTOR,
-    8.4, 28.8
-  );
-}
+  function mainBankData(station) {
+    const slope = 0.7 * Math.cos(station / 1200);
+    const normalLength = Math.hypot(1, slope);
+    const width = mainRiverHalfWidth(station) * RIVER_WATER_WIDTH_SCALE;
+    return measureBanks(
+      mainRiverX(station), station,
+      1 / normalLength, -slope / normalLength, width
+    );
+  }
 
-const BRIDGE_DECK_TOP_Y = mainRiverSurface(300) + 2.4;
-const BRIDGE_VERTICAL_OFFSET = BRIDGE_DECK_TOP_Y - 1.08;
+  function tributaryBankData(station) {
+    const slope = (180 / 650) * Math.cos(station / 650);
+    const normalLength = Math.hypot(slope, 1);
+    const width = tributaryHalfWidth(station) * RIVER_WATER_WIDTH_SCALE;
+    return measureBanks(
+      station, tributaryZ(station),
+      -slope / normalLength, 1 / normalLength, width
+    );
+  }
+
+  const mainSurface = (station) => {
+    const banks = mainBankData(station);
+    // The water sits just below the lower of the two banks. Small ripples
+    // remain, but the shoreline itself determines the actual water height.
+    return banks.lowerBank - 0.32 +
+      0.045 * Math.sin(station / 510) +
+      0.025 * Math.sin(station / 177);
+  };
+
+  const mainDepth = (station) => {
+    const banks = mainBankData(station);
+    const width = mainRiverHalfWidth(station) * RIVER_WATER_WIDTH_SCALE;
+    return THREE.MathUtils.clamp(
+      3.8 + width * 0.24 + banks.bankRise * 0.95 + banks.bankDifference * 0.12,
+      5.2, 23
+    );
+  };
+
+  const tributarySurface = (station) => {
+    const banks = tributaryBankData(station);
+    return banks.lowerBank - 0.30 +
+      0.035 * Math.sin(station / 430 + 0.4);
+  };
+
+  const tributaryDepth = (station) => {
+    const banks = tributaryBankData(station);
+    const width = tributaryHalfWidth(station) * RIVER_WATER_WIDTH_SCALE;
+    return THREE.MathUtils.clamp(
+      3.4 + width * 0.24 + banks.bankRise * 0.9 + banks.bankDifference * 0.10,
+      4.8, 19
+    );
+  };
+
+  return {
+    mainSurface,
+    mainDepth,
+    tributarySurface,
+    tributaryDepth,
+  };
+}
 
 function distanceToSegment2D(px, pz, a, b) {
   const dx = b.x - a.x, dz = b.z - a.z;
@@ -558,7 +579,7 @@ function createFlowingWaterMaterial(baseColor) {
   return material;
 }
 
-function createHeightFunction(routePoints) {
+function createBaseTerrainHeightFunction(routePoints) {
   return (x, z) => {
     if (Math.hypot(x, z) > GRASS_RADIUS + 30) return null;
 
@@ -577,7 +598,6 @@ function createHeightFunction(routePoints) {
       height += peak * Math.exp(-(dx * dx + dz * dz) / (2 * radius * radius));
     }
 
-    // Long ridge chains create actual mountain silhouettes instead of isolated bumps.
     for (const [ax, az, bx, bz, width, peak] of RIDGES) {
       const dx = bx - ax, dz = bz - az;
       const lengthSq = dx * dx + dz * dz;
@@ -588,60 +608,17 @@ function createHeightFunction(routePoints) {
       height += peak * Math.exp(-(distance * distance) / (2 * width * width)) * endFade;
     }
 
-    // Preserve a flat central park and a compact clearing around the house.
     const parkBlend = 1 - smoothstep(210, 390, Math.hypot(x, z));
     const houseBlend = 1 - smoothstep(38, 82, Math.hypot(x + 1600, z - 900));
     const trailBlend = 1 - smoothstep(12, 34, distanceToPolyline(x, z, routePoints));
-    // River valleys have a rounded shoulder and a narrow, deeper channel.
-    // The former 136m flat bench made the water read as a giant rectangular slab.
-    // Distances are measured perpendicular to the curved centreline,
-    // matching the normal-based ribbon geometry used by the visible water.
-    const flatten = Math.max(parkBlend, houseBlend, trailBlend);
-    height *= 1 - flatten;
-
-    // Width, water level and depth are sampled from the closest point on
-    // each centreline. The wet edge and the start of the sandy bank therefore
-    // share the exact same cross-section.
-    const mainStation = mainRiverStation(x, z);
-    const mainWidth = mainRiverHalfWidth(mainStation.station);
-    const mainSurface = mainRiverSurface(mainStation.station);
-    const mainDepth = mainRiverDepth(mainStation.station);
-    const mainDistance = mainStation.distance;
-    const mainWaterWidth = mainWidth * RIVER_WATER_WIDTH_SCALE;
-    const mainProfile = mainDistance <= mainWaterWidth
-      ? mainSurface - mainDepth +
-        smoothstep(mainWidth * 0.28, mainWaterWidth, mainDistance) * mainDepth
-      : mainSurface + smoothstep(mainWaterWidth, mainWaterWidth + 18, mainDistance) * 1.45;
-    const mainBankBlend = 1 - smoothstep(mainWaterWidth + 15, mainWaterWidth + 58, mainDistance);
-    height = THREE.MathUtils.lerp(height, mainProfile, mainBankBlend);
-
-    const sideStation = tributaryStation(x, z);
-    const sideWidth = tributaryHalfWidth(sideStation.station);
-    const sideSurface = tributarySurface(sideStation.station);
-    const sideDepth = tributaryDepth(sideStation.station);
-    const sideDistance = sideStation.distance;
-    const sideWaterWidth = sideWidth * RIVER_WATER_WIDTH_SCALE;
-    const sideProfile = sideDistance <= sideWaterWidth
-      ? sideSurface - sideDepth +
-        smoothstep(sideWidth * 0.28, sideWaterWidth, sideDistance) * sideDepth
-      : sideSurface + smoothstep(sideWaterWidth, sideWaterWidth + 16, sideDistance) * 1.25;
-    const tributaryBankBlend = 1 - smoothstep(sideWaterWidth + 14, sideWaterWidth + 52, sideDistance);
-    height = THREE.MathUtils.lerp(height, sideProfile, tributaryBankBlend);
-
-    // Shape a broad, smooth approach trench down to the new bridge elevation.
-    // The road itself interpolates from the surrounding ground to the deck.
-    const bridgeApproachX = 1 - smoothstep(45, 190, Math.abs(x + 692));
-    const bridgeApproachZ = 1 - smoothstep(8, 22, Math.abs(z - 300));
-    const bridgeApproachBlend = bridgeApproachX * bridgeApproachZ;
-    height = Math.min(height, (BRIDGE_DECK_TOP_Y - 0.18) * bridgeApproachBlend);
-
-
     const protectedFlat = Math.max(parkBlend, houseBlend, trailBlend);
+    height *= 1 - protectedFlat;
+
     const gullyNoise = valueNoise(x / 610, z / 610, 49);
     const gully = Math.pow(Math.max(0, 1 - Math.abs(gullyNoise * 2 - 1)), 5);
     const shallowErosion = Math.pow(Math.max(0, 1 - Math.abs(valueNoise(x / 245, z / 245, 53) * 2 - 1)), 4);
     height -= (gully * 10.5 + shallowErosion * 2.2) * (1 - protectedFlat);
-    // A handful of winding erosion cuts add small ravines between the hills.
+
     const ravines = [
       [-3900, -1800, -2600, -650, 34, 7.5],
       [900, -4300, 2050, -2750, 28, 6.2],
@@ -657,6 +634,49 @@ function createHeightFunction(routePoints) {
       erosion = Math.max(erosion, channel * depth + shoulder * depth * 0.22);
     }
     height -= erosion * (1 - protectedFlat);
+    return THREE.MathUtils.clamp(height, -65, 225);
+  };
+}
+
+function createHeightFunction(baseHeightAt, riverProfiles, bridgeDeckTopY) {
+  return (x, z) => {
+    if (Math.hypot(x, z) > GRASS_RADIUS + 30) return null;
+    let height = baseHeightAt(x, z) ?? 0;
+
+    const mainStation = mainRiverStation(x, z);
+    const mainWidth = mainRiverHalfWidth(mainStation.station);
+    const mainSurface = riverProfiles.mainSurface(mainStation.station);
+    const mainDepth = riverProfiles.mainDepth(mainStation.station);
+    const mainDistance = mainStation.distance;
+    const mainWaterWidth = mainWidth * RIVER_WATER_WIDTH_SCALE;
+    const mainProfile = mainDistance <= mainWaterWidth
+      ? mainSurface - mainDepth +
+        smoothstep(mainWidth * 0.28, mainWaterWidth, mainDistance) * mainDepth
+      : mainSurface + smoothstep(mainWaterWidth, mainWaterWidth + 18, mainDistance) * 1.45;
+    const mainBankBlend = 1 - smoothstep(mainWaterWidth + 15, mainWaterWidth + 58, mainDistance);
+    height = THREE.MathUtils.lerp(height, mainProfile, mainBankBlend);
+
+    const sideStation = tributaryStation(x, z);
+    const sideWidth = tributaryHalfWidth(sideStation.station);
+    const sideSurface = riverProfiles.tributarySurface(sideStation.station);
+    const sideDepth = riverProfiles.tributaryDepth(sideStation.station);
+    const sideDistance = sideStation.distance;
+    const sideWaterWidth = sideWidth * RIVER_WATER_WIDTH_SCALE;
+    const sideProfile = sideDistance <= sideWaterWidth
+      ? sideSurface - sideDepth +
+        smoothstep(sideWidth * 0.28, sideWaterWidth, sideDistance) * sideDepth
+      : sideSurface + smoothstep(sideWaterWidth, sideWaterWidth + 16, sideDistance) * 1.25;
+    const tributaryBankBlend = 1 - smoothstep(sideWaterWidth + 14, sideWaterWidth + 52, sideDistance);
+    height = THREE.MathUtils.lerp(height, sideProfile, tributaryBankBlend);
+
+    // Only the bridge approach is lowered. Outside its feathered footprint,
+    // preserve the unmodified local terrain elevation.
+    const bridgeApproachX = 1 - smoothstep(45, 190, Math.abs(x + 692));
+    const bridgeApproachZ = 1 - smoothstep(8, 22, Math.abs(z - 300));
+    const bridgeApproachBlend = bridgeApproachX * bridgeApproachZ;
+    const bridgeTarget = THREE.MathUtils.lerp(height, bridgeDeckTopY - 0.18, bridgeApproachBlend);
+    height = Math.min(height, bridgeTarget);
+
     return THREE.MathUtils.clamp(height, -65, 225);
   };
 }
@@ -1458,7 +1478,7 @@ function addRibbonChunks(scene, points, halfWidth, y, material, name, options = 
   return meshes;
 }
 
-function createRiver(scene, rnd, heightAt, analyticHeightAt) {
+function createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles) {
   const centerX = mainRiverX;
   const points = [];
   for (let i = 0; i <= 1800; i++) {
@@ -1469,7 +1489,7 @@ function createRiver(scene, rnd, heightAt, analyticHeightAt) {
   // Water alone widens by 20%. The terrain cross-section and shoreline
   // elevation keep their original width.
   const mainWidthAt = (point) => mainRiverHalfWidth(point.z) * RIVER_WATER_WIDTH_SCALE;
-  const mainLevelAt = (point) => mainRiverSurface(point.z);
+  const mainLevelAt = (point) => riverProfiles.mainSurface(point.z);
   const waterMaterial = createFlowingWaterMaterial(0x286d7d);
   const water = addRibbonChunks(scene, points, mainWidthAt, mainLevelAt, waterMaterial,
     'main-river-water', { noCollider: true, renderOrder: 2 });
@@ -1478,7 +1498,7 @@ function createRiver(scene, rnd, heightAt, analyticHeightAt) {
   );
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x8a7659, roughness: 1 });
-  const riverBedHeight = (x, z) => (heightAt(x, z) ?? (mainRiverSurface(z) - mainRiverDepth(z))) + 0.045;
+  const riverBedHeight = (x, z) => (heightAt(x, z) ?? (riverProfiles.mainSurface(z) - riverProfiles.mainDepth(z))) + 0.045;
   const bed = addRibbonChunks(scene, points, 5.8, -3.25, bedMaterial,
     'main-river-bed', { walkable: true, receiveShadow: true, heightAt: riverBedHeight });
 
@@ -1524,14 +1544,14 @@ function createRiver(scene, rnd, heightAt, analyticHeightAt) {
     water, banks, bed, waterMaterial, centerX, halfWidth: 14.2,
     region: {
       id: 'river',
-      surfaceY: RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET,
-      surfaceAt: (x, z) => mainRiverSurface(mainRiverStation(x, z).station),
-      bottomY: RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET - 38.4 - RIVER_EXTRA_DROP,
+      surfaceY: riverProfiles.mainSurface(300),
+      surfaceAt: (x, z) => riverProfiles.mainSurface(mainRiverStation(x, z).station),
+      bottomY: riverProfiles.mainSurface(300) - riverProfiles.mainDepth(300) + 0.08,
       bottomAt: (x, z) => {
         const station = mainRiverStation(x, z).station;
-        return mainRiverSurface(station) - mainRiverDepth(station) + 0.08;
+        return riverProfiles.mainSurface(station) - riverProfiles.mainDepth(station) + 0.08;
       },
-      exitFeetY: mainRiverSurface(300) + 2.4 - 0.55,
+      exitFeetY: riverProfiles.mainSurface(300) + 2.4 - 0.55,
       exitHeight: 0.95,
       contains: (x, z) => {
         const station = mainRiverStation(x, z);
@@ -1541,7 +1561,7 @@ function createRiver(scene, rnd, heightAt, analyticHeightAt) {
   };
 }
 
-function createTributary(scene, heightAt, analyticHeightAt) {
+function createTributary(scene, heightAt, analyticHeightAt, riverProfiles) {
   const centerZ = tributaryZ;
   const points = [];
   for (let i = 0; i <= 1120; i++) {
@@ -1550,7 +1570,7 @@ function createTributary(scene, heightAt, analyticHeightAt) {
   }
 
   const tributaryWidthAt = (point) => tributaryHalfWidth(point.x) * RIVER_WATER_WIDTH_SCALE;
-  const tributaryLevelAt = (point) => tributarySurface(point.x);
+  const tributaryLevelAt = (point) => riverProfiles.tributarySurface(point.x);
   const waterMaterial = createFlowingWaterMaterial(0x327987);
   const water = addRibbonChunks(scene, points, tributaryWidthAt, tributaryLevelAt, waterMaterial,
     'tributary-water', { noCollider: true, renderOrder: 2 });
@@ -1559,7 +1579,7 @@ function createTributary(scene, heightAt, analyticHeightAt) {
   );
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x8e7b60, roughness: 1 });
-  const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? (tributarySurface(x) - tributaryDepth(x))) + 0.045;
+  const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? (riverProfiles.tributarySurface(x) - riverProfiles.tributaryDepth(x))) + 0.045;
   const bed = addRibbonChunks(scene, points, 4.4, -2.55, bedMaterial,
     'tributary-bed', { walkable: true, receiveShadow: true, heightAt: tributaryBedHeight });
 
@@ -1567,14 +1587,14 @@ function createTributary(scene, heightAt, analyticHeightAt) {
     water, banks, bed, waterMaterial,
     region: {
       id: 'south-river',
-      surfaceY: RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET,
-      surfaceAt: (x, z) => tributarySurface(tributaryStation(x, z).station),
-      bottomY: RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET - 28.8 - RIVER_EXTRA_DROP,
+      surfaceY: riverProfiles.tributarySurface(0),
+      surfaceAt: (x, z) => riverProfiles.tributarySurface(tributaryStation(x, z).station),
+      bottomY: riverProfiles.tributarySurface(0) - riverProfiles.tributaryDepth(0) + 0.08,
       bottomAt: (x, z) => {
         const station = tributaryStation(x, z).station;
-        return tributarySurface(station) - tributaryDepth(station) + 0.08;
+        return riverProfiles.tributarySurface(station) - riverProfiles.tributaryDepth(station) + 0.08;
       },
-      exitFeetY: tributarySurface(0) - 0.55,
+      exitFeetY: riverProfiles.tributarySurface(0) - 0.55,
       exitHeight: 0.95,
       contains: (x, z) => {
         const station = tributaryStation(x, z);
@@ -1605,7 +1625,11 @@ export function createWorld(scene) {
     false, 'centripetal'
   );
   const routeGroundPoints = routeCurve.getPoints(120).map((point) => ({ x: point.x, z: point.z }));
-  const analyticHeightAt = createHeightFunction(routeGroundPoints);
+  const baseHeightAt = createBaseTerrainHeightFunction(routeGroundPoints);
+  const riverProfiles = createRiverProfiles(baseHeightAt);
+  const BRIDGE_DECK_TOP_Y = riverProfiles.mainSurface(300) + 2.4;
+  const BRIDGE_VERTICAL_OFFSET = BRIDGE_DECK_TOP_Y - 1.08;
+  const analyticHeightAt = createHeightFunction(baseHeightAt, riverProfiles, BRIDGE_DECK_TOP_Y);
   const heightAt = createRenderedTerrainSampler(analyticHeightAt);
   const renderables = [];
   const terrain = createTerrain(scene, analyticHeightAt, renderables);
@@ -1670,8 +1694,8 @@ export function createWorld(scene) {
     }),
   }, houseBase);
 
-  const river = createRiver(scene, rnd, heightAt, analyticHeightAt);
-  const tributary = createTributary(scene, heightAt, analyticHeightAt);
+  const river = createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles);
+  const tributary = createTributary(scene, heightAt, analyticHeightAt, riverProfiles);
   const forests = createForests(scene, heightAt, routePoints, rnd, renderables);
   const groundCover = createGroundCover(scene, heightAt, routePoints, rnd, renderables);
   const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables);
