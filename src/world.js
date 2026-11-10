@@ -822,8 +822,9 @@ function addShorelineChunks(scene, points, halfWidthAt, surfaceAt, sampledTerrai
     const colors = [];
     const indices = [];
 
-    for (const side of [-1, 1]) {
-      const sideOffset = side * count * rows.length;
+    for (let sideIndex = 0; sideIndex < 2; sideIndex++) {
+      const side = sideIndex === 0 ? -1 : 1;
+      const sideOffset = sideIndex * count * rows.length;
       for (let i = 0; i < count; i++) {
         const globalIndex = start + i;
         const previous = points[Math.max(0, globalIndex - 1)];
