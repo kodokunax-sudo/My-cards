@@ -339,6 +339,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
 
   for (const [key, bucket] of buckets) {
     const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, bucket.deciduous.length + bucket.pine.length);
+    trunks.userData.noCollider = true;
     const roundCrowns = bucket.deciduous.length
       ? new THREE.InstancedMesh(deciduousGeometry, deciduousMaterial, bucket.deciduous.length)
       : null;
@@ -473,7 +474,6 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     return { blocked: changed, x: px, z: pz, changed };
   }
 
-  trunks.userData.noCollider = true;
   return {
     count: trees.length,
     chunks: buckets.size,
