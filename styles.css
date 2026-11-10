@@ -924,3 +924,27 @@ button, #stick, #touch-layer {
     pointer-events: none;
   }
 }
+
+
+/* Lightweight menu: keep every gameplay panel out of the way before Play. */
+body.menu #ui,
+body.menu #touch-layer {
+  visibility: hidden;
+}
+body.menu #rotate {
+  display: none !important;
+}
+#boot-status {
+  min-height: 18px;
+  margin: 13px auto 0;
+  max-width: min(90vw, 520px);
+  color: rgba(242, 234, 216, 0.56);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+#start-btn:disabled {
+  opacity: 0.72;
+  cursor: progress;
+}
