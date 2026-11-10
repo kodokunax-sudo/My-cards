@@ -53,7 +53,7 @@ const sky = createSky(scene);
 const env = createEnvironment(scene);
 const fountain = createFountain(scene);
 const water = createWater(scene, fountain, camera, renderer);
-const world = createWorld(scene);
+const world = await createWorld(scene, (message) => window.__titanBootStatus?.(message));
 const occlusionCuller = createOcclusionCuller(renderer, scene, camera);
 const hud = createHud();
 const audio = createAmbience();
