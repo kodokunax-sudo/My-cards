@@ -978,6 +978,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       if (forestMask < 0.30 || rnd() > 0.44) continue;
       const pine = rnd() < 0.34;
       trees.push({
+        id: trees.length,
         x, z, y: heightAt(x, z) ?? 0,
         scale: 0.78 + rnd() * 0.88,
         rotation: rnd() * TAU,
@@ -1015,13 +1016,11 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     new THREE.ConeGeometry(4.4, 13.6, 9, 2),
   ];
   const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x59432f, roughness: 1 });
-  const crownMaterials = [
-    new THREE.MeshStandardMaterial({ color: 0x315b35, roughness: 0.98, flatShading: true }),
-    new THREE.MeshStandardMaterial({ color: 0x315b35, roughness: 0.98, flatShading: true }),
-    new THREE.MeshStandardMaterial({ color: 0x315b35, roughness: 0.98, flatShading: true }),
-    new THREE.MeshStandardMaterial({ color: 0x294b32, roughness: 0.98, flatShading: true }),
-    new THREE.MeshStandardMaterial({ color: 0x294b32, roughness: 0.98, flatShading: true }),
-  ];
+  // Eight tree variants are supported above. Use neutral material colour so
+  // per-instance forest-green tints are applied exactly once.
+  const crownMaterials = Array.from({ length: 8 }, () =>
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.98, flatShading: true })
+  );
 
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
@@ -1033,6 +1032,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
   for (const [key, bucket] of buckets) {
     const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, bucket.trees.length);
     trunks.userData.noCollider = true;
+    trunks.userData.treeInstances = bucket.trees;
     for (let i = 0; i < bucket.trees.length; i++) {
       const tree = bucket.trees[i];
       quaternion.setFromAxisAngle(up, tree.rotation);
@@ -1040,6 +1040,8 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       scale.set(tree.scale, tree.scale, tree.scale);
       matrix.compose(position, quaternion, scale);
       trunks.setMatrixAt(i, matrix);
+      tree.trunkMesh = trunks;
+      tree.trunkInstanceId = i;
     }
     trunks.instanceMatrix.needsUpdate = true;
     trunks.castShadow = true;
@@ -1067,13 +1069,15 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
         scale.set(tree.scale * width, tree.scale * height, tree.scale * width);
         matrix.compose(position, quaternion, scale);
         crowns.setMatrixAt(i, matrix);
-        const baseHue = isPine ? 0.31 : 0.28;
-        const hueRange = isPine ? 0.035 : 0.05;
+        const baseHue = isPine ? 0.315 : 0.295;
+        const hueRange = isPine ? 0.022 : 0.035;
         crowns.setColorAt(i, new THREE.Color().setHSL(
           baseHue + tree.hue * hueRange,
-          0.34 + tree.hue * 0.17,
-          (isPine ? 0.14 : 0.16) + tree.hue * (isPine ? 0.11 : 0.13)
+          isPine ? 0.58 + tree.hue * 0.12 : 0.54 + tree.hue * 0.12,
+          (isPine ? 0.14 : 0.17) + tree.hue * (isPine ? 0.055 : 0.065)
         ));
+        tree.crownMesh = crowns;
+        tree.crownInstanceId = i;
       }
       crowns.instanceMatrix.needsUpdate = true;
       if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
@@ -1081,6 +1085,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       crowns.castShadow = true;
       crowns.receiveShadow = true;
       crowns.name = `forest-crowns-${key}-${variant}`;
+      crowns.userData.treeInstances = group;
       registerChunkMesh(crowns, renderables, 2800, true);
       scene.add(crowns);
       meshes.push(crowns);
@@ -1095,10 +1100,11 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     const key = `${cx},${cz}`;
     let bucket = collisionGrid.get(key);
     if (!bucket) { bucket = []; collisionGrid.set(key, bucket); }
-    bucket.push({
-      x: tree.x, z: tree.z, radius: 0.48 * tree.scale,
-      minY: tree.y, maxY: tree.y + 8 * tree.scale, seed: tree.rotation,
-    });
+    tree.radius = 0.48 * tree.scale;
+    tree.minY = tree.y;
+    tree.maxY = tree.y + 8 * tree.scale;
+    tree.removed = false;
+    bucket.push(tree);
   }
 
   function forestCollision(x, z, feetY, height, radius, resolve = false) {
@@ -1115,7 +1121,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
           const bucket = collisionGrid.get(`${cx},${cz}`);
           if (!bucket) continue;
           for (const tree of bucket) {
-            if (feetY + height <= tree.minY + 0.035 || feetY >= tree.maxY) continue;
+            if (tree.removed || feetY + height <= tree.minY + 0.035 || feetY >= tree.maxY) continue;
             let dx = px - tree.x, dz = pz - tree.z;
             let distance = Math.hypot(dx, dz);
             const combinedRadius = radius + tree.radius;
@@ -1136,8 +1142,42 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     return { blocked: changed, x: px, z: pz, changed };
   }
 
+  function removeTree(tree) {
+    if (!tree || tree.removed) return false;
+    tree.removed = true;
+    const zeroScale = new THREE.Matrix4().makeScale(0, 0, 0);
+    tree.trunkMesh?.setMatrixAt(tree.trunkInstanceId, zeroScale);
+    tree.crownMesh?.setMatrixAt(tree.crownInstanceId, zeroScale);
+    if (tree.trunkMesh) tree.trunkMesh.instanceMatrix.needsUpdate = true;
+    if (tree.crownMesh) tree.crownMesh.instanceMatrix.needsUpdate = true;
+    return true;
+  }
+
+  function isNearTree(x, z, clearance = 8) {
+    const minCellX = Math.floor((x - clearance) / collisionCellSize);
+    const maxCellX = Math.floor((x + clearance) / collisionCellSize);
+    const minCellZ = Math.floor((z - clearance) / collisionCellSize);
+    const maxCellZ = Math.floor((z + clearance) / collisionCellSize);
+    for (let cx = minCellX; cx <= maxCellX; cx++) {
+      for (let cz = minCellZ; cz <= maxCellZ; cz++) {
+        const bucket = collisionGrid.get(`${cx},${cz}`);
+        if (!bucket) continue;
+        for (const tree of bucket) {
+          if (tree.removed) continue;
+          if (Math.hypot(x - tree.x, z - tree.z) < clearance + tree.radius) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   return {
     count: trees.length, chunks: buckets.size, meshes,
+    interactiveMeshes: meshes,
+    trees,
+    remove: removeTree,
+    removeById(id) { return removeTree(trees[id]); },
+    isNearTree,
     isBlocked(x, feetY, z, radius, height) {
       return forestCollision(x, z, feetY, height, radius, false).blocked;
     },
@@ -1731,6 +1771,16 @@ export function createWorld(scene) {
   const forests = createForests(scene, heightAt, routePoints, rnd, renderables);
   const groundCover = createGroundCover(scene, heightAt, routePoints, rnd, renderables);
   const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables);
+  const canSpawnResourceAt = (x, z, clearance = 9) => {
+    if (Math.hypot(x, z) < 285 || Math.hypot(x + 1600, z - 900) < 92) return false;
+    if (pointInReservedArea(x, z, routePoints)) return false;
+    const main = mainRiverStation(x, z);
+    if (main.distance < mainRiverHalfWidth(main.station) * RIVER_WATER_WIDTH_SCALE + clearance) return false;
+    const side = tributaryStation(x, z);
+    if (side.distance < tributaryHalfWidth(side.station) * RIVER_WATER_WIDTH_SCALE + clearance) return false;
+    if (forests.isNearTree(x, z, clearance)) return false;
+    return Number.isFinite(heightAt(x, z));
+  };
 
   return {
     house: house.house,
@@ -1747,6 +1797,7 @@ export function createWorld(scene) {
     route: road,
     bridge,
     heightAt,
+    canSpawnResourceAt,
     update(time) {
       river.waterMaterial.userData.setTime(time);
       tributary.waterMaterial.userData.setTime(time);
