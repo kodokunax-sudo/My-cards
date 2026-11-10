@@ -713,7 +713,60 @@ function createHeightFunction(baseHeightAt, riverProfiles, bridgeDeckTopY) {
   };
 }
 
-function createTerrain(scene, heightAt, renderables) {
+function createWorldChunkStreamer() {
+  const jobs = [];
+  const priorities = { terrain: 0, forest: 70, rocks: 120, cover: 160 };
+  let loaded = 0;
+  let total = 0;
+  let lastSortAt = 0;
+  let lastX = -Infinity;
+  let lastZ = -Infinity;
+
+  function enqueue(x, z, type, build) {
+    jobs.push({ x, z, type, build, order: total++ });
+  }
+
+  function prioritize(x, z, force = false) {
+    const now = performance.now();
+    if (!force && now - lastSortAt < 450 && Math.hypot(x - lastX, z - lastZ) < 110) return;
+    jobs.sort((a, b) => {
+      const da = Math.hypot(a.x - x, a.z - z) + (priorities[a.type] || 0);
+      const db = Math.hypot(b.x - x, b.z - z) + (priorities[b.type] || 0);
+      return da - db || a.order - b.order;
+    });
+    lastSortAt = now;
+    lastX = x;
+    lastZ = z;
+  }
+
+  function buildOne(job) {
+    try {
+      job.build();
+      loaded++;
+    } catch (error) {
+      console.error('[World streaming] Chunk failed:', job.type, job.x, job.z, error);
+    }
+  }
+
+  return {
+    enqueue,
+    prime(x, z, count = 4) {
+      prioritize(x, z, true);
+      for (let i = 0; i < count && jobs.length; i++) buildOne(jobs.shift());
+    },
+    update(x, z) {
+      prioritize(x, z);
+      const startedAt = performance.now();
+      if (jobs.length && performance.now() - startedAt < 7) buildOne(jobs.shift());
+      return this.progress;
+    },
+    get progress() {
+      return { loaded, total, pending: jobs.length, percent: total ? Math.round(loaded / total * 100) : 100 };
+    },
+  };
+}
+
+function createTerrain(scene, heightAt, renderables, streamer) {
   const chunksPerAxis = 14;
   // 64 cells in each 800m chunk => 12.5m spacing (was 26.7m).
   const cellsPerChunk = 64;
@@ -728,10 +781,21 @@ function createTerrain(scene, heightAt, renderables) {
   const material = createTerrainMaterial();
   const chunks = [];
 
+  const chunkCoordinates = [];
   for (let cz = 0; cz < chunksPerAxis; cz++) {
-    for (let cx = 0; cx < chunksPerAxis; cx++) {
-      const originX = -GRASS_RADIUS + cx * chunkSize;
-      const originZ = -GRASS_RADIUS + cz * chunkSize;
+    for (let cx = 0; cx < chunksPerAxis; cx++) chunkCoordinates.push({ cx, cz });
+  }
+  chunkCoordinates.sort((a, b) => {
+    const ax = -GRASS_RADIUS + (a.cx + 0.5) * chunkSize;
+    const az = -GRASS_RADIUS + (a.cz + 0.5) * chunkSize;
+    const bx = -GRASS_RADIUS + (b.cx + 0.5) * chunkSize;
+    const bz = -GRASS_RADIUS + (b.cz + 0.5) * chunkSize;
+    return Math.hypot(ax + 1600, az - 900) - Math.hypot(bx + 1600, bz - 900);
+  });
+  for (const { cx, cz } of chunkCoordinates) {
+    const originX = -GRASS_RADIUS + cx * chunkSize;
+    const originZ = -GRASS_RADIUS + cz * chunkSize;
+    streamer.enqueue(originX + chunkSize * 0.5, originZ + chunkSize * 0.5, 'terrain', () => {
       // One-cell halo around every chunk. It participates in normal
       // calculation but its triangles are not rendered, so adjacent chunks
       // share the same smooth edge normals and do not form visible seams.
@@ -791,7 +855,7 @@ function createTerrain(scene, heightAt, renderables) {
         }
       }
 
-      if (!indices.length) continue;
+      if (!indices.length) return;
 
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -810,7 +874,7 @@ function createTerrain(scene, heightAt, renderables) {
       registerChunkMesh(terrain, renderables, 6200);
       scene.add(terrain);
       chunks.push(terrain);
-    }
+    });
   }
   return chunks;
 }
@@ -963,7 +1027,7 @@ function pointInReservedArea(x, z, routePoints) {
   return false;
 }
 
-function createForests(scene, heightAt, routePoints, rnd, renderables) {
+function createForests(scene, heightAt, routePoints, rnd, renderables, streamer) {
   const trees = [];
   const cell = 16;
   const half = GRASS_RADIUS - 80;
@@ -1030,6 +1094,8 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
   const meshes = [];
 
   for (const [key, bucket] of buckets) {
+    const [chunkX, chunkZ] = key.split(',').map(Number);
+    streamer.enqueue((chunkX + 0.5) * chunkSize, (chunkZ + 0.5) * chunkSize, 'forest', () => {
     const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, bucket.trees.length);
     trunks.userData.noCollider = true;
     trunks.userData.treeInstances = bucket.trees;
@@ -1092,6 +1158,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       meshes.push(crowns);
       bucket.interactiveMeshes.push(crowns);
     }
+    });
   }
 
   const collisionCellSize = 16;
@@ -1205,7 +1272,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
 }
 
 
-function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
+function createGroundCover(scene, heightAt, routePoints, rnd, renderables, streamer) {
   const chunkSize = 640;
   const buckets = new Map();
   const add = (x, z, type, item) => {
@@ -1270,6 +1337,8 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
   const meshes = [];
 
   for (const [key, bucket] of buckets) {
+    const [chunkX, chunkZ] = key.split(',').map(Number);
+    streamer.enqueue((chunkX + 0.5) * chunkSize, (chunkZ + 0.5) * chunkSize, 'cover', () => {
     if (bucket.grass.length) {
       const grass = new THREE.InstancedMesh(grassGeometry, grassMaterial, bucket.grass.length);
       for (let i = 0; i < bucket.grass.length; i++) {
@@ -1317,12 +1386,13 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
       scene.add(shrubs);
       meshes.push(shrubs);
     }
+    });
   }
 
   return { grass: grassCount, shrubs: shrubCount, chunks: buckets.size, meshes };
 }
 
-function createRocks(scene, heightAt, routePoints, rnd, renderables) {
+function createRocks(scene, heightAt, routePoints, rnd, renderables, streamer) {
   const boulderData = [];
   const smallData = [];
   let attempts = 0;
@@ -1386,6 +1456,8 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables) {
   const meshes = [];
 
   for (const [key, bucket] of buckets) {
+    const [chunkX, chunkZ] = key.split(',').map(Number);
+    streamer.enqueue((chunkX + 0.5) * chunkSize, (chunkZ + 0.5) * chunkSize, 'rocks', () => {
     if (bucket.large.length) {
       const largeRocks = new THREE.InstancedMesh(rockGeometry, largeMaterial, bucket.large.length);
       for (let i = 0; i < bucket.large.length; i++) {
@@ -1424,6 +1496,7 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables) {
       scene.add(smallRocks);
       meshes.push(smallRocks);
     }
+    });
   }
 
   return {
@@ -1721,7 +1794,8 @@ export function createWorld(scene) {
   const analyticHeightAt = createHeightFunction(baseHeightAt, riverProfiles, BRIDGE_DECK_TOP_Y);
   const heightAt = createRenderedTerrainSampler(analyticHeightAt);
   const renderables = [];
-  const terrain = createTerrain(scene, analyticHeightAt, renderables);
+  const streamer = createWorldChunkStreamer();
+  const terrain = createTerrain(scene, analyticHeightAt, renderables, streamer);
 
   // The road sits only 7cm above the sampled ground: no hovering strip and
   // no large artificial flattening mismatch at the inside of bends.
@@ -1785,9 +1859,9 @@ export function createWorld(scene) {
 
   const river = createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles);
   const tributary = createTributary(scene, heightAt, analyticHeightAt, riverProfiles);
-  const forests = createForests(scene, heightAt, routePoints, rnd, renderables);
-  const groundCover = createGroundCover(scene, heightAt, routePoints, rnd, renderables);
-  const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables);
+  const forests = createForests(scene, heightAt, routePoints, rnd, renderables, streamer);
+  const groundCover = createGroundCover(scene, heightAt, routePoints, rnd, renderables, streamer);
+  const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables, streamer);
   const canSpawnResourceAt = (x, z, clearance = 9) => {
     if (Math.hypot(x, z) < 285 || Math.hypot(x + 1600, z - 900) < 92) return false;
     if (pointInReservedArea(x, z, routePoints)) return false;
@@ -1798,6 +1872,8 @@ export function createWorld(scene) {
     if (forests.isNearTree(x, z, clearance)) return false;
     return Number.isFinite(heightAt(x, z));
   };
+
+  streamer.prime(-1600, 900, 4);
 
   return {
     house: house.house,
@@ -1815,10 +1891,12 @@ export function createWorld(scene) {
     bridge,
     heightAt,
     canSpawnResourceAt,
-    update(time) {
+    update(time, playerPosition = { x: -1600, z: 900 }) {
       river.waterMaterial.userData.setTime(time);
       tributary.waterMaterial.userData.setTime(time);
+      return streamer.update(playerPosition.x, playerPosition.z);
     },
+    get streamingProgress() { return streamer.progress; },
     getWaterRegionAt(x, z) {
       return this.waterRegions.find((region) => region.contains(x, z)) || null;
     },
