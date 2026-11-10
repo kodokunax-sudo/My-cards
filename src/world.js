@@ -242,9 +242,9 @@ function createTerrainMaterial() {
           diffuseColor.rgb *= 0.76 + groundDetail;
 
           float slope = 1.0 - clamp(vTerrainNormal.y, 0.0, 1.0);
-          float exposedRock = smoothstep(0.24, 0.68, slope);
+          float exposedRock = smoothstep(0.38, 0.78, slope);
           vec3 earthyRock = vec3(0.29, 0.285, 0.245) * (0.88 + fineNoise * 0.2);
-          diffuseColor.rgb = mix(diffuseColor.rgb, earthyRock, exposedRock * 0.58);
+          diffuseColor.rgb = mix(diffuseColor.rgb, earthyRock, exposedRock * 0.32);
 
           float soilSpeckle = smoothstep(0.72, 0.96, flecks) * (1.0 - exposedRock);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.25, 0.22, 0.16), soilSpeckle * 0.12);
