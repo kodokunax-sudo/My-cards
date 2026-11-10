@@ -58,6 +58,7 @@ function valueNoise(x, z, seed = 1) {
 }
 
 const RIVER_SURFACE_Y = 0.035;
+const RIVER_WATER_WIDTH_SCALE = 1.2;
 
 function mainRiverX(z) {
   return -900 + 840 * Math.sin(z / 1200);
@@ -105,9 +106,18 @@ function mainRiverHalfWidth(z) {
 }
 
 function mainRiverSurface(z) {
-  const downstreamDrop = (z + 4500) * 0.000065;
-  return RIVER_SURFACE_Y - downstreamDrop +
-    0.14 * Math.sin(z / 1380) + 0.07 * Math.sin(z / 510 + 0.8);
+  const downstreamDrop = (z + 4500) * 0.00008;
+  const bridgeCut = 3.8 * gaussian(z, 300, 190);
+  const lowerReach = 1.25 * gaussian(z, -2050, 460);
+  const raisedReach = 1.05 * gaussian(z, 1550, 540);
+  const shallowReach = 0.85 * gaussian(z, 3400, 510);
+
+  // River elevation changes gradually along the course. At the bridge it
+  // drops into a noticeably lower, deeper reach without moving the terrain.
+  return RIVER_SURFACE_Y - downstreamDrop - bridgeCut +
+    lowerReach + raisedReach - shallowReach +
+    0.34 * Math.sin(z / 1280 + 0.25) +
+    0.17 * Math.sin(z / 455 + 0.8);
 }
 
 function tributaryZ(x) {
@@ -405,8 +415,12 @@ function createTerrainMaterial() {
             float mainStation;
             float mainDistance = terrainMainDistance(p, mainStation);
             float mainWidth = terrainMainWidth(mainStation);
-            mainEdgeDistance = mainDistance - mainWidth;
-            mainSand = smoothstep(mainWidth - 0.65, mainWidth + 0.45, mainDistance) *
+            float mainWaterWidth = mainWidth * 1.2;
+            mainEdgeDistance = mainDistance - mainWaterWidth;
+            // Extend the existing sand band inward by 40% of the original
+            // river half-width, measured from the new water edge.
+            float mainSandInner = mainWaterWidth - mainWidth * 0.4;
+            mainSand = smoothstep(mainSandInner - 0.65, mainSandInner + 0.45, mainDistance) *
               (1.0 - smoothstep(mainWidth + 19.0, mainWidth + 24.0, mainDistance));
           }
 
@@ -414,8 +428,10 @@ function createTerrainMaterial() {
             float sideStation;
             float sideDistance = terrainTributaryDistance(p, sideStation);
             float sideWidth = terrainTributaryWidth(sideStation);
-            sideEdgeDistance = sideDistance - sideWidth;
-            sideSand = smoothstep(sideWidth - 0.65, sideWidth + 0.45, sideDistance) *
+            float sideWaterWidth = sideWidth * 1.2;
+            sideEdgeDistance = sideDistance - sideWaterWidth;
+            float sideSandInner = sideWaterWidth - sideWidth * 0.4;
+            sideSand = smoothstep(sideSandInner - 0.65, sideSandInner + 0.45, sideDistance) *
               (1.0 - smoothstep(sideWidth + 16.0, sideWidth + 22.0, sideDistance));
           }
 
@@ -481,7 +497,7 @@ function createFlowingWaterMaterial(baseColor) {
     roughness: 0.42,
     metalness: 0.0,
     transparent: true,
-    opacity: 0.9,
+    opacity: 0.84,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
@@ -580,8 +596,9 @@ function createHeightFunction(routePoints) {
       : sideSurface + smoothstep(sideWidth, sideWidth + 15, sideDistance) * 1.05;
     const tributaryBankBlend = 1 - smoothstep(sideWidth + 15, sideWidth + 42, sideDistance);
     height = THREE.MathUtils.lerp(height, sideProfile, tributaryBankBlend);
-    const bridgeBlend = 1 - smoothstep(7, 24, Math.hypot(x + 692, z - 300));
-    height *= 1 - bridgeBlend;
+    // Keep the river channel carved beneath the bridge. Flattening the
+    // terrain here used to fill the riverbed back up to ground level.
+
 
     const protectedFlat = Math.max(parkBlend, houseBlend, trailBlend);
     const gully = Math.pow(Math.max(0, 1 - Math.abs(valueNoise(x / 610, z / 610, 49) * 2 - 1)), 5);
@@ -1195,7 +1212,9 @@ function createRiver(scene, rnd, heightAt) {
     points.push({ x: centerX(z), z });
   }
 
-  const mainWidthAt = (point) => mainRiverHalfWidth(point.z);
+  // Water alone widens by 20%. The terrain cross-section and shoreline
+  // elevation keep their original width.
+  const mainWidthAt = (point) => mainRiverHalfWidth(point.z) * RIVER_WATER_WIDTH_SCALE;
   const mainLevelAt = (point) => mainRiverSurface(point.z);
   const waterMaterial = createFlowingWaterMaterial(0x286d7d);
   const water = addRibbonChunks(scene, points, mainWidthAt, mainLevelAt, waterMaterial,
@@ -1259,7 +1278,7 @@ function createRiver(scene, rnd, heightAt) {
       exitHeight: 0.95,
       contains: (x, z) => {
         const station = mainRiverStation(x, z);
-        return station.distance <= mainRiverHalfWidth(station.station) + 0.1;
+        return station.distance <= mainRiverHalfWidth(station.station) * RIVER_WATER_WIDTH_SCALE + 0.1;
       },
     },
   };
@@ -1273,7 +1292,7 @@ function createTributary(scene, heightAt) {
     points.push({ x, z: centerZ(x) });
   }
 
-  const tributaryWidthAt = (point) => tributaryHalfWidth(point.x);
+  const tributaryWidthAt = (point) => tributaryHalfWidth(point.x) * RIVER_WATER_WIDTH_SCALE;
   const tributaryLevelAt = (point) => tributarySurface(point.x);
   const waterMaterial = createFlowingWaterMaterial(0x327987);
   const water = addRibbonChunks(scene, points, tributaryWidthAt, tributaryLevelAt, waterMaterial,
@@ -1299,7 +1318,7 @@ function createTributary(scene, heightAt) {
       exitHeight: 0.95,
       contains: (x, z) => {
         const station = tributaryStation(x, z);
-        return station.distance <= tributaryHalfWidth(station.station) + 0.1;
+        return station.distance <= tributaryHalfWidth(station.station) * RIVER_WATER_WIDTH_SCALE + 0.1;
       },
     },
   };
