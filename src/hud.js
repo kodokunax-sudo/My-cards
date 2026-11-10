@@ -103,7 +103,7 @@ export function createHud() {
       const names = { walk: 'пешком', fly: 'полёт', cinematic: 'облёт' };
       el.mode.textContent = names[mode] || mode;
       this.toast(
-        mode === 'fly' ? 'Режим полёта: WASD + мышь, Space / C — высота, Shift — скорость'
+        mode === 'fly' ? 'Режим полёта: WASD + мышь, Space / Ctrl — высота, Shift — скорость'
           : mode === 'cinematic' ? 'Кинематографичный облёт — любой WASD возвращает управление'
             : 'Режим пешехода'
       );
