@@ -81,20 +81,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Images, audio and model/texture data use cache-first loading. Each file is
-  // stored after its first successful download and reused on future visits.
+  // Images, audio, textures and standalone 3D assets use cache-first loading.
+  // Every successful first download is persisted for the next visit.
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
     const cached = await cache.match(request);
-    if (cached) {
-      event.waitUntil((async () => {
-        try {
-          const fresh = await fetch(request);
-          await saveResponse(cache, request, fresh);
-        } catch (error) { /* use the cached asset */ }
-      })());
-      return cached;
-    }
+    if (cached) return cached;
     try {
       const response = await fetch(request);
       await saveResponse(cache, request, response);
