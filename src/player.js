@@ -91,20 +91,15 @@ function createPlayerAvatar(scene) {
     opacity: 0.7,
     depthWrite: false,
   });
+  // The collision solver uses a constant-radius vertical cylinder, so
+  // the debug mesh deliberately matches that exact footprint and height.
   const cylinder = new THREE.Mesh(
-    new THREE.CylinderGeometry(BODY_RADIUS, BODY_RADIUS, PLAYER_HEIGHT - BODY_RADIUS * 2, 14, 1, true),
+    new THREE.CylinderGeometry(BODY_RADIUS, BODY_RADIUS, PLAYER_HEIGHT, 14, 1, false),
     wire
   );
   cylinder.position.y = PLAYER_HEIGHT * 0.5;
   cylinder.userData.noCollider = true;
   hitbox.add(cylinder);
-
-  for (const y of [BODY_RADIUS, PLAYER_HEIGHT - BODY_RADIUS]) {
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(BODY_RADIUS, 14, 10), wire);
-    cap.position.y = y;
-    cap.userData.noCollider = true;
-    hitbox.add(cap);
-  }
 
   root.visible = true;
   hitbox.visible = false;
@@ -708,7 +703,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     get body() { return avatar.root; },
     get hitbox() {
       return {
-        type: 'capsule', radius: BODY_RADIUS, height: PLAYER_HEIGHT,
+        type: 'cylinder', radius: BODY_RADIUS, height: PLAYER_HEIGHT,
         feetY, centerX: camera.position.x, centerZ: camera.position.z,
       };
     },
