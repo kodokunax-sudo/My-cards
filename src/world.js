@@ -57,12 +57,24 @@ function valueNoise(x, z, seed = 1) {
   );
 }
 
+const RIVER_SURFACE_Y = 0.035;
+
 function mainRiverX(z) {
   return -900 + 840 * Math.sin(z / 1200);
 }
 
+function mainRiverLateralDistance(x, z) {
+  const tangent = (840 / 1200) * Math.cos(z / 1200);
+  return Math.abs(x - mainRiverX(z)) / Math.sqrt(1 + tangent * tangent);
+}
+
 function tributaryZ(x) {
   return 4200 + 180 * Math.sin(x / 650);
+}
+
+function tributaryLateralDistance(x, z) {
+  const tangent = (180 / 650) * Math.cos(x / 650);
+  return Math.abs(z - tributaryZ(x)) / Math.sqrt(1 + tangent * tangent);
 }
 
 function gaussian(value, center, width) {
@@ -280,8 +292,8 @@ function createFlowingWaterMaterial(baseColor) {
   let compiledShader = null;
   const material = new THREE.MeshStandardMaterial({
     color: baseColor,
-    roughness: 0.24,
-    metalness: 0.025,
+    roughness: 0.42,
+    metalness: 0.0,
     transparent: true,
     opacity: 0.9,
     depthWrite: false,
@@ -351,8 +363,10 @@ function createHeightFunction(routePoints) {
     const trailBlend = 1 - smoothstep(12, 34, distanceToPolyline(x, z, routePoints));
     // River valleys have a rounded shoulder and a narrow, deeper channel.
     // The former 136m flat bench made the water read as a giant rectangular slab.
-    const mainRiverDistance = Math.abs(x - mainRiverX(z));
-    const tributaryDistance = Math.abs(z - tributaryZ(x));
+    // Distances are measured perpendicular to the curved centreline,
+    // matching the normal-based ribbon geometry used by the visible water.
+    const mainRiverDistance = mainRiverLateralDistance(x, z);
+    const tributaryDistance = tributaryLateralDistance(x, z);
     const flatten = Math.max(parkBlend, houseBlend, trailBlend);
     height *= 1 - flatten;
 
@@ -360,13 +374,13 @@ function createHeightFunction(routePoints) {
     // than the old 3.25m channel; shallow bars and deep pools alternate.
     const mainDepth = mainRiverDepth(z);
     const mainBankBlend = 1 - smoothstep(14.2, 33, mainRiverDistance);
-    const mainChannelFloor = WATER_Y - mainDepth +
+    const mainChannelFloor = RIVER_SURFACE_Y - mainDepth +
       smoothstep(5.2, 14.2, mainRiverDistance) * mainDepth;
     height = THREE.MathUtils.lerp(height, mainChannelFloor, mainBankBlend);
 
     const sideDepth = tributaryDepth(x);
     const tributaryBankBlend = 1 - smoothstep(11, 27, tributaryDistance);
-    const tributaryFloor = WATER_Y - sideDepth +
+    const tributaryFloor = RIVER_SURFACE_Y - sideDepth +
       smoothstep(3.8, 11, tributaryDistance) * sideDepth;
     height = THREE.MathUtils.lerp(height, tributaryFloor, tributaryBankBlend);
     const bridgeBlend = 1 - smoothstep(7, 24, Math.hypot(x + 692, z - 300));
@@ -987,7 +1001,7 @@ function createRiver(scene, rnd, heightAt) {
     'main-river-water', { noCollider: true, renderOrder: 2 });
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x354f49, roughness: 1 });
-  const riverBedHeight = (x, z) => (heightAt(x, z) ?? (WATER_Y - mainRiverDepth(z))) + 0.045;
+  const riverBedHeight = (x, z) => (heightAt(x, z) ?? (RIVER_SURFACE_Y - mainRiverDepth(z))) + 0.045;
   const bed = addRibbonChunks(scene, points, 5.8, -3.25, bedMaterial,
     'main-river-bed', { walkable: true, receiveShadow: true, heightAt: riverBedHeight });
 
@@ -1033,9 +1047,9 @@ function createRiver(scene, rnd, heightAt) {
     water, bed, waterMaterial, centerX, halfWidth: 14.2,
     region: {
       id: 'river',
-      surfaceY: 0.035,
-      bottomY: WATER_Y - 12.8,
-      bottomAt: (x, z) => WATER_Y - mainRiverDepth(z) + 0.08,
+      surfaceY: RIVER_SURFACE_Y,
+      bottomY: RIVER_SURFACE_Y - 12.8,
+      bottomAt: (x, z) => RIVER_SURFACE_Y - mainRiverDepth(z) + 0.08,
       exitFeetY: WATER_Y - 0.55,
       exitHeight: 0.95,
       contains: (x, z) => Math.abs(x - centerX(z)) <= 13.35,
@@ -1056,7 +1070,7 @@ function createTributary(scene, heightAt) {
     'tributary-water', { noCollider: true, renderOrder: 2 });
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x40564c, roughness: 1 });
-  const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? (WATER_Y - tributaryDepth(x))) + 0.045;
+  const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? (RIVER_SURFACE_Y - tributaryDepth(x))) + 0.045;
   const bed = addRibbonChunks(scene, points, 4.4, -2.55, bedMaterial,
     'tributary-bed', { walkable: true, receiveShadow: true, heightAt: tributaryBedHeight });
 
@@ -1064,9 +1078,9 @@ function createTributary(scene, heightAt) {
     water, bed, waterMaterial,
     region: {
       id: 'south-river',
-      surfaceY: 0.035,
-      bottomY: WATER_Y - 9.6,
-      bottomAt: (x, z) => WATER_Y - tributaryDepth(x) + 0.08,
+      surfaceY: RIVER_SURFACE_Y,
+      bottomY: RIVER_SURFACE_Y - 9.6,
+      bottomAt: (x, z) => RIVER_SURFACE_Y - tributaryDepth(x) + 0.08,
       exitFeetY: WATER_Y - 0.55,
       exitHeight: 0.95,
       contains: (x, z) => Math.abs(z - centerZ(x)) <= 10.15,
