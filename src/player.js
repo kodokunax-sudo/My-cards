@@ -29,44 +29,47 @@ function createPlayerAvatar(scene) {
   root.name = 'player-visible-body';
   root.userData.noCollider = true;
 
+  // The animation pivot sits around the hips, so swimming and falling rotate
+  // the whole body naturally instead of swinging it around the ankles.
   const motion = new THREE.Group();
   motion.name = 'player-body-animation';
+  motion.position.y = 0.78;
   root.add(motion);
 
   const skin = new THREE.MeshStandardMaterial({
-    color: 0xb98261, roughness: 0.88, flatShading: true,
+    color: 0xc18b6b, roughness: 0.9,
   });
   const skinLight = new THREE.MeshStandardMaterial({
-    color: 0xd29a75, roughness: 0.9, flatShading: true,
-  });
-  const skinShadow = new THREE.MeshStandardMaterial({
-    color: 0x8d5d48, roughness: 0.94, flatShading: true,
+    color: 0xd5a080, roughness: 0.92,
   });
   const shirt = new THREE.MeshStandardMaterial({
-    color: 0x245c9c, roughness: 0.92, flatShading: true,
+    color: 0x315d83, roughness: 0.94,
   });
   const shirtLight = new THREE.MeshStandardMaterial({
-    color: 0x3978b8, roughness: 0.9, flatShading: true,
+    color: 0x477ba0, roughness: 0.92,
   });
   const shirtDark = new THREE.MeshStandardMaterial({
-    color: 0x173f70, roughness: 0.96, flatShading: true,
-  });
-  const buttons = new THREE.MeshStandardMaterial({
-    color: 0xc6cbd0, roughness: 0.8, metalness: 0.08,
+    color: 0x203f5a, roughness: 0.96,
   });
   const pants = new THREE.MeshStandardMaterial({
-    color: 0x747b85, roughness: 0.96, flatShading: true,
+    color: 0x505b68, roughness: 0.98,
   });
-  const pantsShade = new THREE.MeshStandardMaterial({
-    color: 0x555e68, roughness: 0.98, flatShading: true,
+  const pantsLight = new THREE.MeshStandardMaterial({
+    color: 0x687482, roughness: 0.98,
   });
   const boots = new THREE.MeshStandardMaterial({
-    color: 0x403128, roughness: 1, flatShading: true,
+    color: 0x43382f, roughness: 1,
+  });
+  const sole = new THREE.MeshStandardMaterial({
+    color: 0x292722, roughness: 1,
+  });
+  const detail = new THREE.MeshStandardMaterial({
+    color: 0xb9c1c7, roughness: 0.82, metalness: 0.08,
   });
 
-  function ellipsoid(parent, material, position, scale, segments = 12) {
+  function ellipsoid(parent, material, position, scale, segments = 14) {
     const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(1, segments, Math.max(8, segments - 2)),
+      new THREE.SphereGeometry(1, segments, 12),
       material
     );
     mesh.position.set(position[0], position[1], position[2]);
@@ -91,122 +94,74 @@ function createPlayerAvatar(scene) {
     return mesh;
   }
 
-  // Muscular torso: wide chest, separate pectorals, rounded shoulders and
-  // visible abdominal groups. Character faces local -Z.
-  ellipsoid(motion, skinShadow, [0, 0.86, -0.015], [0.29, 0.22, 0.185]);
-  ellipsoid(motion, skin, [0, 1.105, -0.02], [0.335, 0.33, 0.205], 14);
-  ellipsoid(motion, skinLight, [-0.155, 1.20, 0.125], [0.205, 0.145, 0.105]);
-  ellipsoid(motion, skinLight, [0.155, 1.20, 0.125], [0.205, 0.145, 0.105]);
+  // Compact, balanced torso with a simple jacket, rather than exaggerated
+  // bodybuilder anatomy. The character's chest faces local +Z.
+  ellipsoid(motion, pants, [0, -0.055, 0], [0.205, 0.145, 0.135]);
+  ellipsoid(motion, shirt, [0, 0.295, -0.005], [0.255, 0.355, 0.155], 16);
+  ellipsoid(motion, shirtDark, [0, 0.025, 0.005], [0.225, 0.105, 0.145]);
+  ellipsoid(motion, shirtLight, [0, 0.535, 0.012], [0.205, 0.09, 0.145]);
+  ellipsoid(motion, shirtDark, [0, 0.575, 0.015], [0.105, 0.045, 0.12]);
 
-  // Pectoral lower edge and clavicle highlights make the chest readable
-  // from the first-person downward camera angle.
-  ellipsoid(motion, skinShadow, [-0.145, 1.075, 0.142], [0.17, 0.032, 0.035]);
-  ellipsoid(motion, skinShadow, [0.145, 1.075, 0.142], [0.17, 0.032, 0.035]);
-  ellipsoid(motion, skinLight, [0, 1.31, 0.095], [0.23, 0.045, 0.075]);
-
-  // Three pairs of abdominal muscles, plus obliques.
-  for (const y of [0.99, 0.89, 0.79]) {
-    for (const side of [-1, 1]) {
-      ellipsoid(motion, skinLight, [side * 0.082, y, 0.157], [0.073, 0.042, 0.045], 10);
-    }
+  // A restrained front seam and pockets make the outfit readable at close range.
+  box(motion, shirtDark, [0.018, 0.34, 0.012], [0, 0.29, 0.154]);
+  for (const side of [-1, 1]) {
+    box(motion, shirtLight, [0.09, 0.085, 0.012], [side * 0.145, 0.34, 0.15]);
+    box(motion, shirtDark, [0.092, 0.014, 0.014], [side * 0.145, 0.29, 0.153]);
   }
-  ellipsoid(motion, skin, [-0.245, 0.99, 0.005], [0.075, 0.22, 0.12]);
-  ellipsoid(motion, skin, [0.245, 0.99, 0.005], [0.075, 0.22, 0.12]);
-
-  // Blue fitted shirt follows the broad chest and torso silhouette.
-  // The underlying muscles shape the fabric, but skin details stay covered.
-  ellipsoid(motion, shirt, [0, 1.105, -0.02], [0.365, 0.355, 0.255], 14);
-  ellipsoid(motion, shirtDark, [0, 0.855, -0.018], [0.292, 0.075, 0.205], 12);
-  ellipsoid(motion, shirtLight, [0, 1.31, 0.035], [0.205, 0.075, 0.185], 12);
-
-  // Collar, button placket and a small chest pocket.
-  const collarLeft = box(motion, shirtDark, [0.095, 0.075, 0.16], [-0.075, 1.365, 0.14]);
-  const collarRight = box(motion, shirtDark, [0.095, 0.075, 0.16], [0.075, 1.365, 0.14]);
-  collarLeft.rotation.z = -0.18;
-  collarRight.rotation.z = 0.18;
-  box(motion, shirtDark, [0.045, 0.30, 0.018], [0, 1.12, 0.229]);
-  box(motion, shirtLight, [0.13, 0.13, 0.025], [-0.22, 1.18, 0.19]);
-  for (const y of [1.25, 1.16, 1.07, 0.98]) {
-    ellipsoid(motion, buttons, [0.015, y, 0.244], [0.014, 0.014, 0.008], 8);
+  for (const y of [0.43, 0.33, 0.23]) {
+    ellipsoid(motion, detail, [0.012, y, 0.166], [0.012, 0.012, 0.008], 8);
   }
 
-  // Neck and a low-profile head. The head is on layer 1 so it does not
-  // intersect the first-person camera.
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.105, 0.19, 10), skin);
-  neck.position.set(0, 1.39, 0.02);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.078, 0.13, 12), skin);
+  neck.position.set(0, 0.61, 0);
   neck.castShadow = true;
   neck.userData.noCollider = true;
   motion.add(neck);
-  const head = ellipsoid(motion, skin, [0, 1.57, 0.105], [0.145, 0.17, 0.15], 12);
+  const head = ellipsoid(motion, skin, [0, 0.755, 0.005], [0.13, 0.145, 0.125], 16);
+  // The head remains outside the first-person view, but is present for external views.
   head.layers.set(1);
 
-  // Grey full-length trousers, with a belt and central seam.
-  ellipsoid(motion, pants, [0, 0.68, 0], [0.265, 0.19, 0.205]);
-  box(motion, pantsShade, [0.52, 0.045, 0.405], [0, 0.79, -0.005]);
-  box(motion, buttons, [0.06, 0.065, 0.025], [0, 0.785, -0.214]);
-
-  function makeArm(side, sizeMultiplier) {
+  function makeArm(side) {
     const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.30, 1.285, -0.15);
+    shoulder.position.set(side * 0.245, 0.515, 0);
     motion.add(shoulder);
 
-    // Blue short sleeve wraps the upper arm. It follows the same width
-    // multiplier as the muscles, so the oversized right sleeve is visible.
-    ellipsoid(shoulder, shirt, [side * 0.012, -0.07, 0], [
-      0.153 * sizeMultiplier, 0.175, 0.153 * sizeMultiplier,
-    ]);
-    ellipsoid(shoulder, shirtLight, [side * 0.014, -0.17, 0.006], [
-      0.145 * sizeMultiplier, 0.035, 0.145 * sizeMultiplier,
-    ]);
-
-    // Muscle volume is multiplied on every part of the right arm.
-    ellipsoid(shoulder, skin, [side * 0.015, -0.035, 0], [
-      0.145 * sizeMultiplier, 0.155, 0.145 * sizeMultiplier,
-    ]);
-    ellipsoid(shoulder, skinLight, [side * 0.02, -0.105, 0.015], [
-      0.125 * sizeMultiplier, 0.20, 0.12 * sizeMultiplier,
-    ]);
-
-    const upper = ellipsoid(shoulder, skin, [side * 0.018, -0.255, -0.005], [
-      0.112 * sizeMultiplier, 0.245, 0.12 * sizeMultiplier,
-    ]);
-    ellipsoid(shoulder, skinLight, [side * 0.02, -0.255, 0.075], [
-      0.105 * sizeMultiplier, 0.155, 0.065 * sizeMultiplier,
-    ]);
+    ellipsoid(shoulder, shirt, [side * 0.012, -0.13, 0], [0.105, 0.17, 0.098]);
+    ellipsoid(shoulder, shirtLight, [side * 0.012, -0.255, 0], [0.086, 0.045, 0.084]);
 
     const elbow = new THREE.Group();
-    elbow.position.set(0, -0.455, 0);
+    elbow.position.set(0, -0.30, 0);
     shoulder.add(elbow);
-    ellipsoid(elbow, skin, [0, -0.17, 0], [
-      0.087 * sizeMultiplier, 0.205, 0.09 * sizeMultiplier,
-    ]);
-    ellipsoid(elbow, skinLight, [0, -0.16, 0.055], [
-      0.078 * sizeMultiplier, 0.14, 0.055 * sizeMultiplier,
-    ]);
-    ellipsoid(elbow, skin, [0, -0.365, -0.005], [
-      0.085 * sizeMultiplier, 0.095, 0.09 * sizeMultiplier,
-    ]);
-    return { shoulder, elbow, upper };
+    ellipsoid(elbow, shirt, [0, -0.125, 0], [0.079, 0.155, 0.078]);
+    ellipsoid(elbow, shirtDark, [0, -0.255, 0], [0.082, 0.035, 0.081]);
+
+    const hand = new THREE.Group();
+    hand.position.set(0, -0.285, 0);
+    elbow.add(hand);
+    ellipsoid(hand, skin, [0, -0.035, 0.005], [0.064, 0.09, 0.052], 12);
+    ellipsoid(hand, skinLight, [side * -0.038, -0.065, 0.025], [0.027, 0.052, 0.026], 10);
+
+    return { shoulder, elbow, hand };
   }
 
-  // The right arm is deliberately 1.5x the left arm's muscle volume.
-  const leftArm = makeArm(-1, 0.42);
-  const rightArm = makeArm(1, 1.5);
+  // Both arms use the same proportions and rig.
+  const leftArm = makeArm(-1);
+  const rightArm = makeArm(1);
 
   function makeLeg(side) {
     const hip = new THREE.Group();
-    hip.position.set(side * 0.135, 0.67, 0);
+    hip.position.set(side * 0.12, -0.12, 0);
     motion.add(hip);
-    ellipsoid(hip, pants, [0, -0.08, 0], [0.15, 0.18, 0.165]);
-    ellipsoid(hip, pants, [0, -0.255, 0.005], [0.128, 0.245, 0.13]);
-    ellipsoid(hip, pantsShade, [side * 0.095, -0.255, 0.012], [0.024, 0.20, 0.105]);
+
+    ellipsoid(hip, pants, [0, -0.15, 0], [0.105, 0.205, 0.108]);
 
     const knee = new THREE.Group();
-    knee.position.y = -0.47;
+    knee.position.y = -0.31;
     hip.add(knee);
-    ellipsoid(knee, pants, [0, -0.16, 0], [0.098, 0.205, 0.105]);
-    ellipsoid(knee, pantsShade, [side * 0.045, -0.16, 0.012], [0.022, 0.15, 0.086]);
-    box(knee, boots, [0.205, 0.12, 0.31], [0, -0.39, -0.055]);
+    ellipsoid(knee, pants, [0, -0.14, 0], [0.073, 0.18, 0.078]);
+    ellipsoid(knee, pantsLight, [side * 0.012, -0.12, 0.065], [0.025, 0.10, 0.018], 10);
+    box(knee, boots, [0.18, 0.12, 0.29], [0, -0.27, -0.055]);
+    box(knee, sole, [0.182, 0.025, 0.292], [0, -0.337, -0.055]);
     return hip;
   }
 
@@ -236,102 +191,119 @@ function createPlayerAvatar(scene) {
     const moveAmount = THREE.MathUtils.clamp(speed / (sprinting ? 10.2 : 5.4), 0, 1);
     let leftShoulderX = 0;
     let rightShoulderX = 0;
-    let leftShoulderZ = -0.08;
-    let rightShoulderZ = 0.08;
+    let leftShoulderZ = -0.06;
+    let rightShoulderZ = 0.06;
     let leftElbowX = -0.08;
     let rightElbowX = -0.08;
+    let leftElbowZ = -0.02;
+    let rightElbowZ = 0.02;
     let leftLegX = 0;
     let rightLegX = 0;
     let bodyY = 0;
     let bodyX = 0;
     let bodyZ = 0;
-    let blendSpeed = 11;
+    let blendSpeed = 10;
 
     if (swimming && underwater) {
-      // Fully submerged: alternate forward pulls and strong flutter kicks.
-      phase += dt * (sprinting ? 7.6 : 5.8);
+      // Underwater: the body becomes nearly horizontal, arms alternate in a
+      // front-crawl pull, and the legs perform a continuous flutter kick.
+      phase += dt * (sprinting ? 7.4 : 5.8);
       const wave = Math.sin(phase);
-      leftShoulderX = -0.95 + wave * 0.72;
-      rightShoulderX = -0.95 - wave * 0.72;
-      leftShoulderZ = -0.20;
-      rightShoulderZ = 0.20;
-      leftElbowX = -0.72 + Math.max(0, wave) * 0.38;
-      rightElbowX = -0.72 + Math.max(0, -wave) * 0.38;
-      leftLegX = -wave * 0.62;
-      rightLegX = wave * 0.62;
-      bodyY = Math.sin(phase * 2) * 0.022;
-      bodyX = 0.08 + Math.sin(phase) * 0.035;
-      blendSpeed = 9;
-    } else if (swimming) {
-      // At the waterline: hands scull out to the sides while the legs tread.
-      phase += dt * (sprinting ? 6.0 : 4.6);
-      const wave = Math.sin(phase);
-      leftShoulderX = -0.24 + wave * 0.38;
-      rightShoulderX = -0.24 - wave * 0.38;
-      leftShoulderZ = -0.48 + Math.sin(phase * 0.72) * 0.17;
-      rightShoulderZ = 0.48 - Math.sin(phase * 0.72) * 0.17;
-      leftElbowX = -0.48 + Math.max(0, wave) * 0.3;
-      rightElbowX = -0.48 + Math.max(0, -wave) * 0.3;
-      leftLegX = -0.34 + wave * 0.42;
-      rightLegX = -0.34 - wave * 0.42;
-      bodyY = Math.sin(phase * 2) * 0.035;
-      bodyX = -0.035 + Math.sin(phase) * 0.025;
-      bodyZ = Math.sin(phase * 0.5) * 0.025;
+      leftShoulderX = 0.88 + wave * 0.72;
+      rightShoulderX = 0.88 - wave * 0.72;
+      leftShoulderZ = -0.12;
+      rightShoulderZ = 0.12;
+      leftElbowX = -0.34 + Math.max(0, -wave) * 0.52;
+      rightElbowX = -0.34 + Math.max(0, wave) * 0.52;
+      leftLegX = wave * 0.58;
+      rightLegX = -wave * 0.58;
+      bodyY = 0.025 + Math.sin(phase * 2) * 0.018;
+      bodyX = -1.02 + Math.sin(phase) * 0.035;
+      bodyZ = Math.sin(phase * 0.5) * 0.018;
       blendSpeed = 7.5;
+    } else if (swimming) {
+      // At the surface: arms stay extended left/right to scull and keep the
+      // shoulders above the water, while the legs tread gently below.
+      phase += dt * (sprinting ? 4.7 : 3.3);
+      const wave = Math.sin(phase);
+      leftShoulderX = -0.06 + Math.sin(phase * 0.72) * 0.10;
+      rightShoulderX = -0.06 - Math.sin(phase * 0.72) * 0.10;
+      leftShoulderZ = -1.28 + wave * 0.075;
+      rightShoulderZ = 1.28 - wave * 0.075;
+      leftElbowX = -0.16 + Math.max(0, wave) * 0.12;
+      rightElbowX = -0.16 + Math.max(0, -wave) * 0.12;
+      leftElbowZ = -0.13;
+      rightElbowZ = 0.13;
+      leftLegX = 0.36 + wave * 0.34;
+      rightLegX = 0.36 - wave * 0.34;
+      bodyY = Math.sin(phase * 2) * 0.022;
+      bodyX = 0.035 + Math.sin(phase) * 0.018;
+      bodyZ = Math.sin(phase * 0.5) * 0.025;
+      blendSpeed = 8;
     } else if (!flying && !grounded && verticalVelocity > 0.15) {
-      // Jump ascent: arms lift for balance and knees tuck slightly.
-      phase += dt * 3.2;
-      leftShoulderX = -1.05;
-      rightShoulderX = -1.05;
-      leftShoulderZ = -0.30;
-      rightShoulderZ = 0.30;
-      leftElbowX = -0.55;
-      rightElbowX = -0.55;
+      // Jumping upward: the arms open to the sides, the knees bend, and the
+      // chest leans slightly back before the arc reaches its apex.
+      phase += dt * 2.8;
+      const sway = Math.sin(phase) * 0.045;
+      leftShoulderX = -0.22;
+      rightShoulderX = -0.22;
+      leftShoulderZ = -0.58 + sway;
+      rightShoulderZ = 0.58 - sway;
+      leftElbowX = -0.48;
+      rightElbowX = -0.48;
+      leftElbowZ = -0.12;
+      rightElbowZ = 0.12;
       leftLegX = 0.48;
       rightLegX = 0.48;
-      bodyY = 0.018;
-      bodyX = -0.10;
-      blendSpeed = 8.5;
+      bodyY = 0.015;
+      bodyX = 0.14;
+      blendSpeed = 8;
     } else if (!flying && !grounded) {
-      // Falling: arms spread as a reflex, legs trail below the torso.
-      phase += dt * 2.8;
-      const flutter = Math.sin(phase) * 0.08;
-      leftShoulderX = 0.12 + flutter;
-      rightShoulderX = 0.12 - flutter;
-      leftShoulderZ = -0.88;
-      rightShoulderZ = 0.88;
-      leftElbowX = -0.32;
-      rightElbowX = -0.32;
-      leftLegX = -0.24;
-      rightLegX = -0.24;
-      bodyX = 0.13;
-      bodyZ = flutter * 0.55;
-      blendSpeed = 6.5;
+      // Falling: the chest pitches forward, arms spread asymmetrically for
+      // balance, and bent knees react to the changing fall speed.
+      phase += dt * 3.6;
+      const flutter = Math.sin(phase) * 0.10;
+      const fallAmount = THREE.MathUtils.clamp((-verticalVelocity - 1.0) / 15, 0, 1);
+      leftShoulderX = -0.18 + flutter;
+      rightShoulderX = -0.18 - flutter;
+      leftShoulderZ = -0.92 - fallAmount * 0.16;
+      rightShoulderZ = 0.92 + fallAmount * 0.16;
+      leftElbowX = -0.48 - fallAmount * 0.12;
+      rightElbowX = -0.48 - fallAmount * 0.12;
+      leftElbowZ = -0.18;
+      rightElbowZ = 0.18;
+      leftLegX = 0.52 + flutter * 0.5;
+      rightLegX = 0.42 - flutter * 0.5;
+      bodyX = -0.22 - fallAmount * 0.12;
+      bodyZ = flutter * 0.6;
+      blendSpeed = 6.8;
     } else if (flying) {
-      leftShoulderX = -0.78;
-      rightShoulderX = -0.78;
-      leftShoulderZ = -0.14;
-      rightShoulderZ = 0.14;
+      // Flight: arms reach forward and the legs trail behind.
+      leftShoulderX = 1.28;
+      rightShoulderX = 1.28;
+      leftShoulderZ = -0.10;
+      rightShoulderZ = 0.10;
       leftElbowX = -0.28;
       rightElbowX = -0.28;
-      leftLegX = 0.12;
-      rightLegX = 0.12;
+      leftLegX = -0.12;
+      rightLegX = -0.12;
+      bodyX = -0.18;
       blendSpeed = 8;
     } else {
-      // Ground locomotion: opposing arms and legs, with a quicker sprint gait.
+      // Walking and running use a simple opposing arm/leg gait.
       if (moveAmount > 0.02) phase += dt * (sprinting ? 10.5 : 7.3);
-      else phase += dt * 1.35;
-      const swing = Math.sin(phase) * moveAmount * (sprinting ? 0.92 : 0.58);
-      leftShoulderX = swing * 0.86;
-      rightShoulderX = -swing * 0.86;
-      leftElbowX = -0.10 - Math.max(0, -swing) * 0.22;
-      rightElbowX = -0.10 - Math.max(0, swing) * 0.22;
+      else phase += dt * 1.2;
+      const swing = Math.sin(phase) * moveAmount * (sprinting ? 0.78 : 0.48);
+      leftShoulderX = swing;
+      rightShoulderX = -swing;
+      leftElbowX = -0.08 - Math.max(0, -swing) * 0.16;
+      rightElbowX = -0.08 - Math.max(0, swing) * 0.16;
       leftLegX = -swing;
       rightLegX = swing;
       bodyY = moveAmount > 0.02
-        ? Math.abs(Math.sin(phase * 2)) * (sprinting ? 0.035 : 0.018)
-        : Math.sin(phase) * 0.004;
-      bodyZ = Math.sin(phase) * (moveAmount * 0.012 + 0.002);
+        ? Math.abs(Math.sin(phase * 2)) * (sprinting ? 0.032 : 0.016)
+        : Math.sin(phase) * 0.003;
+      bodyZ = Math.sin(phase) * (moveAmount * 0.012 + 0.001);
       blendSpeed = 12;
     }
 
@@ -345,9 +317,11 @@ function createPlayerAvatar(scene) {
     settle(rightArm.shoulder, 'z', rightShoulderZ);
     settle(leftArm.elbow, 'x', leftElbowX);
     settle(rightArm.elbow, 'x', rightElbowX);
+    settle(leftArm.elbow, 'z', leftElbowZ);
+    settle(rightArm.elbow, 'z', rightElbowZ);
     settle(leftLeg, 'x', leftLegX);
     settle(rightLeg, 'x', rightLegX);
-    motion.position.y += (bodyY - motion.position.y) * blend;
+    motion.position.y += (0.78 + bodyY - motion.position.y) * blend;
     motion.rotation.x += (bodyX - motion.rotation.x) * blend;
     motion.rotation.z += (bodyZ - motion.rotation.z) * blend;
   }
@@ -357,7 +331,6 @@ function createPlayerAvatar(scene) {
   scene.add(root, hitbox);
   return { root, hitbox, animate };
 }
-
 export function createPlayer(camera, domElement, physics, worldInfo, onModeChange, scene) {
   const controls = new PointerLockControls(camera, domElement);
   const spawn = worldInfo?.spawn || {
