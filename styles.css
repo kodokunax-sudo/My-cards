@@ -572,3 +572,221 @@ kbd {
     padding: 13px;
   }
 }
+
+
+/* ---------------- survival / crafting ---------------- */
+#survival-toggle {
+  position: absolute;
+  top: 18px;
+  left: 300px;
+  z-index: 14;
+  pointer-events: auto;
+  border: 1px solid rgba(145, 177, 128, 0.42);
+  border-radius: 10px;
+  padding: 10px 13px;
+  color: var(--paper);
+  background: rgba(13, 17, 25, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  font: 700 11px/1 "Inter", system-ui, sans-serif;
+  letter-spacing: 0.07em;
+  cursor: pointer;
+}
+#survival-toggle:hover,
+#survival-toggle[aria-expanded="true"] {
+  border-color: #a8c28a;
+  background: rgba(29, 43, 29, 0.94);
+}
+#survival-panel {
+  position: absolute;
+  top: 60px;
+  left: 300px;
+  z-index: 14;
+  width: 360px;
+  max-width: min(360px, calc(100vw - 320px));
+  max-height: min(76vh, 640px);
+  overflow: auto;
+  padding: 15px;
+  pointer-events: auto;
+  color: var(--paper);
+  background: rgba(13, 19, 17, 0.88);
+  border-color: rgba(145, 177, 128, 0.38);
+}
+#survival-panel[hidden] { display: none; }
+.survival-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 13px;
+}
+.survival-heading h2 {
+  margin: 0;
+  color: #b8cf96;
+  font: 800 13px/1.2 "Inter", system-ui, sans-serif;
+  letter-spacing: 0.12em;
+}
+.survival-heading p {
+  margin: 4px 0 0;
+  color: rgba(242, 234, 216, 0.52);
+  font-size: 10px;
+}
+.survival-heading button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  color: var(--paper);
+  background: rgba(255,255,255,0.05);
+  font: 20px/1 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+}
+.survival-resources {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.survival-resources div {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 9px;
+  background: rgba(255,255,255,0.045);
+  border: 1px solid rgba(145,177,128,0.13);
+  border-radius: 8px;
+  font-size: 11px;
+}
+.survival-resources span { color: rgba(242,234,216,0.63); }
+.survival-resources b, .survival-foot b {
+  color: #c5d6a7;
+  font-variant-numeric: tabular-nums;
+}
+.survival-section-title {
+  margin: 12px 0 7px;
+  color: rgba(197,214,167,0.82);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+.survival-tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 13px;
+}
+.survival-tool-row button,
+.survival-recipe button {
+  border: 1px solid rgba(145,177,128,0.28);
+  border-radius: 7px;
+  padding: 7px 8px;
+  color: var(--paper);
+  background: rgba(255,255,255,0.055);
+  font: 600 9px/1.2 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+}
+.survival-tool-row button.active {
+  border-color: #b7d091;
+  color: #d6e6b9;
+  background: rgba(103,135,73,0.24);
+}
+.survival-tool-row button:disabled,
+.survival-recipe button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.survival-recipes {
+  display: grid;
+  gap: 6px;
+}
+.survival-recipe {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid rgba(145,177,128,0.13);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.035);
+}
+.survival-recipe div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.survival-recipe b {
+  color: rgba(242,234,216,0.9);
+  font-size: 10px;
+}
+.survival-recipe span {
+  color: rgba(242,234,216,0.48);
+  font-size: 9px;
+}
+.survival-recipe button {
+  flex: 0 0 auto;
+  min-width: 72px;
+  color: #d2dfbd;
+  background: rgba(83,112,61,0.22);
+}
+.survival-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(145,177,128,0.16);
+  color: rgba(242,234,216,0.57);
+  font-size: 10px;
+}
+.survival-help {
+  margin: 9px 0 0;
+  color: rgba(242,234,216,0.45);
+  font-size: 9px;
+  line-height: 1.45;
+}
+#survival-status {
+  position: absolute;
+  left: 50%;
+  bottom: 52px;
+  transform: translateX(-50%);
+  max-width: min(90vw, 620px);
+  padding: 7px 11px;
+  color: rgba(242,234,216,0.72);
+  background: rgba(13,17,25,0.48);
+  border: 1px solid rgba(145,177,128,0.16);
+  border-radius: 8px;
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+#survival-hit { display: none; }
+@media (max-width: 720px) {
+  #survival-toggle {
+    top: 154px;
+    left: 10px;
+    padding: 8px 10px;
+    font-size: 9px;
+  }
+  #survival-panel {
+    top: 194px;
+    left: 10px;
+    width: min(360px, calc(100vw - 20px));
+    max-width: calc(100vw - 20px);
+    max-height: 54vh;
+    padding: 12px;
+  }
+  #survival-status { display: none; }
+  #survival-hit {
+    display: block;
+    position: absolute;
+    right: max(20px, env(safe-area-inset-right));
+    bottom: max(166px, calc(env(safe-area-inset-bottom) + 150px));
+    z-index: 14;
+    pointer-events: auto;
+    border: 1px solid rgba(197,214,167,0.55);
+    border-radius: 50%;
+    width: 70px;
+    height: 70px;
+    color: #f2ead8;
+    background: rgba(43,62,38,0.82);
+    font: 800 11px "Inter", system-ui, sans-serif;
+    letter-spacing: 0.08em;
+  }
+}
