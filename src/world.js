@@ -323,16 +323,19 @@ function createHeightFunction(routePoints) {
     // The former 136m flat bench made the water read as a giant rectangular slab.
     const mainRiverDistance = Math.abs(x - mainRiverX(z));
     const tributaryDistance = Math.abs(z - tributaryZ(x));
-    const riverBlend = 1 - smoothstep(4, 24, mainRiverDistance);
-    const tributaryBlend = 1 - smoothstep(4, 18, tributaryDistance);
-    const flatten = Math.max(parkBlend, houseBlend, trailBlend, riverBlend, tributaryBlend);
+    const flatten = Math.max(parkBlend, houseBlend, trailBlend);
     height *= 1 - flatten;
 
-    // A narrow channel with sloped banks. The water surface now sits just
-    // inside the shoreline instead of covering a very wide, flat depression.
-    const mainCut = 1 - smoothstep(7, 14, mainRiverDistance);
-    const tributaryCut = 1 - smoothstep(6, 12, tributaryDistance);
-    height -= mainCut * 3.25 + tributaryCut * 2.55;
+    // Shape the waterways as real shallow valleys: a narrow flat gravel bed,
+    // then a smooth bank that rises above the fixed waterline. Hills outside
+    // the bank remain untouched, so there is no 100m-wide flattened shelf.
+    const mainBankBlend = 1 - smoothstep(16, 42, mainRiverDistance);
+    const mainChannelFloor = -3.25 + smoothstep(5, 16, mainRiverDistance) * 3.55;
+    height = THREE.MathUtils.lerp(height, mainChannelFloor, mainBankBlend);
+
+    const tributaryBankBlend = 1 - smoothstep(13, 34, tributaryDistance);
+    const tributaryFloor = -2.55 + smoothstep(4, 13, tributaryDistance) * 2.8;
+    height = THREE.MathUtils.lerp(height, tributaryFloor, tributaryBankBlend);
     const bridgeBlend = 1 - smoothstep(7, 24, Math.hypot(x + 692, z - 300));
     height *= 1 - bridgeBlend;
 
@@ -945,12 +948,12 @@ function createRiver(scene, rnd, heightAt) {
   }
 
   const waterMaterial = createFlowingWaterMaterial(0x286d7d);
-  const water = addRibbonChunks(scene, points, 9.6, 0.035, waterMaterial,
+  const water = addRibbonChunks(scene, points, 14.2, 0.035, waterMaterial,
     'main-river-water', { noCollider: true, renderOrder: 2 });
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x354f49, roughness: 1 });
-  const riverBedHeight = (x, z) => (heightAt(x, z) ?? -3.25) + 0.045;
-  const bed = addRibbonChunks(scene, points, 12.2, -3.25, bedMaterial,
+  const riverBedHeight = (x, z) => Math.min(heightAt(x, z) ?? -3.25, -0.765) + 0.045;
+  const bed = addRibbonChunks(scene, points, 5.8, -3.25, bedMaterial,
     'main-river-bed', { walkable: true, receiveShadow: true, heightAt: riverBedHeight });
 
   const pebbleGeo = new THREE.IcosahedronGeometry(2.2, 0);
@@ -992,14 +995,14 @@ function createRiver(scene, rnd, heightAt) {
   }
 
   return {
-    water, bed, waterMaterial, centerX, halfWidth: 9.6,
+    water, bed, waterMaterial, centerX, halfWidth: 14.2,
     region: {
       id: 'river',
       surfaceY: 0.035,
       bottomY: -3.25,
       exitFeetY: 0.55,
       exitHeight: 0.55,
-      contains: (x, z) => Math.abs(x - centerX(z)) <= 9.3,
+      contains: (x, z) => Math.abs(x - centerX(z)) <= 14.0,
     },
   };
 }
@@ -1013,12 +1016,12 @@ function createTributary(scene, heightAt) {
   }
 
   const waterMaterial = createFlowingWaterMaterial(0x327987);
-  const water = addRibbonChunks(scene, points, 7.2, 0.035, waterMaterial,
+  const water = addRibbonChunks(scene, points, 11.0, 0.035, waterMaterial,
     'tributary-water', { noCollider: true, renderOrder: 2 });
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x40564c, roughness: 1 });
-  const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? -2.55) + 0.045;
-  const bed = addRibbonChunks(scene, points, 9.6, -2.55, bedMaterial,
+  const tributaryBedHeight = (x, z) => Math.min(heightAt(x, z) ?? -2.55, -0.765) + 0.045;
+  const bed = addRibbonChunks(scene, points, 4.4, -2.55, bedMaterial,
     'tributary-bed', { walkable: true, receiveShadow: true, heightAt: tributaryBedHeight });
 
   return {
@@ -1029,7 +1032,7 @@ function createTributary(scene, heightAt) {
       bottomY: -2.55,
       exitFeetY: 0.85,
       exitHeight: 0.85,
-      contains: (x, z) => Math.abs(z - centerZ(x)) <= 7.0,
+      contains: (x, z) => Math.abs(z - centerZ(x)) <= 10.8,
     },
   };
 }
