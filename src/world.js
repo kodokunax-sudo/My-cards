@@ -977,8 +977,8 @@ function addRibbonChunks(scene, points, halfWidth, y, material, name, options = 
 function createRiver(scene, rnd, heightAt) {
   const centerX = mainRiverX;
   const points = [];
-  for (let i = 0; i <= 480; i++) {
-    const z = -4500 + (9000 * i) / 480;
+  for (let i = 0; i <= 900; i++) {
+    const z = -4500 + (9000 * i) / 900;
     points.push({ x: centerX(z), z });
   }
 
@@ -1046,8 +1046,8 @@ function createRiver(scene, rnd, heightAt) {
 function createTributary(scene, heightAt) {
   const centerZ = tributaryZ;
   const points = [];
-  for (let i = 0; i <= 360; i++) {
-    const x = -2800 + (5600 * i) / 360;
+  for (let i = 0; i <= 560; i++) {
+    const x = -2800 + (5600 * i) / 560;
     points.push({ x, z: centerZ(x) });
   }
 
