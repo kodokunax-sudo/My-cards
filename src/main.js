@@ -108,10 +108,12 @@ const settingsPanel = document.getElementById('settings-panel');
 const settingsClose = document.getElementById('settings-close');
 
 function detectDeviceQuality() {
+  // Phones start with the lightest profile to avoid GPU/context failures
+  // while the large world is being rendered for the first time.
+  if (touch) return 'low';
   const memory = Number(navigator.deviceMemory || 0);
   const cores = Number(navigator.hardwareConcurrency || 0);
-  if ((memory > 0 && memory <= 4) || (cores > 0 && cores <= 4) ||
-    (touch && window.innerWidth < 900)) return 'low';
+  if ((memory > 0 && memory <= 4) || (cores > 0 && cores <= 4)) return 'low';
   return 'medium';
 }
 
@@ -322,12 +324,35 @@ function sampleQuality() {
 
 // ---------- ввод ----------
 let started = false;
+
+async function requestMobileLandscape() {
+  if (!touch) return;
+  try {
+    const root = document.documentElement;
+    if (!document.fullscreenElement && typeof root.requestFullscreen === 'function') {
+      await root.requestFullscreen({ navigationUI: 'hide' });
+    }
+  } catch (error) {
+    // Fullscreen is optional; manual rotation remains available on iOS/Safari.
+  }
+  try {
+    if (screen.orientation && typeof screen.orientation.lock === 'function') {
+      await screen.orientation.lock('landscape');
+    }
+  } catch (error) {
+    // Some browsers only allow orientation locking for installed apps.
+  }
+}
+
 function enterScene() {
   if (started) return;
   started = true;
   overlay.classList.add('hidden');
   audio.start();
-  if (!touch) {
+  if (touch) {
+    // This call is made directly from the Start tap, as required by browsers.
+    requestMobileLandscape();
+  } else {
     // Keep pointer-lock request inside the actual click gesture.
     try { Promise.resolve(player.lock()).catch(() => {}); } catch (error) { /* drag-to-look remains available */ }
   }
@@ -372,6 +397,10 @@ function resize() {
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => {
+  window.setTimeout(resize, 120);
+});
+document.addEventListener('fullscreenchange', resize);
 
 function animate() {
   requestAnimationFrame(animate);
