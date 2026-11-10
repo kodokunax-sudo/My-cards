@@ -445,8 +445,8 @@ function createTerrainMaterial() {
             // Extend the existing sand band inward by 40% of the original
             // river half-width, measured from the new water edge.
             float mainSandInner = mainWaterWidth - mainWidth * 0.4;
-            mainSand = smoothstep(mainSandInner - 0.65, mainSandInner + 0.45, mainDistance) *
-              (1.0 - smoothstep(mainWidth + 19.0, mainWidth + 24.0, mainDistance));
+            mainSand = smoothstep(mainSandInner - 2.4, mainSandInner + 2.8, mainDistance) *
+              (1.0 - smoothstep(mainWidth + 14.0, mainWidth + 34.0, mainDistance));
           }
 
           if (abs(p.y - (4200.0 + 180.0 * sin(p.x / 650.0))) < 58.0) {
@@ -456,8 +456,8 @@ function createTerrainMaterial() {
             float sideWaterWidth = sideWidth * 1.2;
             sideEdgeDistance = sideDistance - sideWaterWidth;
             float sideSandInner = sideWaterWidth - sideWidth * 0.4;
-            sideSand = smoothstep(sideSandInner - 0.65, sideSandInner + 0.45, sideDistance) *
-              (1.0 - smoothstep(sideWidth + 16.0, sideWidth + 22.0, sideDistance));
+            sideSand = smoothstep(sideSandInner - 2.2, sideSandInner + 2.6, sideDistance) *
+              (1.0 - smoothstep(sideWidth + 12.0, sideWidth + 30.0, sideDistance));
           }
 
           float sandMask = max(mainSand, sideSand);
