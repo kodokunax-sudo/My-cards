@@ -165,9 +165,12 @@ export function createPhysicsWorld(scene, worldInfo = null) {
   }
 
   scene.traverse((object) => {
-    if (!object.isMesh || object.userData.noCollider || !object.visible) return;
+    if (!object.isMesh || !object.visible) return;
 
+    // A thin ribbon can be walkable without becoming a giant OBB collider.
+    // Collect its triangles for floor raycasts first, then honour noCollider.
     if (object.userData.walkable) floors.push(object);
+    if (object.userData.noCollider) return;
 
     const geometry = object.geometry;
     if (!geometry.boundingBox) geometry.computeBoundingBox();
