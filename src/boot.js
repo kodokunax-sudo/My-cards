@@ -13,18 +13,23 @@
   let offlineCacheReady = Promise.resolve();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     offlineCacheReady = navigator.serviceWorker.register('./sw.js')
-      .then(() => navigator.serviceWorker.ready)
+      .then(() => Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((resolve) => window.setTimeout(resolve, 1800)),
+      ]))
       .then(() => new Promise((resolve) => {
         if (navigator.serviceWorker.controller) return resolve();
         const finish = () => resolve();
         navigator.serviceWorker.addEventListener('controllerchange', finish, { once: true });
-        window.setTimeout(finish, 1400);
+        window.setTimeout(finish, 700);
       }))
       .catch((error) => {
         console.warn('[Titan cache] Service worker unavailable:', error);
       });
   }
-  try { navigator.storage?.persist?.(); } catch (error) { /* best effort on supported browsers */ }
+  try {
+    Promise.resolve(navigator.storage?.persist?.()).catch(() => {});
+  } catch (error) { /* best effort on supported browsers */ }
 
   let loading = false;
   let loaded = false;
