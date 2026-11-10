@@ -112,16 +112,6 @@ function createTerrainMaterial() {
         f.y
       );
     }
-    float terrainFbm(vec2 p) {
-      float n = 0.0;
-      float a = 0.5;
-      for (int i = 0; i < 4; i++) {
-        n += terrainNoise(p) * a;
-        p *= 2.03;
-        a *= 0.5;
-      }
-      return n;
-    }
   `;
 
   material.onBeforeCompile = (shader) => {
@@ -132,7 +122,7 @@ function createTerrainMaterial() {
       `)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vTerrainWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
-        vTerrainNormal = normalize(mat3(modelMatrix) * normal);
+        vTerrainNormal = normalize(mat3(modelMatrix) * objectNormal);
       `);
 
     shader.fragmentShader = shader.fragmentShader
@@ -144,10 +134,10 @@ function createTerrainMaterial() {
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
           vec2 p = vTerrainWorld.xz;
-          float macroNoise = terrainFbm(p * 0.018);
-          float midNoise = terrainFbm(p * 0.19);
-          float fineNoise = terrainNoise(p * 1.35);
-          float flecks = terrainNoise(p * 3.8);
+          float macroNoise = terrainNoise(p * 0.018);
+          float midNoise = terrainNoise(p * 0.15);
+          float fineNoise = terrainNoise(p * 0.92);
+          float flecks = terrainNoise(p * 2.7);
           float bladeLines = 1.0 - smoothstep(0.02, 0.18,
             abs(sin(p.x * 2.9 + sin(p.y * 0.73) * 1.7 + terrainNoise(p * 0.42) * 2.0)));
           float texture = macroNoise * 0.16 + midNoise * 0.22 +
@@ -889,8 +879,8 @@ function addRibbonChunks(scene, points, halfWidth, y, material, name, options = 
 function createRiver(scene, rnd, heightAt) {
   const centerX = mainRiverX;
   const points = [];
-  for (let i = 0; i <= 150; i++) {
-    const z = -4500 + (9000 * i) / 150;
+  for (let i = 0; i <= 240; i++) {
+    const z = -4500 + (9000 * i) / 240;
     points.push({ x: centerX(z), z });
   }
 
@@ -948,7 +938,7 @@ function createRiver(scene, rnd, heightAt) {
       bottomY: -3.25,
       exitFeetY: 0.55,
       exitHeight: 0.55,
-      contains: (x, z) => Math.abs(x - centerX(z)) <= 11.5,
+      contains: (x, z) => Math.abs(x - centerX(z)) <= 11.9,
     },
   };
 }
@@ -956,8 +946,8 @@ function createRiver(scene, rnd, heightAt) {
 function createTributary(scene) {
   const centerZ = tributaryZ;
   const points = [];
-  for (let i = 0; i <= 100; i++) {
-    const x = -2800 + (5600 * i) / 100;
+  for (let i = 0; i <= 180; i++) {
+    const x = -2800 + (5600 * i) / 180;
     points.push({ x, z: centerZ(x) });
   }
 
@@ -977,7 +967,7 @@ function createTributary(scene) {
       bottomY: -2.55,
       exitFeetY: 0.85,
       exitHeight: 0.85,
-      contains: (x, z) => Math.abs(z - centerZ(x)) <= 8.5,
+      contains: (x, z) => Math.abs(z - centerZ(x)) <= 8.8,
     },
   };
 }
