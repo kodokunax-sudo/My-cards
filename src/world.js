@@ -1275,9 +1275,9 @@ function createRiver(scene, rnd, heightAt) {
     water, bed, waterMaterial, centerX, halfWidth: 14.2,
     region: {
       id: 'river',
-      surfaceY: RIVER_SURFACE_Y,
+      surfaceY: RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET,
       surfaceAt: (x, z) => mainRiverSurface(mainRiverStation(x, z).station),
-      bottomY: RIVER_SURFACE_Y - 12.8,
+      bottomY: RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET - 12.8,
       bottomAt: (x, z) => {
         const station = mainRiverStation(x, z).station;
         return mainRiverSurface(station) - mainRiverDepth(station) + 0.08;
@@ -1315,9 +1315,9 @@ function createTributary(scene, heightAt) {
     water, bed, waterMaterial,
     region: {
       id: 'south-river',
-      surfaceY: RIVER_SURFACE_Y,
+      surfaceY: RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET,
       surfaceAt: (x, z) => tributarySurface(tributaryStation(x, z).station),
-      bottomY: RIVER_SURFACE_Y - 9.6,
+      bottomY: RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET - 9.6,
       bottomAt: (x, z) => {
         const station = tributaryStation(x, z).station;
         return tributarySurface(station) - tributaryDepth(station) + 0.08;
@@ -1381,7 +1381,7 @@ export function createWorld(scene) {
   const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(90, 0.30, 10), new THREE.MeshStandardMaterial({
     color: 0x715239, roughness: 0.9,
   }));
-  // Top surface = 1.08m, safely above the water-entry threshold (0.335m).
+  // Deck top is lowered together with the bridge group by three metres.
   bridgeDeck.position.y = 0.93;
   bridgeDeck.castShadow = true;
   bridgeDeck.receiveShadow = true;
