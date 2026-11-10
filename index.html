@@ -161,9 +161,15 @@
   const showBootError = (message) => {
     const button = document.getElementById('start-btn');
     if (!button || !button.disabled || !button.textContent.includes('Загрузка')) return;
-    button.textContent = 'Ошибка загрузки сцены';
+    button.disabled = false;
+    button.textContent = 'ПОВТОРИТЬ ЗАГРУЗКУ';
     const note = document.querySelector('.overlay-inner .note');
-    if (note) note.textContent = message || 'Сцена не запустилась. Обновите страницу и проверьте ошибки в консоли браузера.';
+    if (note) note.textContent = message || 'Не удалось запустить сцену. Нажмите кнопку, чтобы повторить загрузку.';
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      window.location.reload();
+    }, { capture: true, once: true });
   };
 
   window.addEventListener('error', (event) => {
