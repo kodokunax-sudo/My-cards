@@ -22,7 +22,97 @@ const WATER_DRAG = 1.65;
 const MAX_OXYGEN = 24;
 const EYE_WATER_OFFSET = 0.65;
 
-export function createPlayer(camera, domElement, physics, worldInfo, onModeChange) {
+function createPlayerAvatar(scene) {
+  const root = new THREE.Group();
+  root.name = 'player-visible-body';
+  root.userData.noCollider = true;
+
+  const jacket = new THREE.MeshStandardMaterial({
+    color: 0x6d8063, roughness: 0.9, flatShading: true,
+  });
+  const jacketDark = new THREE.MeshStandardMaterial({
+    color: 0x405344, roughness: 0.95, flatShading: true,
+  });
+  const trousers = new THREE.MeshStandardMaterial({
+    color: 0x333d43, roughness: 0.96, flatShading: true,
+  });
+  const boots = new THREE.MeshStandardMaterial({
+    color: 0x4c382b, roughness: 1, flatShading: true,
+  });
+  const skin = new THREE.MeshStandardMaterial({
+    color: 0xb98768, roughness: 0.92, flatShading: true,
+  });
+  const accent = new THREE.MeshStandardMaterial({
+    color: 0xc49b5a, roughness: 0.8, metalness: 0.05,
+  });
+
+  function part(geometry, material, x, y, z, rotationZ = 0) {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.rotation.z = rotationZ;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData.noCollider = true;
+    root.add(mesh);
+    return mesh;
+  }
+
+  // First-person body: limbs and torso are visible when looking down.
+  // The head is kept on a separate camera layer to prevent camera clipping.
+  part(new THREE.BoxGeometry(0.48, 0.62, 0.27), jacket, 0, 1.04, -0.035);
+  part(new THREE.BoxGeometry(0.42, 0.22, 0.25), jacketDark, 0, 0.66, -0.025);
+  part(new THREE.BoxGeometry(0.18, 0.24, 0.025), accent, 0, 1.14, -0.18);
+
+  for (const side of [-1, 1]) {
+    part(new THREE.CylinderGeometry(0.075, 0.095, 0.49, 8),
+      jacket, side * 0.305, 1.035, -0.035, side * -0.10);
+    part(new THREE.SphereGeometry(0.082, 8, 6),
+      skin, side * 0.335, 0.775, -0.05);
+    part(new THREE.CylinderGeometry(0.105, 0.09, 0.54, 8),
+      trousers, side * 0.125, 0.36, 0);
+    part(new THREE.BoxGeometry(0.225, 0.13, 0.34),
+      boots, side * 0.125, 0.075, -0.055);
+  }
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.165, 10, 8), skin);
+  head.position.set(0, 1.49, 0.19);
+  head.userData.noCollider = true;
+  head.castShadow = true;
+  head.layers.set(1);
+  root.add(head);
+
+  const hitbox = new THREE.Group();
+  hitbox.name = 'player-capsule-hitbox';
+  hitbox.userData.noCollider = true;
+  const wire = new THREE.MeshBasicMaterial({
+    color: 0x36e6c0,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.7,
+    depthWrite: false,
+  });
+  const cylinder = new THREE.Mesh(
+    new THREE.CylinderGeometry(BODY_RADIUS, BODY_RADIUS, PLAYER_HEIGHT - BODY_RADIUS * 2, 14, 1, true),
+    wire
+  );
+  cylinder.position.y = PLAYER_HEIGHT * 0.5;
+  cylinder.userData.noCollider = true;
+  hitbox.add(cylinder);
+
+  for (const y of [BODY_RADIUS, PLAYER_HEIGHT - BODY_RADIUS]) {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(BODY_RADIUS, 14, 10), wire);
+    cap.position.y = y;
+    cap.userData.noCollider = true;
+    hitbox.add(cap);
+  }
+
+  root.visible = true;
+  hitbox.visible = false;
+  scene.add(root, hitbox);
+  return { root, hitbox };
+}
+
+export function createPlayer(camera, domElement, physics, worldInfo, onModeChange, scene) {
   const controls = new PointerLockControls(camera, domElement);
   const spawn = worldInfo?.spawn || {
     x: 0, y: 0, z: 70, lookAt: { x: 0, y: 25, z: 0 },
@@ -59,6 +149,20 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
   const right = new THREE.Vector3();
   const direction = new THREE.Vector3();
   const velocity = new THREE.Vector3();
+  const avatar = createPlayerAvatar(scene);
+  const avatarEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+  let hitboxVisible = false;
+
+  function syncAvatar() {
+    avatar.root.position.set(camera.position.x, feetY, camera.position.z);
+    avatarEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+    avatar.root.rotation.y = avatarEuler.y;
+    avatar.root.visible = mode !== 'fly' && mode !== 'cinematic';
+    avatar.hitbox.position.copy(avatar.root.position);
+    avatar.hitbox.rotation.y = avatar.root.rotation.y;
+    avatar.hitbox.visible = hitboxVisible && avatar.root.visible;
+  }
+
 
   domElement.addEventListener('mousedown', (event) => {
     if (!pointerLocked && event.button === 0) dragging = true;
@@ -112,10 +216,17 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     }
 
     onModeChange?.(mode);
+    syncAvatar();
   }
 
   function onKeyDown(event) {
     const key = event.code;
+    if (key === 'KeyH' && !event.repeat) {
+      hitboxVisible = !hitboxVisible;
+      syncAvatar();
+      return;
+    }
+
     if (key === 'Space' && mode !== 'fly') {
       event.preventDefault();
       if (!swimming && !event.repeat) jumpQueued = 0.16;
@@ -177,6 +288,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       spawn.lookAt?.y ?? 25,
       spawn.lookAt?.z ?? 0
     );
+    syncAvatar();
   }
 
   function respawnAfterDrowning() {
@@ -419,6 +531,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       updateCinematic(dt);
       clearWaterState();
       oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 6.5);
+      syncAvatar();
       return;
     }
 
@@ -457,6 +570,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       } else {
         oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 6.5);
       }
+      syncAvatar();
       return;
     }
 
@@ -470,6 +584,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
 
     if (swimming) {
       updateSwimming(dt, mx, mz, sprinting);
+      syncAvatar();
       return;
     }
 
@@ -573,6 +688,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     camera.quaternion.setFromEuler(euler);
 
     oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 6.5);
+    syncAvatar();
   }
 
   return {
@@ -588,6 +704,17 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     get maxOxygen() { return MAX_OXYGEN; },
     get oxygenRatio() { return oxygen / MAX_OXYGEN; },
     get activeWater() { return activeWater; },
+    get body() { return avatar.root; },
+    get hitbox() {
+      return {
+        type: 'capsule', radius: BODY_RADIUS, height: PLAYER_HEIGHT,
+        feetY, centerX: camera.position.x, centerZ: camera.position.z,
+      };
+    },
+    setHitboxVisible(visible) {
+      hitboxVisible = !!visible;
+      syncAvatar();
+    },
     consumeDrownedEvent() {
       const value = drownedEvent;
       drownedEvent = false;
