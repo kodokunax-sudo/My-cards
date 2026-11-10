@@ -492,6 +492,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     }
     if (changed) {
       stoneMesh.instanceMatrix.needsUpdate = true;
+      // Nodes respawn far away, so refresh the aggregate bounds used by frustum culling.
+      stoneMesh.computeBoundingSphere();
       save();
       renderPanel();
     }
