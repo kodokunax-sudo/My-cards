@@ -129,7 +129,8 @@ const savedSettings = loadSavedSettings();
 const forced = new URLSearchParams(location.search).get('quality');
 let autoQuality = !QUALITY[forced];
 let quality = QUALITY[forced] ? forced :
-  (QUALITY[savedSettings?.quality] ? savedSettings.quality : detectDeviceQuality());
+  (savedSettings?.auto === false && QUALITY[savedSettings?.quality]
+    ? savedSettings.quality : detectDeviceQuality());
 if (savedSettings && savedSettings.auto === true && !forced) autoQuality = true;
 else if (savedSettings && savedSettings.auto === false && !forced) autoQuality = false;
 
