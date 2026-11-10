@@ -121,6 +121,8 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       if (!swimming && !event.repeat) jumpQueued = 0.16;
     }
 
+    // C is a water-only dive control. In flight, Ctrl remains the descend key.
+    if (key === 'KeyC' && (!swimming || mode === 'fly')) return;
     keys[key] = true;
     if (key === 'KeyF') setMode(mode === 'fly' ? 'walk' : 'fly');
     if (key === 'KeyT') setMode(mode === 'cinematic' ? 'walk' : 'cinematic');
@@ -234,20 +236,35 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       nextRegion && activeWater &&
       nextRegion.id !== 'fountain' && activeWater.id !== 'fountain'
     );
-    if (nextRegion?.id !== activeWater?.id && !connectedRivers) {
-      const exitHeight = activeWater?.exitFeetY ?? ((activeWater?.surfaceY ?? 0) + 1.75);
-      if (feetY < exitHeight) return false;
-      clearWaterState();
-      grounded = false;
-    } else if (connectedRivers) {
-      // The main river and its tributary join into one continuous waterway.
-      activeWater = nextRegion;
+    const leavingWater = nextRegion?.id !== activeWater?.id && !connectedRivers;
+    let exitFloor = null;
+
+    if (leavingWater) {
+      // A swimmer may leave once their head is above the surface and the
+      // sampled shoreline is within one normal step. Requiring feet above
+      // the waterline trapped players beneath sloped banks.
+      const surface = activeWater?.surfaceY ?? 0;
+      const headClearedSurface = feetY + EYE_HEIGHT >= surface - 0.12;
+      exitFloor = physics.terrainAt?.(nx, nz);
+      const reachableShore = Number.isFinite(exitFloor) &&
+        exitFloor >= feetY - 0.65 &&
+        exitFloor <= feetY + 1.45;
+      if (!headClearedSurface || !reachableShore) return false;
     }
 
-    if (physics.isBlocked(nx, feetY, nz, BODY_RADIUS, PLAYER_HEIGHT)) return false;
+    const collisionFeet = leavingWater ? Math.max(feetY, exitFloor) : feetY;
+    if (physics.isBlocked(nx, collisionFeet, nz, BODY_RADIUS, PLAYER_HEIGHT)) return false;
 
     camera.position.x = nx;
     camera.position.z = nz;
+    if (leavingWater) {
+      feetY = exitFloor;
+      camera.position.y = feetY + EYE_HEIGHT;
+      velocity.y = 0;
+      grounded = true;
+      clearWaterState();
+      return true;
+    }
     if (swimming && nextRegion) activeWater = nextRegion;
     return true;
   }
@@ -303,7 +320,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     const targetFeet = surfaceY - EYE_HEIGHT + EYE_WATER_OFFSET;
     const verticalInput = THREE.MathUtils.clamp(
       (keys.Space ? 1 : 0) -
-      ((keys.KeyC || keys.ControlLeft) ? 1 : 0) + vertical,
+      (keys.KeyC ? 1 : 0) * -1 + vertical,
       -1, 1
     );
 
@@ -347,7 +364,10 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       return;
     }
 
-    const bottomY = activeWater.bottomY + 0.22;
+    const localBottomY = activeWater.bottomAt
+      ? activeWater.bottomAt(camera.position.x, camera.position.z)
+      : activeWater.bottomY;
+    const bottomY = localBottomY + 0.22;
     let nextFeet = feetY + velocity.y * dt;
     if (nextFeet < bottomY) {
       nextFeet = bottomY;
@@ -418,7 +438,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
         direction.addScaledVector(forward, mz).addScaledVector(right, mx);
         direction.normalize().multiplyScalar(Math.min(1, Math.hypot(mx, mz)));
       }
-      const lift = (keys.Space ? 1 : 0) - (keys.KeyC || keys.ControlLeft ? 1 : 0) + vertical;
+      const lift = (keys.Space ? 1 : 0) - (keys.ControlLeft ? 1 : 0) + vertical;
       camera.position.addScaledVector(direction, speed * dt);
       camera.position.y = THREE.MathUtils.clamp(camera.position.y + lift * speed * dt, -100, 500);
       feetY = camera.position.y - EYE_HEIGHT;
