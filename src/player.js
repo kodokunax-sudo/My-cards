@@ -163,6 +163,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     avatar.hitbox.visible = hitboxVisible && avatar.root.visible;
   }
 
+  syncAvatar();
 
   domElement.addEventListener('mousedown', (event) => {
     if (!pointerLocked && event.button === 0) dragging = true;
