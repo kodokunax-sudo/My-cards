@@ -1027,11 +1027,16 @@ function pointInReservedArea(x, z, routePoints) {
   return false;
 }
 
-function createForests(scene, heightAt, routePoints, rnd, renderables, streamer) {
+async function createForests(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress) {
   const trees = [];
   const cell = 16;
   const half = GRASS_RADIUS - 80;
+  let forestRows = 0;
   for (let x0 = -half; x0 <= half; x0 += cell) {
+    if (forestRows++ % 32 === 0) {
+      onProgress?.(`Расставляем деревья... ${Math.round((x0 + half) / (half * 2) * 100)}%`);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
     for (let z0 = -half; z0 <= half; z0 += cell) {
       const x = x0 + (rnd() - 0.5) * cell * 0.82;
       const z = z0 + (rnd() - 0.5) * cell * 0.82;
@@ -1272,7 +1277,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables, streamer)
 }
 
 
-function createGroundCover(scene, heightAt, routePoints, rnd, renderables, streamer) {
+async function createGroundCover(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress) {
   const chunkSize = 640;
   const buckets = new Map();
   const add = (x, z, type, item) => {
@@ -1286,6 +1291,10 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables, strea
   let grassCount = 0;
   while (grassCount < 7600 && attempts < 26000) {
     attempts++;
+    if (attempts % 5000 === 0) {
+      onProgress?.('Распределяем траву по карте...');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
     const angle = rnd() * TAU;
     const radius = 250 + rnd() * (GRASS_RADIUS - 330);
     const x = Math.cos(angle) * radius;
@@ -1304,6 +1313,10 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables, strea
   let shrubCount = 0;
   while (shrubCount < 2600 && attempts < 12000) {
     attempts++;
+    if (attempts % 5000 === 0) {
+      onProgress?.('Расставляем кустарники...');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
     const angle = rnd() * TAU;
     const radius = 265 + rnd() * (GRASS_RADIUS - 350);
     const x = Math.cos(angle) * radius;
@@ -1392,13 +1405,17 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables, strea
   return { grass: grassCount, shrubs: shrubCount, chunks: buckets.size, meshes };
 }
 
-function createRocks(scene, heightAt, routePoints, rnd, renderables, streamer) {
+async function createRocks(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress) {
   const boulderData = [];
   const smallData = [];
   let attempts = 0;
 
   while (boulderData.length < 760 && attempts < 12000) {
     attempts++;
+    if (attempts % 4000 === 0) {
+      onProgress?.('Готовим каменные залежи...');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
     const angle = rnd() * TAU;
     const radius = 270 + rnd() * (GRASS_RADIUS - 470);
     const x = Math.cos(angle) * radius;
@@ -1413,6 +1430,10 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables, streamer) {
   attempts = 0;
   while (smallData.length < 3200 && attempts < 30000) {
     attempts++;
+    if (attempts % 6000 === 0) {
+      onProgress?.('Расставляем мелкие камни...');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
     const angle = rnd() * TAU;
     const radius = 255 + rnd() * (GRASS_RADIUS - 330);
     const x = Math.cos(angle) * radius;
@@ -1766,7 +1787,7 @@ function createTributary(scene, heightAt, analyticHeightAt, riverProfiles) {
   };
 }
 
-export function createWorld(scene) {
+export async function createWorld(scene, onProgress = () => {}) {
   const rnd = seededRandom();
   const routePoints = [
     { x: -1588, z: 900 },
@@ -1859,9 +1880,13 @@ export function createWorld(scene) {
 
   const river = createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles);
   const tributary = createTributary(scene, heightAt, analyticHeightAt, riverProfiles);
-  const forests = createForests(scene, heightAt, routePoints, rnd, renderables, streamer);
-  const groundCover = createGroundCover(scene, heightAt, routePoints, rnd, renderables, streamer);
-  const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables, streamer);
+  onProgress('Генерируем лес и позиции деревьев...');
+  const forests = await createForests(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress);
+  onProgress('Генерируем траву и кустарники...');
+  const groundCover = await createGroundCover(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress);
+  onProgress('Генерируем камни и скалы...');
+  const rocks = await createRocks(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress);
+  onProgress('Готовим ближайшие участки мира...');
   const canSpawnResourceAt = (x, z, clearance = 9) => {
     if (Math.hypot(x, z) < 285 || Math.hypot(x + 1600, z - 900) < 92) return false;
     if (pointInReservedArea(x, z, routePoints)) return false;
