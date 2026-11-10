@@ -436,7 +436,16 @@ function animate() {
   if (env.update(elapsed, renderer.getPixelRatio(), camera.position)) {
     renderer.shadowMap.needsUpdate = true;
   }
-  world.update(elapsed);
+  const streamProgress = world.update(elapsed, camera.position);
+  const worldLoading = document.getElementById('world-loading');
+  if (worldLoading && streamProgress) {
+    if (streamProgress.pending > 0) {
+      worldLoading.textContent = `Подгружаем мир · ${streamProgress.percent}%`;
+      worldLoading.classList.add('active');
+    } else {
+      worldLoading.classList.remove('active');
+    }
+  }
   water.setNight(nightProgress);
   if (player.underwater) {
     scene.fog.color.set(0x063248);
