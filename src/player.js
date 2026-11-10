@@ -116,7 +116,7 @@ function createPlayerAvatar(scene) {
 
   function makeArm(side, sizeMultiplier) {
     const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.30, 1.285, 0.005);
+    shoulder.position.set(side * 0.30, 1.285, -0.15);
     motion.add(shoulder);
 
     // Muscle volume is multiplied on every part of the right arm.
@@ -224,6 +224,7 @@ function createPlayerAvatar(scene) {
     }
 
     if (moveAmount > 0.02) phase += dt * (sprinting ? 10.5 : 7.3);
+    else phase += dt * 1.35;
     const swing = Math.sin(phase) * moveAmount * (sprinting ? 0.92 : 0.58);
     leftArm.shoulder.rotation.x = swing * 0.86;
     rightArm.shoulder.rotation.x = -swing * 0.86;
@@ -233,8 +234,10 @@ function createPlayerAvatar(scene) {
     rightArm.elbow.rotation.x = -0.10 - Math.max(0, swing) * 0.22;
     leftLeg.rotation.x = -swing;
     rightLeg.rotation.x = swing;
-    motion.position.y = moveAmount > 0.02 ? Math.abs(Math.sin(phase * 2)) * (sprinting ? 0.035 : 0.018) : 0;
-    motion.rotation.z = Math.sin(phase) * moveAmount * 0.012;
+    motion.position.y = moveAmount > 0.02
+      ? Math.abs(Math.sin(phase * 2)) * (sprinting ? 0.035 : 0.018)
+      : Math.sin(phase) * 0.004;
+    motion.rotation.z = Math.sin(phase) * (moveAmount * 0.012 + 0.002);
   }
 
   root.visible = true;
