@@ -8,7 +8,7 @@ const WALK_SPEED = 5.4;
 const RUN_SPEED = 10.2;
 const FLY_SPEED = 14.0;
 const FLY_FAST = 34.0;
-const BODY_RADIUS = 0.29;
+const BODY_RADIUS = 0.34;
 const STEP_UP = 1.4;
 const MAX_STEP_DOWN = 3.0;
 const JUMP_SPEED = 6.4;
@@ -27,59 +27,150 @@ function createPlayerAvatar(scene) {
   root.name = 'player-visible-body';
   root.userData.noCollider = true;
 
-  const jacket = new THREE.MeshStandardMaterial({
-    color: 0x6d8063, roughness: 0.9, flatShading: true,
+  const motion = new THREE.Group();
+  motion.name = 'player-body-animation';
+  root.add(motion);
+
+  const skin = new THREE.MeshStandardMaterial({
+    color: 0xb98261, roughness: 0.88, flatShading: true,
   });
-  const jacketDark = new THREE.MeshStandardMaterial({
-    color: 0x405344, roughness: 0.95, flatShading: true,
+  const skinLight = new THREE.MeshStandardMaterial({
+    color: 0xd29a75, roughness: 0.9, flatShading: true,
   });
-  const trousers = new THREE.MeshStandardMaterial({
-    color: 0x333d43, roughness: 0.96, flatShading: true,
+  const skinShadow = new THREE.MeshStandardMaterial({
+    color: 0x8d5d48, roughness: 0.94, flatShading: true,
+  });
+  const shorts = new THREE.MeshStandardMaterial({
+    color: 0x344d43, roughness: 0.96, flatShading: true,
+  });
+  const shortsTrim = new THREE.MeshStandardMaterial({
+    color: 0xc09b5c, roughness: 0.88, flatShading: true,
   });
   const boots = new THREE.MeshStandardMaterial({
-    color: 0x4c382b, roughness: 1, flatShading: true,
-  });
-  const skin = new THREE.MeshStandardMaterial({
-    color: 0xb98768, roughness: 0.92, flatShading: true,
-  });
-  const accent = new THREE.MeshStandardMaterial({
-    color: 0xc49b5a, roughness: 0.8, metalness: 0.05,
+    color: 0x403128, roughness: 1, flatShading: true,
   });
 
-  function part(geometry, material, x, y, z, rotationZ = 0) {
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(x, y, z);
-    mesh.rotation.z = rotationZ;
+  function ellipsoid(parent, material, position, scale, segments = 12) {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(1, segments, Math.max(8, segments - 2)),
+      material
+    );
+    mesh.position.set(position[0], position[1], position[2]);
+    mesh.scale.set(scale[0], scale[1], scale[2]);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.userData.noCollider = true;
-    root.add(mesh);
+    parent.add(mesh);
     return mesh;
   }
 
-  // First-person body: limbs and torso are visible when looking down.
-  // The head is kept on a separate camera layer to prevent camera clipping.
-  part(new THREE.BoxGeometry(0.48, 0.62, 0.27), jacket, 0, 1.04, -0.035);
-  part(new THREE.BoxGeometry(0.42, 0.22, 0.25), jacketDark, 0, 0.66, -0.025);
-  part(new THREE.BoxGeometry(0.18, 0.24, 0.025), accent, 0, 1.14, -0.18);
-
-  for (const side of [-1, 1]) {
-    part(new THREE.CylinderGeometry(0.075, 0.095, 0.49, 8),
-      jacket, side * 0.305, 1.035, -0.035, side * -0.10);
-    part(new THREE.SphereGeometry(0.082, 8, 6),
-      skin, side * 0.335, 0.775, -0.05);
-    part(new THREE.CylinderGeometry(0.105, 0.09, 0.54, 8),
-      trousers, side * 0.125, 0.36, 0);
-    part(new THREE.BoxGeometry(0.225, 0.13, 0.34),
-      boots, side * 0.125, 0.075, -0.055);
+  function box(parent, material, size, position) {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(size[0], size[1], size[2]),
+      material
+    );
+    mesh.position.set(position[0], position[1], position[2]);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData.noCollider = true;
+    parent.add(mesh);
+    return mesh;
   }
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.165, 10, 8), skin);
-  head.position.set(0, 1.49, 0.19);
-  head.userData.noCollider = true;
-  head.castShadow = true;
+  // Muscular torso: wide chest, separate pectorals, rounded shoulders and
+  // visible abdominal groups. Character faces local -Z.
+  ellipsoid(motion, skinShadow, [0, 0.86, -0.015], [0.29, 0.22, 0.185]);
+  ellipsoid(motion, skin, [0, 1.105, -0.02], [0.335, 0.33, 0.205], 14);
+  ellipsoid(motion, skinLight, [-0.155, 1.20, 0.125], [0.205, 0.145, 0.105]);
+  ellipsoid(motion, skinLight, [0.155, 1.20, 0.125], [0.205, 0.145, 0.105]);
+
+  // Pectoral lower edge and clavicle highlights make the chest readable
+  // from the first-person downward camera angle.
+  ellipsoid(motion, skinShadow, [-0.145, 1.075, 0.142], [0.17, 0.032, 0.035]);
+  ellipsoid(motion, skinShadow, [0.145, 1.075, 0.142], [0.17, 0.032, 0.035]);
+  ellipsoid(motion, skinLight, [0, 1.31, 0.095], [0.23, 0.045, 0.075]);
+
+  // Three pairs of abdominal muscles, plus obliques.
+  for (const y of [0.99, 0.89, 0.79]) {
+    for (const side of [-1, 1]) {
+      ellipsoid(motion, skinLight, [side * 0.082, y, 0.157], [0.073, 0.042, 0.045], 10);
+    }
+  }
+  ellipsoid(motion, skin, [-0.245, 0.99, 0.005], [0.075, 0.22, 0.12]);
+  ellipsoid(motion, skin, [0.245, 0.99, 0.005], [0.075, 0.22, 0.12]);
+
+  // Neck and a low-profile head. The head is on layer 1 so it does not
+  // intersect the first-person camera.
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.105, 0.19, 10), skin);
+  neck.position.set(0, 1.39, 0.02);
+  neck.castShadow = true;
+  neck.userData.noCollider = true;
+  motion.add(neck);
+  const head = ellipsoid(motion, skin, [0, 1.57, 0.105], [0.145, 0.17, 0.15], 12);
   head.layers.set(1);
-  root.add(head);
+
+  // Shorts and belt.
+  ellipsoid(motion, shorts, [0, 0.68, 0], [0.255, 0.17, 0.19]);
+  box(motion, shortsTrim, [0.50, 0.045, 0.385], [0, 0.77, -0.005]);
+  box(motion, shortsTrim, [0.075, 0.09, 0.035], [0, 0.765, -0.205]);
+
+  function makeArm(side, sizeMultiplier) {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * 0.30, 1.285, 0.005);
+    motion.add(shoulder);
+
+    // Muscle volume is multiplied on every part of the right arm.
+    ellipsoid(shoulder, skin, [side * 0.015, -0.035, 0], [
+      0.145 * sizeMultiplier, 0.155 * sizeMultiplier, 0.145 * sizeMultiplier,
+    ]);
+    ellipsoid(shoulder, skinLight, [side * 0.02, -0.105, 0.015], [
+      0.125 * sizeMultiplier, 0.20 * sizeMultiplier, 0.12 * sizeMultiplier,
+    ]);
+
+    const upper = ellipsoid(shoulder, skin, [side * 0.018, -0.255, -0.005], [
+      0.112 * sizeMultiplier, 0.245 * sizeMultiplier, 0.12 * sizeMultiplier,
+    ]);
+    ellipsoid(shoulder, skinLight, [side * 0.02, -0.255, 0.075], [
+      0.105 * sizeMultiplier, 0.155 * sizeMultiplier, 0.065 * sizeMultiplier,
+    ]);
+
+    const elbow = new THREE.Group();
+    elbow.position.set(0, -0.455 * Math.min(sizeMultiplier, 1.12), 0);
+    shoulder.add(elbow);
+    ellipsoid(elbow, skin, [0, -0.17 * sizeMultiplier, 0], [
+      0.087 * sizeMultiplier, 0.205 * sizeMultiplier, 0.09 * sizeMultiplier,
+    ]);
+    ellipsoid(elbow, skinLight, [0, -0.16 * sizeMultiplier, 0.055], [
+      0.078 * sizeMultiplier, 0.14 * sizeMultiplier, 0.055 * sizeMultiplier,
+    ]);
+    ellipsoid(elbow, skin, [0, -0.365 * sizeMultiplier, -0.005], [
+      0.085 * sizeMultiplier, 0.095 * sizeMultiplier, 0.09 * sizeMultiplier,
+    ]);
+    return { shoulder, elbow, upper };
+  }
+
+  // The right arm is deliberately 1.5x the left arm's muscle volume.
+  const leftArm = makeArm(-1, 1.0);
+  const rightArm = makeArm(1, 1.5);
+
+  function makeLeg(side) {
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.135, 0.67, 0);
+    motion.add(hip);
+    ellipsoid(hip, shorts, [0, -0.08, 0], [0.145, 0.18, 0.16]);
+    ellipsoid(hip, skin, [0, -0.255, 0.005], [0.125, 0.245, 0.125]);
+    ellipsoid(hip, skinLight, [0, -0.255, 0.075], [0.105, 0.16, 0.065]);
+
+    const knee = new THREE.Group();
+    knee.position.y = -0.47;
+    hip.add(knee);
+    ellipsoid(knee, skin, [0, -0.16, 0], [0.095, 0.205, 0.10]);
+    box(knee, boots, [0.205, 0.12, 0.31], [0, -0.39, -0.055]);
+    return hip;
+  }
+
+  const leftLeg = makeLeg(-1);
+  const rightLeg = makeLeg(1);
 
   const hitbox = new THREE.Group();
   hitbox.name = 'player-capsule-hitbox';
@@ -91,20 +182,65 @@ function createPlayerAvatar(scene) {
     opacity: 0.7,
     depthWrite: false,
   });
-  // The collision solver uses a constant-radius vertical cylinder, so
-  // the debug mesh deliberately matches that exact footprint and height.
   const cylinder = new THREE.Mesh(
-    new THREE.CylinderGeometry(BODY_RADIUS, BODY_RADIUS, PLAYER_HEIGHT, 14, 1, false),
+    new THREE.CylinderGeometry(BODY_RADIUS, BODY_RADIUS, PLAYER_HEIGHT, 16, 1, false),
     wire
   );
   cylinder.position.y = PLAYER_HEIGHT * 0.5;
   cylinder.userData.noCollider = true;
   hitbox.add(cylinder);
 
+  let phase = 0;
+  function animate(dt, speed, sprinting, swimming, flying) {
+    const moveAmount = THREE.MathUtils.clamp(speed / (sprinting ? 10.2 : 5.4), 0, 1);
+    if (swimming) {
+      phase += dt * (sprinting ? 7.2 : 5.2);
+      const wave = Math.sin(phase);
+      leftArm.shoulder.rotation.x = -0.55 + wave * 0.62;
+      rightArm.shoulder.rotation.x = -0.55 - wave * 0.62;
+      leftArm.shoulder.rotation.z = -0.16;
+      rightArm.shoulder.rotation.z = 0.16;
+      leftArm.elbow.rotation.x = -0.4 + Math.max(0, wave) * 0.5;
+      rightArm.elbow.rotation.x = -0.4 + Math.max(0, -wave) * 0.5;
+      leftLeg.rotation.x = -wave * 0.42;
+      rightLeg.rotation.x = wave * 0.42;
+      motion.position.y = Math.sin(phase * 2) * 0.018;
+      motion.rotation.z = Math.sin(phase) * 0.018;
+      return;
+    }
+
+    if (flying) {
+      leftArm.shoulder.rotation.x = -0.78;
+      rightArm.shoulder.rotation.x = -0.78;
+      leftArm.shoulder.rotation.z = -0.14;
+      rightArm.shoulder.rotation.z = 0.14;
+      leftArm.elbow.rotation.x = -0.28;
+      rightArm.elbow.rotation.x = -0.28;
+      leftLeg.rotation.x = 0.12;
+      rightLeg.rotation.x = 0.12;
+      motion.position.y = 0;
+      motion.rotation.z = 0;
+      return;
+    }
+
+    if (moveAmount > 0.02) phase += dt * (sprinting ? 10.5 : 7.3);
+    const swing = Math.sin(phase) * moveAmount * (sprinting ? 0.92 : 0.58);
+    leftArm.shoulder.rotation.x = swing * 0.86;
+    rightArm.shoulder.rotation.x = -swing * 0.86;
+    leftArm.shoulder.rotation.z = -0.08;
+    rightArm.shoulder.rotation.z = 0.08;
+    leftArm.elbow.rotation.x = -0.10 - Math.max(0, -swing) * 0.22;
+    rightArm.elbow.rotation.x = -0.10 - Math.max(0, swing) * 0.22;
+    leftLeg.rotation.x = -swing;
+    rightLeg.rotation.x = swing;
+    motion.position.y = moveAmount > 0.02 ? Math.abs(Math.sin(phase * 2)) * (sprinting ? 0.035 : 0.018) : 0;
+    motion.rotation.z = Math.sin(phase) * moveAmount * 0.012;
+  }
+
   root.visible = true;
   hitbox.visible = false;
   scene.add(root, hitbox);
-  return { root, hitbox };
+  return { root, hitbox, animate };
 }
 
 export function createPlayer(camera, domElement, physics, worldInfo, onModeChange, scene) {
@@ -148,7 +284,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
   const avatarEuler = new THREE.Euler(0, 0, 0, 'YXZ');
   let hitboxVisible = false;
 
-  function syncAvatar() {
+  function syncAvatar(dt = 0) {
     avatar.root.position.set(camera.position.x, feetY, camera.position.z);
     avatarEuler.setFromQuaternion(camera.quaternion, 'YXZ');
     avatar.root.rotation.y = avatarEuler.y;
@@ -156,6 +292,13 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     avatar.hitbox.position.copy(avatar.root.position);
     avatar.hitbox.rotation.y = avatar.root.rotation.y;
     avatar.hitbox.visible = hitboxVisible && avatar.root.visible;
+    avatar.animate(
+      dt,
+      Math.hypot(velocity.x, velocity.z),
+      !!(keys.ShiftLeft || keys.ShiftRight || runToggle),
+      swimming,
+      mode === 'fly'
+    );
   }
 
   syncAvatar();
@@ -538,7 +681,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       updateCinematic(dt);
       clearWaterState();
       oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 6.5);
-      syncAvatar();
+      syncAvatar(dt);
       return;
     }
 
@@ -577,7 +720,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       } else {
         oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 6.5);
       }
-      syncAvatar();
+      syncAvatar(dt);
       return;
     }
 
@@ -591,7 +734,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
 
     if (swimming) {
       updateSwimming(dt, mx, mz, sprinting);
-      syncAvatar();
+      syncAvatar(dt);
       return;
     }
 
@@ -695,7 +838,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     camera.quaternion.setFromEuler(euler);
 
     oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 6.5);
-    syncAvatar();
+    syncAvatar(dt);
   }
 
   return {
