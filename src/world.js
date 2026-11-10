@@ -395,17 +395,29 @@ function createTerrainMaterial() {
           // Sandy riverbanks are painted directly into the terrain material.
           // This uses the same centreline/width equations as the water mesh,
           // so there is no separate strip that can float above or detach from shore.
-          float mainStation;
-          float mainDistance = terrainMainDistance(p, mainStation);
-          float mainWidth = terrainMainWidth(mainStation);
-          float mainSand = smoothstep(mainWidth - 0.65, mainWidth + 0.45, mainDistance) *
-            (1.0 - smoothstep(mainWidth + 19.0, mainWidth + 24.0, mainDistance));
+          float mainEdgeDistance = 100000.0;
+          float sideEdgeDistance = 100000.0;
+          float mainSand = 0.0;
+          float sideSand = 0.0;
 
-          float sideStation;
-          float sideDistance = terrainTributaryDistance(p, sideStation);
-          float sideWidth = terrainTributaryWidth(sideStation);
-          float sideSand = smoothstep(sideWidth - 0.65, sideWidth + 0.45, sideDistance) *
-            (1.0 - smoothstep(sideWidth + 16.0, sideWidth + 22.0, sideDistance));
+          // Skip centreline projection almost everywhere on the map.
+          if (abs(p.x - (-900.0 + 840.0 * sin(p.y / 1200.0))) < 72.0) {
+            float mainStation;
+            float mainDistance = terrainMainDistance(p, mainStation);
+            float mainWidth = terrainMainWidth(mainStation);
+            mainEdgeDistance = mainDistance - mainWidth;
+            mainSand = smoothstep(mainWidth - 0.65, mainWidth + 0.45, mainDistance) *
+              (1.0 - smoothstep(mainWidth + 19.0, mainWidth + 24.0, mainDistance));
+          }
+
+          if (abs(p.y - (4200.0 + 180.0 * sin(p.x / 650.0))) < 58.0) {
+            float sideStation;
+            float sideDistance = terrainTributaryDistance(p, sideStation);
+            float sideWidth = terrainTributaryWidth(sideStation);
+            sideEdgeDistance = sideDistance - sideWidth;
+            sideSand = smoothstep(sideWidth - 0.65, sideWidth + 0.45, sideDistance) *
+              (1.0 - smoothstep(sideWidth + 16.0, sideWidth + 22.0, sideDistance));
+          }
 
           float sandMask = max(mainSand, sideSand);
           float sandGrain = terrainNoise(p * 0.11);
@@ -418,7 +430,7 @@ function createTerrainMaterial() {
           sandColor = mix(sandColor, sandPale, smoothstep(0.64, 0.94, sandGrain) * 0.48);
           sandColor = mix(sandColor, sandGrey, smoothstep(0.78, 0.94, sandPatch) * 0.56);
           float wetEdge = 1.0 - smoothstep(0.6, 6.5,
-            min(mainDistance - mainWidth, sideDistance - sideWidth));
+            min(mainEdgeDistance, sideEdgeDistance));
           sandColor = mix(sandColor * 0.72, sandColor, 1.0 - wetEdge * 0.58);
           sandColor *= 0.9 + sandGrain * 0.18;
           diffuseColor.rgb = mix(diffuseColor.rgb, sandColor, sandMask * 0.98);
