@@ -283,6 +283,75 @@ function createTerrainMaterial() {
         f.y
       );
     }
+
+    float riverGaussian(float x, float centre, float width) {
+      float t = (x - centre) / width;
+      return exp(-0.5 * t * t);
+    }
+
+    float terrainMainWidth(float station) {
+      float pools = max(
+        riverGaussian(station, -2850.0, 420.0),
+        max(riverGaussian(station, 250.0, 520.0), riverGaussian(station, 2380.0, 460.0))
+      );
+      float pinch = max(
+        riverGaussian(station, -1580.0, 300.0),
+        max(riverGaussian(station, 1280.0, 320.0), riverGaussian(station, 3550.0, 280.0))
+      );
+      return clamp(
+        14.0 + 4.2 * sin(station / 960.0 + 0.8) + 2.1 * sin(station / 370.0) +
+        pools * 5.2 - pinch * 5.4, 9.2, 23.5
+      );
+    }
+
+    float terrainMainDistance(vec2 p, out float station) {
+      station = p.y;
+      for (int i = 0; i < 5; i++) {
+        float angle = station / 1200.0;
+        float centreX = -900.0 + 840.0 * sin(angle);
+        float slope = 0.7 * cos(angle);
+        float curve = -(840.0 / 1440000.0) * sin(angle);
+        float dx = p.x - centreX;
+        float dz = p.y - station;
+        float derivative = -dx * slope - dz;
+        float second = 1.0 + slope * slope - dx * curve;
+        station -= derivative / max(0.2, second);
+      }
+      vec2 centre = vec2(-900.0 + 840.0 * sin(station / 1200.0), station);
+      return length(p - centre);
+    }
+
+    float terrainTributaryWidth(float station) {
+      float widePool = max(
+        riverGaussian(station, -1450.0, 430.0),
+        riverGaussian(station, 900.0, 400.0)
+      );
+      float narrowBar = max(
+        riverGaussian(station, -300.0, 280.0),
+        riverGaussian(station, 2050.0, 300.0)
+      );
+      return clamp(
+        10.8 + 2.8 * sin(station / 720.0 - 0.4) +
+        widePool * 3.8 - narrowBar * 3.0, 7.2, 17.5
+      );
+    }
+
+    float terrainTributaryDistance(vec2 p, out float station) {
+      station = p.x;
+      for (int i = 0; i < 5; i++) {
+        float angle = station / 650.0;
+        float centreZ = 4200.0 + 180.0 * sin(angle);
+        float slope = (180.0 / 650.0) * cos(angle);
+        float curve = -(180.0 / 422500.0) * sin(angle);
+        float dx = p.x - station;
+        float dz = p.y - centreZ;
+        float derivative = dx - dz * slope;
+        float second = 1.0 + slope * slope - dz * curve;
+        station -= derivative / max(0.2, second);
+      }
+      vec2 centre = vec2(station, 4200.0 + 180.0 * sin(station / 650.0));
+      return length(p - centre);
+    }
   `;
 
   material.onBeforeCompile = (shader) => {
@@ -322,6 +391,37 @@ function createTerrainMaterial() {
 
           float soilSpeckle = smoothstep(0.72, 0.96, flecks) * (1.0 - exposedRock);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.25, 0.22, 0.16), soilSpeckle * 0.12);
+
+          // Sandy riverbanks are painted directly into the terrain material.
+          // This uses the same centreline/width equations as the water mesh,
+          // so there is no separate strip that can float above or detach from shore.
+          float mainStation;
+          float mainDistance = terrainMainDistance(p, mainStation);
+          float mainWidth = terrainMainWidth(mainStation);
+          float mainSand = smoothstep(mainWidth - 0.65, mainWidth + 0.45, mainDistance) *
+            (1.0 - smoothstep(mainWidth + 19.0, mainWidth + 24.0, mainDistance));
+
+          float sideStation;
+          float sideDistance = terrainTributaryDistance(p, sideStation);
+          float sideWidth = terrainTributaryWidth(sideStation);
+          float sideSand = smoothstep(sideWidth - 0.65, sideWidth + 0.45, sideDistance) *
+            (1.0 - smoothstep(sideWidth + 16.0, sideWidth + 22.0, sideDistance));
+
+          float sandMask = max(mainSand, sideSand);
+          float sandGrain = terrainNoise(p * 0.11);
+          float sandPatch = terrainNoise(p * 0.027 + vec2(17.3, 5.7));
+          vec3 sandGold = vec3(0.66, 0.48, 0.25);
+          vec3 sandOrange = vec3(0.53, 0.30, 0.16);
+          vec3 sandPale = vec3(0.77, 0.65, 0.43);
+          vec3 sandGrey = vec3(0.40, 0.39, 0.34);
+          vec3 sandColor = mix(sandOrange, sandGold, smoothstep(0.18, 0.82, sandGrain));
+          sandColor = mix(sandColor, sandPale, smoothstep(0.64, 0.94, sandGrain) * 0.48);
+          sandColor = mix(sandColor, sandGrey, smoothstep(0.78, 0.94, sandPatch) * 0.56);
+          float wetEdge = 1.0 - smoothstep(0.6, 6.5,
+            min(mainDistance - mainWidth, sideDistance - sideWidth));
+          sandColor = mix(sandColor * 0.72, sandColor, 1.0 - wetEdge * 0.58);
+          sandColor *= 0.9 + sandGrain * 0.18;
+          diffuseColor.rgb = mix(diffuseColor.rgb, sandColor, sandMask * 0.98);
         }
       `);
   };
@@ -611,93 +711,6 @@ function makeRibbon(points, halfWidth, y, heightAt = null, tangentPoints = point
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;
-}
-
-function makeSandBankRibbon(points, side, widthAt, heightAt, tangentPoints = points, indexOffset = 0) {
-  const rows = [-0.18, 2.5, 6, 10.5, 15.5, 21.5];
-  const positions = [];
-  const colors = [];
-  const indices = [];
-  const wet = new THREE.Color(0xa9824e);
-  const ochre = new THREE.Color(0xc99a58);
-  const pale = new THREE.Color(0xe0c27d);
-  const grey = new THREE.Color(0x99948a);
-  const color = new THREE.Color();
-
-  for (let i = 0; i < points.length; i++) {
-    const globalIndex = i + indexOffset;
-    const prev = tangentPoints[Math.max(0, globalIndex - 1)];
-    const next = tangentPoints[Math.min(tangentPoints.length - 1, globalIndex + 1)];
-    const dx = next.x - prev.x;
-    const dz = next.z - prev.z;
-    const length = Math.hypot(dx, dz) || 1;
-    const nx = -dz / length;
-    const nz = dx / length;
-    const point = points[i];
-    const halfWidth = widthAt(point);
-
-    for (let row = 0; row < rows.length; row++) {
-      const offset = rows[row];
-      const x = point.x + nx * side * (halfWidth + offset);
-      const z = point.z + nz * side * (halfWidth + offset);
-      const y = (heightAt(x, z) ?? 0) + 0.055;
-      positions.push(x, y, z);
-
-      const wetBlend = 1 - smoothstep(0, 11, offset);
-      const grain = valueNoise(x / 26, z / 26, 83);
-      const patch = valueNoise(x / 92, z / 92, 97);
-      color.copy(ochre).lerp(pale, THREE.MathUtils.clamp(0.18 + grain * 0.62, 0, 1));
-      color.lerp(wet, wetBlend * 0.62);
-      const greyPatch = smoothstep(0.72, 0.91, patch) * 0.58;
-      color.lerp(grey, greyPatch);
-      color.multiplyScalar(0.86 + grain * 0.22);
-      colors.push(color.r, color.g, color.b);
-    }
-  }
-
-  for (let i = 0; i < points.length - 1; i++) {
-    for (let row = 0; row < rows.length - 1; row++) {
-      const a = i * rows.length + row;
-      const b = a + rows.length;
-      indices.push(a, b, a + 1, a + 1, b, b + 1);
-    }
-  }
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-function addSandBanks(scene, points, widthAt, heightAt, name) {
-  const material = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 1,
-    metalness: 0,
-    side: THREE.DoubleSide,
-  });
-  const meshes = [];
-  const pointsPerChunk = 24;
-  for (let start = 0, part = 0; start < points.length - 1; start += pointsPerChunk, part++) {
-    const end = Math.min(points.length - 1, start + pointsPerChunk);
-    for (const side of [-1, 1]) {
-      const mesh = new THREE.Mesh(
-        makeSandBankRibbon(points.slice(start, end + 1), side, widthAt, heightAt, points, start),
-        material
-      );
-      mesh.name = `${name}-${side < 0 ? 'left' : 'right'}-${part}`;
-      mesh.userData.noCollider = true;
-      mesh.castShadow = false;
-      mesh.receiveShadow = true;
-      mesh.frustumCulled = true;
-      mesh.geometry.computeBoundingSphere();
-      scene.add(mesh);
-      meshes.push(mesh);
-    }
-  }
-  return meshes;
 }
 
 function pointInReservedArea(x, z, routePoints) {
@@ -1165,8 +1178,8 @@ function addRibbonChunks(scene, points, halfWidth, y, material, name, options = 
 function createRiver(scene, rnd, heightAt) {
   const centerX = mainRiverX;
   const points = [];
-  for (let i = 0; i <= 900; i++) {
-    const z = -4500 + (9000 * i) / 900;
+  for (let i = 0; i <= 1800; i++) {
+    const z = -4500 + (9000 * i) / 1800;
     points.push({ x: centerX(z), z });
   }
 
@@ -1180,9 +1193,6 @@ function createRiver(scene, rnd, heightAt) {
   const riverBedHeight = (x, z) => (heightAt(x, z) ?? (mainRiverSurface(z) - mainRiverDepth(z))) + 0.045;
   const bed = addRibbonChunks(scene, points, 5.8, -3.25, bedMaterial,
     'main-river-bed', { walkable: true, receiveShadow: true, heightAt: riverBedHeight });
-  const sandBanks = addSandBanks(
-    scene, points, mainWidthAt, heightAt, 'main-river-sand'
-  );
 
   const pebbleGeo = new THREE.IcosahedronGeometry(2.2, 0);
   const pebbleMat = new THREE.MeshStandardMaterial({ color: 0x756c56, roughness: 1 });
@@ -1223,7 +1233,7 @@ function createRiver(scene, rnd, heightAt) {
   }
 
   return {
-    water, bed, sandBanks, waterMaterial, centerX, halfWidth: 14.2,
+    water, bed, waterMaterial, centerX, halfWidth: 14.2,
     region: {
       id: 'river',
       surfaceY: RIVER_SURFACE_Y,
@@ -1246,8 +1256,8 @@ function createRiver(scene, rnd, heightAt) {
 function createTributary(scene, heightAt) {
   const centerZ = tributaryZ;
   const points = [];
-  for (let i = 0; i <= 560; i++) {
-    const x = -2800 + (5600 * i) / 560;
+  for (let i = 0; i <= 1120; i++) {
+    const x = -2800 + (5600 * i) / 1120;
     points.push({ x, z: centerZ(x) });
   }
 
@@ -1261,12 +1271,9 @@ function createTributary(scene, heightAt) {
   const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? (tributarySurface(x) - tributaryDepth(x))) + 0.045;
   const bed = addRibbonChunks(scene, points, 4.4, -2.55, bedMaterial,
     'tributary-bed', { walkable: true, receiveShadow: true, heightAt: tributaryBedHeight });
-  const sandBanks = addSandBanks(
-    scene, points, tributaryWidthAt, heightAt, 'tributary-sand'
-  );
 
   return {
-    water, bed, sandBanks, waterMaterial,
+    water, bed, waterMaterial,
     region: {
       id: 'south-river',
       surfaceY: RIVER_SURFACE_Y,
