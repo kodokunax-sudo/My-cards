@@ -212,6 +212,9 @@ function tributaryDepth(x) {
   );
 }
 
+const BRIDGE_DECK_TOP_Y = mainRiverSurface(300) + 2.4;
+const BRIDGE_VERTICAL_OFFSET = BRIDGE_DECK_TOP_Y - 1.08;
+
 function distanceToSegment2D(px, pz, a, b) {
   const dx = b.x - a.x, dz = b.z - a.z;
   const len2 = dx * dx + dz * dz || 1;
