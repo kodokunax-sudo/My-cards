@@ -778,24 +778,42 @@ export function createWorld(scene) {
   const renderables = [];
   const terrain = createTerrain(scene, heightAt, renderables);
 
+  // Road is sampled slightly above the exact terrain function to prevent
+  // z-fighting and disappearing strips between the 12.5m terrain triangles.
+  // Across the river it becomes a real approach ramp that meets the bridge deck.
+  const roadSurfaceY = (x, z) => {
+    const groundY = (heightAt(x, z) ?? 0) + 0.42;
+    const distanceAlongBridge = Math.abs(x + 692);
+    const bridgeTop = 1.08 * (1 - smoothstep(45, 94, distanceAlongBridge));
+    const bridgeCorridor = 1 - smoothstep(7, 14, Math.abs(z - 300));
+    return THREE.MathUtils.lerp(
+      groundY,
+      Math.max(groundY, bridgeTop + 0.04),
+      bridgeCorridor
+    );
+  };
+
   const routeCurve = new THREE.CatmullRomCurve3(
-    routePoints.map((point) => new THREE.Vector3(point.x, heightAt(point.x, point.z) ?? 0, point.z)),
+    routePoints.map((point) => new THREE.Vector3(
+      point.x, roadSurfaceY(point.x, point.z), point.z
+    )),
     false, 'centripetal'
   );
-  const roadPoints = routeCurve.getPoints(180).map((point) => ({ x: point.x, z: point.z }));
+  const roadPoints = routeCurve.getPoints(240).map((point) => ({ x: point.x, z: point.z }));
   const road = addRibbonChunks(
-    scene, roadPoints, 3.3, 0.065,
+    scene, roadPoints, 3.8, 0.065,
     new THREE.MeshStandardMaterial({ color: 0x85775e, roughness: 1 }),
     'house-to-fountain-road',
-    { walkable: true, receiveShadow: true, heightAt }
+    { walkable: true, receiveShadow: true, heightAt: roadSurfaceY }
   );
 
   const bridge = new THREE.Group();
   bridge.position.set(-692, 0, 300);
-  const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(90, 0.25, 10), new THREE.MeshStandardMaterial({
+  const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(90, 0.30, 10), new THREE.MeshStandardMaterial({
     color: 0x715239, roughness: 0.9,
   }));
-  bridgeDeck.position.y = 0.16;
+  // Top surface = 1.08m, safely above the water-entry threshold (0.335m).
+  bridgeDeck.position.y = 0.93;
   bridgeDeck.castShadow = true;
   bridgeDeck.receiveShadow = true;
   bridgeDeck.userData.walkable = true;
@@ -804,14 +822,14 @@ export function createWorld(scene) {
   const railMaterial = new THREE.MeshStandardMaterial({ color: 0x503a2b, roughness: 0.95 });
   for (const z of [-4.8, 4.8]) {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(90, 0.8, 0.28), railMaterial);
-    rail.position.set(0, 0.62, z);
+    rail.position.set(0, 1.28, z);
     rail.castShadow = true;
     bridge.add(rail);
   }
   for (let x = -42; x <= 42; x += 10) {
     for (const z of [-4.6, 4.6]) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.32, 1.2, 0.32), railMaterial);
-      post.position.set(x, 1.0, z);
+      post.position.set(x, 1.55, z);
       post.castShadow = true;
       bridge.add(post);
     }
