@@ -186,7 +186,15 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
   });
 
   function waterAt(x, z) {
-    return worldInfo?.getWaterRegionAt?.(x, z) || null;
+    const region = worldInfo?.getWaterRegionAt?.(x, z) || null;
+    if (!region) return null;
+    // Rivers may slowly rise/fall and widen along their course. Keep the
+    // swimmer's local waterline and bottom in sync with the current position.
+    return {
+      ...region,
+      surfaceY: region.surfaceAt ? region.surfaceAt(x, z) : region.surfaceY,
+      bottomY: region.bottomAt ? region.bottomAt(x, z) : region.bottomY,
+    };
   }
 
   function clearWaterState() {
@@ -400,6 +408,9 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
         return;
       }
     }
+
+    const localWater = waterAt(camera.position.x, camera.position.z);
+    if (localWater && localWater.id === activeWater.id) activeWater = localWater;
 
     // Full camera-relative 3D movement: looking down and pressing W dives;
     // looking upward and pressing W carries the swimmer toward the surface.
