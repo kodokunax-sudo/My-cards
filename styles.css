@@ -431,3 +431,144 @@ kbd {
   #hint { font-size: 10px; max-width: 62vw; }
   .panel-right { transform: scale(0.8); transform-origin: bottom right; }
 }
+
+
+/* ---------------- настройки графики ---------------- */
+#settings-toggle {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 12;
+  pointer-events: auto;
+  border: 1px solid rgba(240, 194, 116, 0.38);
+  border-radius: 10px;
+  padding: 10px 13px;
+  color: var(--paper);
+  background: rgba(13, 17, 25, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.26);
+  font: 600 11px/1 "Inter", system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+#settings-toggle:hover,
+#settings-toggle[aria-expanded="true"] {
+  border-color: var(--gold);
+  background: rgba(38, 31, 23, 0.92);
+}
+.settings-panel {
+  position: absolute;
+  top: 60px;
+  right: 18px;
+  z-index: 12;
+  width: 320px;
+  max-height: min(78vh, 560px);
+  overflow: auto;
+  padding: 16px;
+  pointer-events: auto;
+}
+.settings-panel[hidden] { display: none; }
+.settings-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.settings-heading h2 {
+  margin: 0;
+  color: var(--gold);
+  font: 700 13px/1.2 "Inter", system-ui, sans-serif;
+  letter-spacing: 0.12em;
+}
+.settings-heading p {
+  margin: 4px 0 0;
+  color: rgba(242, 234, 216, 0.5);
+  font-size: 10px;
+}
+#settings-close {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  color: var(--paper);
+  background: rgba(255,255,255,0.05);
+  font: 20px/1 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+}
+.setting-row, .setting-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: rgba(242, 234, 216, 0.86);
+  font-size: 11px;
+}
+.setting-row { margin: 13px 0 18px; }
+.setting-row select {
+  min-width: 126px;
+  padding: 7px 9px;
+  color: var(--paper);
+  background: #20232b;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  font: 600 11px "Inter", system-ui, sans-serif;
+}
+.setting-block { display: block; margin: 0 0 18px; }
+.setting-label output {
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+#view-distance {
+  width: 100%;
+  margin: 13px 0 3px;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+.setting-scale {
+  display: flex;
+  justify-content: space-between;
+  color: rgba(242, 234, 216, 0.42);
+  font-size: 9px;
+}
+.setting-toggles {
+  display: grid;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(240, 194, 116, 0.16);
+  border-bottom: 1px solid rgba(240, 194, 116, 0.16);
+}
+.setting-toggles label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: rgba(242, 234, 216, 0.82);
+  font-size: 11px;
+  cursor: pointer;
+}
+.setting-toggles input {
+  accent-color: var(--gold);
+}
+.settings-footnote {
+  margin-top: 11px;
+  color: rgba(242, 234, 216, 0.44);
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+@media (max-width: 720px) {
+  #settings-toggle {
+    top: 112px;
+    right: 10px;
+    padding: 8px 10px;
+    font-size: 9px;
+  }
+  .settings-panel {
+    top: 154px;
+    right: 10px;
+    width: min(320px, calc(100vw - 20px));
+    max-height: calc(100vh - 172px);
+    padding: 13px;
+  }
+}
