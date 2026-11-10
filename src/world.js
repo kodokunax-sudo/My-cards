@@ -91,6 +91,159 @@ function registerChunkMesh(mesh, renderables, maxDistance) {
   renderables.push(mesh);
 }
 
+function createTerrainMaterial() {
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.98,
+    metalness: 0,
+  });
+
+  const noiseGLSL = `
+    float terrainHash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    }
+    float terrainNoise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(
+        mix(terrainHash(i), terrainHash(i + vec2(1.0, 0.0)), f.x),
+        mix(terrainHash(i + vec2(0.0, 1.0)), terrainHash(i + vec2(1.0, 1.0)), f.x),
+        f.y
+      );
+    }
+    float terrainFbm(vec2 p) {
+      float n = 0.0;
+      float a = 0.5;
+      for (int i = 0; i < 4; i++) {
+        n += terrainNoise(p) * a;
+        p *= 2.03;
+        a *= 0.5;
+      }
+      return n;
+    }
+  `;
+
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vTerrainWorld;
+        varying vec3 vTerrainNormal;
+      `)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vTerrainWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vTerrainNormal = normalize(mat3(modelMatrix) * normal);
+      `);
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vTerrainWorld;
+        varying vec3 vTerrainNormal;
+        ${noiseGLSL}
+      `)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          vec2 p = vTerrainWorld.xz;
+          float macroNoise = terrainFbm(p * 0.018);
+          float midNoise = terrainFbm(p * 0.19);
+          float fineNoise = terrainNoise(p * 1.35);
+          float flecks = terrainNoise(p * 3.8);
+          float bladeLines = 1.0 - smoothstep(0.02, 0.18,
+            abs(sin(p.x * 2.9 + sin(p.y * 0.73) * 1.7 + terrainNoise(p * 0.42) * 2.0)));
+          float texture = macroNoise * 0.16 + midNoise * 0.22 +
+            fineNoise * 0.18 + flecks * 0.08 + bladeLines * 0.035;
+          diffuseColor.rgb *= 0.76 + texture;
+
+          float slope = 1.0 - clamp(vTerrainNormal.y, 0.0, 1.0);
+          float exposedRock = smoothstep(0.24, 0.68, slope);
+          vec3 earthyRock = vec3(0.29, 0.285, 0.245) * (0.88 + fineNoise * 0.2);
+          diffuseColor.rgb = mix(diffuseColor.rgb, earthyRock, exposedRock * 0.58);
+
+          float soilSpeckle = smoothstep(0.72, 0.96, flecks) * (1.0 - exposedRock);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.25, 0.22, 0.16), soilSpeckle * 0.12);
+        }
+      `);
+  };
+  return material;
+}
+
+function createRenderedTerrainSampler(heightAt) {
+  const chunksPerAxis = 14;
+  const cellsPerChunk = 64;
+  const step = (GRASS_RADIUS * 2) / (chunksPerAxis * cellsPerChunk);
+  const vertexHeight = (x, z) => {
+    const h = heightAt(x, z) ?? 0;
+    const underPlaza = 1 - smoothstep(PLAZA_RADIUS - 8, PLAZA_RADIUS + 26, Math.hypot(x, z));
+    return h - 0.62 * underPlaza;
+  };
+
+  return (x, z) => {
+    const radial = Math.hypot(x, z);
+    if (radial > GRASS_RADIUS || radial < POOL_RADIUS + 1.0) return null;
+
+    // Sample the exact pair of triangles used by createTerrain(), rather than
+    // sampling the smooth source function between rendered vertices.
+    const gx = THREE.MathUtils.clamp((x + GRASS_RADIUS) / step, 0, chunksPerAxis * cellsPerChunk - 1e-5);
+    const gz = THREE.MathUtils.clamp((z + GRASS_RADIUS) / step, 0, chunksPerAxis * cellsPerChunk - 1e-5);
+    const ix = Math.floor(gx);
+    const iz = Math.floor(gz);
+    const tx = gx - ix;
+    const tz = gz - iz;
+    const x0 = -GRASS_RADIUS + ix * step;
+    const z0 = -GRASS_RADIUS + iz * step;
+    const a = vertexHeight(x0, z0);
+    const b = vertexHeight(x0 + step, z0);
+    const c = vertexHeight(x0, z0 + step);
+    const d = vertexHeight(x0 + step, z0 + step);
+
+    if (tx + tz <= 1) return a * (1 - tx - tz) + b * tx + c * tz;
+    return b * (1 - tz) + c * (1 - tx) + d * (tx + tz - 1);
+  };
+}
+
+function createFlowingWaterMaterial(baseColor) {
+  let compiledShader = null;
+  const material = new THREE.MeshStandardMaterial({
+    color: baseColor,
+    roughness: 0.24,
+    metalness: 0.025,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uFlowTime = { value: 0 };
+    compiledShader = shader;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vFlowWorld;
+      `)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vFlowWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+      `);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform float uFlowTime;
+        varying vec3 vFlowWorld;
+      `)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          float longWave = sin(vFlowWorld.x * 0.19 + vFlowWorld.z * 0.31 + uFlowTime * 1.25);
+          float crossWave = sin(vFlowWorld.z * 0.57 - vFlowWorld.x * 0.09 - uFlowTime * 0.82);
+          float glint = pow(max(0.0, longWave * 0.55 + crossWave * 0.45), 5.0);
+          diffuseColor.rgb *= 0.88 + longWave * 0.045 + crossWave * 0.035;
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.66, 0.84, 0.84), glint * 0.2);
+        }
+      `);
+  };
+  material.userData.setTime = (time) => {
+    if (compiledShader) compiledShader.uniforms.uFlowTime.value = time;
+  };
+  return material;
+}
+
 function createHeightFunction(routePoints) {
   return (x, z) => {
     if (Math.hypot(x, z) > GRASS_RADIUS + 30) return null;
@@ -121,15 +274,20 @@ function createHeightFunction(routePoints) {
     const parkBlend = 1 - smoothstep(210, 390, Math.hypot(x, z));
     const houseBlend = 1 - smoothstep(38, 82, Math.hypot(x + 1600, z - 900));
     const trailBlend = 1 - smoothstep(12, 34, distanceToPolyline(x, z, routePoints));
-    const riverBlend = 1 - smoothstep(38, 68, Math.abs(x - mainRiverX(z)));
-    const tributaryBlend = 1 - smoothstep(30, 58, Math.abs(z - tributaryZ(x)));
+    // River valleys have a rounded shoulder and a narrow, deeper channel.
+    // The former 136m flat bench made the water read as a giant rectangular slab.
+    const mainRiverDistance = Math.abs(x - mainRiverX(z));
+    const tributaryDistance = Math.abs(z - tributaryZ(x));
+    const riverBlend = 1 - smoothstep(12, 50, mainRiverDistance);
+    const tributaryBlend = 1 - smoothstep(10, 38, tributaryDistance);
     const flatten = Math.max(parkBlend, houseBlend, trailBlend, riverBlend, tributaryBlend);
     height *= 1 - flatten;
 
-    // Carve deep, narrow river channels and a level approach at the bridge.
-    const mainCut = 1 - smoothstep(20, 32, Math.abs(x - mainRiverX(z)));
-    const tributaryCut = 1 - smoothstep(14, 24, Math.abs(z - tributaryZ(x)));
-    height -= mainCut * 2.82 + tributaryCut * 2.22;
+    // A narrow channel with sloped banks. The water surface now sits just
+    // inside the shoreline instead of covering a very wide, flat depression.
+    const mainCut = 1 - smoothstep(7, 14, mainRiverDistance);
+    const tributaryCut = 1 - smoothstep(6, 12, tributaryDistance);
+    height -= mainCut * 3.25 + tributaryCut * 2.55;
     const bridgeBlend = 1 - smoothstep(7, 24, Math.hypot(x + 692, z - 300));
     height *= 1 - bridgeBlend;
 
@@ -152,9 +310,7 @@ function createTerrain(scene, heightAt, renderables) {
   const high = new THREE.Color(0x64704b);
   const rock = new THREE.Color(0x777461);
   const color = new THREE.Color();
-  const material = new THREE.MeshStandardMaterial({
-    vertexColors: true, roughness: 1, metalness: 0,
-  });
+  const material = createTerrainMaterial();
   const chunks = [];
 
   for (let cz = 0; cz < chunksPerAxis; cz++) {
@@ -381,8 +537,8 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     }
 
     trunks.instanceMatrix.needsUpdate = true;
-    trunks.castShadow = false;
-    trunks.receiveShadow = false;
+    trunks.castShadow = true;
+    trunks.receiveShadow = true;
     trunks.name = `forest-trunks-${key}`;
     registerChunkMesh(trunks, renderables, 2800);
     scene.add(trunks);
@@ -392,8 +548,8 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       roundCrowns.instanceMatrix.needsUpdate = true;
       if (roundCrowns.instanceColor) roundCrowns.instanceColor.needsUpdate = true;
       roundCrowns.userData.noCollider = true;
-      roundCrowns.castShadow = false;
-      roundCrowns.receiveShadow = false;
+      roundCrowns.castShadow = true;
+      roundCrowns.receiveShadow = true;
       roundCrowns.name = `forest-crowns-${key}`;
       registerChunkMesh(roundCrowns, renderables, 2800);
       scene.add(roundCrowns);
@@ -404,8 +560,8 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       pineCrowns.instanceMatrix.needsUpdate = true;
       if (pineCrowns.instanceColor) pineCrowns.instanceColor.needsUpdate = true;
       pineCrowns.userData.noCollider = true;
-      pineCrowns.castShadow = false;
-      pineCrowns.receiveShadow = false;
+      pineCrowns.castShadow = true;
+      pineCrowns.receiveShadow = true;
       pineCrowns.name = `forest-pines-${key}`;
       registerChunkMesh(pineCrowns, renderables, 2800);
       scene.add(pineCrowns);
@@ -738,15 +894,12 @@ function createRiver(scene, rnd) {
     points.push({ x: centerX(z), z });
   }
 
-  const waterMaterial = new THREE.MeshStandardMaterial({
-    color: 0x347f8b, roughness: 0.22, metalness: 0.18,
-    transparent: true, opacity: 0.88, side: THREE.DoubleSide,
-  });
-  const water = addRibbonChunks(scene, points, 30, 0.035, waterMaterial,
+  const waterMaterial = createFlowingWaterMaterial(0x286d7d);
+  const water = addRibbonChunks(scene, points, 12.4, 0.035, waterMaterial,
     'main-river-water', { noCollider: true, renderOrder: 2 });
 
-  const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x394d46, roughness: 1 });
-  const bed = addRibbonChunks(scene, points, 29, -2.65, bedMaterial,
+  const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x354f49, roughness: 1 });
+  const bed = addRibbonChunks(scene, points, 11.8, -3.25, bedMaterial,
     'main-river-bed', { walkable: true, receiveShadow: true });
 
   const pebbleGeo = new THREE.IcosahedronGeometry(2.2, 0);
@@ -755,11 +908,11 @@ function createRiver(scene, rnd) {
   for (let i = 0; i < 340; i++) {
     const z = -4400 + rnd() * 8800;
     const side = rnd() < 0.5 ? -1 : 1;
-    const x = centerX(z) + side * (32 + rnd() * 7);
+    const x = centerX(z) + side * (14 + rnd() * 5);
     const key = `${Math.floor(x / 640)},${Math.floor(z / 640)}`;
     let bucket = pebbleBuckets.get(key);
     if (!bucket) { bucket = []; pebbleBuckets.set(key, bucket); }
-    bucket.push({ x, z, y: 0.3 + rnd() * 0.6, scale: 0.55 + rnd() * 0.85, angle: rnd() * TAU });
+    bucket.push({ x, z, y: heightAt(x, z) ?? 0, scale: 0.55 + rnd() * 0.85, angle: rnd() * TAU });
   }
 
   const pebbleMeshes = [];
@@ -774,7 +927,7 @@ function createRiver(scene, rnd) {
     pebbles.castShadow = false;
     for (let i = 0; i < data.length; i++) {
       const pebble = data[i];
-      p.set(pebble.x, pebble.y, pebble.z);
+      p.set(pebble.x, pebble.y + pebble.scale * 0.34, pebble.z);
       scale.set(pebble.scale, 0.35 + pebble.scale * 0.5, pebble.scale);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), pebble.angle);
       m.compose(p, q, scale);
@@ -788,14 +941,14 @@ function createRiver(scene, rnd) {
   }
 
   return {
-    water, bed, centerX, halfWidth: 30,
+    water, bed, waterMaterial, centerX, halfWidth: 12.4,
     region: {
       id: 'river',
       surfaceY: 0.035,
-      bottomY: -2.65,
+      bottomY: -3.25,
       exitFeetY: 0.55,
       exitHeight: 0.55,
-      contains: (x, z) => Math.abs(x - centerX(z)) <= 28,
+      contains: (x, z) => Math.abs(x - centerX(z)) <= 11.5,
     },
   };
 }
@@ -808,26 +961,23 @@ function createTributary(scene) {
     points.push({ x, z: centerZ(x) });
   }
 
-  const waterMaterial = new THREE.MeshStandardMaterial({
-    color: 0x3c8992, roughness: 0.24, metalness: 0.14,
-    transparent: true, opacity: 0.88, side: THREE.DoubleSide,
-  });
-  const water = addRibbonChunks(scene, points, 22, 0.035, waterMaterial,
+  const waterMaterial = createFlowingWaterMaterial(0x327987);
+  const water = addRibbonChunks(scene, points, 9.2, 0.035, waterMaterial,
     'tributary-water', { noCollider: true, renderOrder: 2 });
 
-  const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x45564c, roughness: 1 });
-  const bed = addRibbonChunks(scene, points, 21, -2.1, bedMaterial,
+  const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x40564c, roughness: 1 });
+  const bed = addRibbonChunks(scene, points, 8.7, -2.55, bedMaterial,
     'tributary-bed', { walkable: true, receiveShadow: true });
 
   return {
-    water, bed,
+    water, bed, waterMaterial,
     region: {
       id: 'south-river',
       surfaceY: 0.035,
-      bottomY: -2.1,
+      bottomY: -2.55,
       exitFeetY: 0.85,
       exitHeight: 0.85,
-      contains: (x, z) => Math.abs(z - centerZ(x)) <= 20,
+      contains: (x, z) => Math.abs(z - centerZ(x)) <= 8.5,
     },
   };
 }
@@ -846,9 +996,10 @@ export function createWorld(scene) {
     { x: 0, z: 190 },
   ];
 
-  const heightAt = createHeightFunction(routePoints);
+  const analyticHeightAt = createHeightFunction(routePoints);
+  const heightAt = createRenderedTerrainSampler(analyticHeightAt);
   const renderables = [];
-  const terrain = createTerrain(scene, heightAt, renderables);
+  const terrain = createTerrain(scene, analyticHeightAt, renderables);
 
   // Road is sampled slightly above the exact terrain function to prevent
   // z-fighting and disappearing strips between the 12.5m terrain triangles.
@@ -921,7 +1072,7 @@ export function createWorld(scene) {
     }),
   }, houseBase);
 
-  const river = createRiver(scene, rnd);
+  const river = createRiver(scene, rnd, heightAt);
   const tributary = createTributary(scene);
   const forests = createForests(scene, heightAt, routePoints, rnd, renderables);
   const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables);
@@ -940,6 +1091,10 @@ export function createWorld(scene) {
     route: road,
     bridge,
     heightAt,
+    update(time) {
+      river.waterMaterial.userData.setTime(time);
+      tributary.waterMaterial.userData.setTime(time);
+    },
     getWaterRegionAt(x, z) {
       return this.waterRegions.find((region) => region.contains(x, z)) || null;
     },
