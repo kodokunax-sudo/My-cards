@@ -50,7 +50,7 @@ const physics = createPhysicsWorld(scene, world);
 const player = createPlayer(camera, canvas, physics, world, (mode) => {
   hud.setMode(mode);
   touch?.setFlyState(mode === 'fly');
-});
+}, scene);
 
 const touch = createTouchControls(player, {
   fly: () => player.setMode(player.mode === 'fly' ? 'walk' : 'fly'),
