@@ -525,12 +525,38 @@ export function createWater(scene, fountain, camera, renderer) {
   // ---------------- обновление ----------------
   let frame = 0;
   let cubeInterval = 3;
+  let reflectionsEnabled = true;
+  let particlesEnabled = true;
+  let cubeSize = 256;
   const camPos = new THREE.Vector3();
 
   return {
     group,
     pool,
     setCubeInterval(n) { cubeInterval = Math.max(1, n); },
+    setReflectionSize(size) {
+      const nextSize = THREE.MathUtils.clamp(Math.round(size), 64, 256);
+      if (nextSize === cubeSize) return;
+      cubeSize = nextSize;
+      cubeRT.setSize(cubeSize, cubeSize);
+    },
+    setDrawDistance(distance) {
+      const far = THREE.MathUtils.clamp(distance, 900, 12000);
+      cubeCam.children.forEach((faceCamera) => {
+        faceCamera.far = far;
+        faceCamera.updateProjectionMatrix();
+      });
+    },
+    setReflectionsEnabled(enabled) {
+      reflectionsEnabled = !!enabled;
+      waterUniforms.uUseEnv.value = reflectionsEnabled ? 1 : 0;
+    },
+    setParticleEffectsEnabled(enabled) {
+      particlesEnabled = !!enabled;
+      spray.points.visible = particlesEnabled;
+      mist.points.visible = particlesEnabled;
+      plumeParticles.points.visible = particlesEnabled;
+    },
     setNight(progress = 0) {
       const n = THREE.MathUtils.clamp(progress, 0, 1);
       waterUniforms.uSunColor.value.copy(dayPalette.sun).lerp(nightPalette.sun, n);
@@ -553,7 +579,7 @@ export function createWater(scene, fountain, camera, renderer) {
       plumeParticles.mat.uniforms.uPixelRatio.value = pixelRatio;
 
       frame++;
-      if (frame % cubeInterval === 0) {
+      if (reflectionsEnabled && frame % cubeInterval === 0) {
         cubeCam.updateMatrixWorld(true);
         const prevTone = renderer.toneMapping;
         renderer.toneMapping = THREE.NoToneMapping;
