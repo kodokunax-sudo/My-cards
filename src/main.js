@@ -77,16 +77,16 @@ composer.addPass(new OutputPass());
 // ---------- графика, дальность прорисовки и адаптивная производительность ----------
 const QUALITY = {
   low: {
-    pr: 0.62, bloom: false, cubeInterval: 30, cubeSize: 64,
+    pr: 0.55, bloom: false, cubeInterval: 30, cubeSize: 64,
     shadow: 512, shadows: false, reflections: false, particles: false,
   },
   medium: {
-    pr: 0.86, bloom: false, cubeInterval: 12, cubeSize: 96,
-    shadow: 1024, shadows: true, reflections: true, particles: true,
+    pr: 0.72, bloom: false, cubeInterval: 20, cubeSize: 64,
+    shadow: 768, shadows: true, reflections: false, particles: false,
   },
   high: {
-    pr: 1.22, bloom: true, cubeInterval: 4, cubeSize: 192,
-    shadow: 2048, shadows: true, reflections: true, particles: true,
+    pr: 0.98, bloom: true, cubeInterval: 8, cubeSize: 160,
+    shadow: 1536, shadows: true, reflections: true, particles: true,
   },
 };
 const QUALITY_ORDER = ['low', 'medium', 'high'];
@@ -387,7 +387,10 @@ function animate() {
   const nightProgress = nightLinear * nightLinear * (3 - 2 * nightLinear);
   sky.update(elapsed, camera, nightProgress);
   env.setTimeOfDay(nightProgress);
-  env.update(elapsed, renderer.getPixelRatio());
+  if (env.update(elapsed, renderer.getPixelRatio(), camera.position)) {
+    renderer.shadowMap.needsUpdate = true;
+  }
+  world.update(elapsed);
   water.setNight(nightProgress);
   if (player.underwater) {
     scene.fog.color.set(0x063248);
