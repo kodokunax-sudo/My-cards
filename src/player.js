@@ -121,30 +121,30 @@ function createPlayerAvatar(scene) {
 
     // Muscle volume is multiplied on every part of the right arm.
     ellipsoid(shoulder, skin, [side * 0.015, -0.035, 0], [
-      0.145 * sizeMultiplier, 0.155 * sizeMultiplier, 0.145 * sizeMultiplier,
+      0.145 * sizeMultiplier, 0.155, 0.145 * sizeMultiplier,
     ]);
     ellipsoid(shoulder, skinLight, [side * 0.02, -0.105, 0.015], [
-      0.125 * sizeMultiplier, 0.20 * sizeMultiplier, 0.12 * sizeMultiplier,
+      0.125 * sizeMultiplier, 0.20, 0.12 * sizeMultiplier,
     ]);
 
     const upper = ellipsoid(shoulder, skin, [side * 0.018, -0.255, -0.005], [
-      0.112 * sizeMultiplier, 0.245 * sizeMultiplier, 0.12 * sizeMultiplier,
+      0.112 * sizeMultiplier, 0.245, 0.12 * sizeMultiplier,
     ]);
     ellipsoid(shoulder, skinLight, [side * 0.02, -0.255, 0.075], [
-      0.105 * sizeMultiplier, 0.155 * sizeMultiplier, 0.065 * sizeMultiplier,
+      0.105 * sizeMultiplier, 0.155, 0.065 * sizeMultiplier,
     ]);
 
     const elbow = new THREE.Group();
-    elbow.position.set(0, -0.455 * Math.min(sizeMultiplier, 1.12), 0);
+    elbow.position.set(0, -0.455, 0);
     shoulder.add(elbow);
-    ellipsoid(elbow, skin, [0, -0.17 * sizeMultiplier, 0], [
-      0.087 * sizeMultiplier, 0.205 * sizeMultiplier, 0.09 * sizeMultiplier,
+    ellipsoid(elbow, skin, [0, -0.17, 0], [
+      0.087 * sizeMultiplier, 0.205, 0.09 * sizeMultiplier,
     ]);
-    ellipsoid(elbow, skinLight, [0, -0.16 * sizeMultiplier, 0.055], [
-      0.078 * sizeMultiplier, 0.14 * sizeMultiplier, 0.055 * sizeMultiplier,
+    ellipsoid(elbow, skinLight, [0, -0.16, 0.055], [
+      0.078 * sizeMultiplier, 0.14, 0.055 * sizeMultiplier,
     ]);
-    ellipsoid(elbow, skin, [0, -0.365 * sizeMultiplier, -0.005], [
-      0.085 * sizeMultiplier, 0.095 * sizeMultiplier, 0.09 * sizeMultiplier,
+    ellipsoid(elbow, skin, [0, -0.365, -0.005], [
+      0.085 * sizeMultiplier, 0.095, 0.09 * sizeMultiplier,
     ]);
     return { shoulder, elbow, upper };
   }
