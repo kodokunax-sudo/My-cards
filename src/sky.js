@@ -59,7 +59,7 @@ export function createSky(scene) {
 
         float sd = max(dot(d, normalize(uSunDir)), 0.0);
         float sunFade = 1.0 - smoothstep(0.05, 0.82, uNight);
-        col += uSunColor * (pow(sd, 1600.0) * 14.0 + pow(sd, 30.0) * 0.55 + pow(sd, 5.0) * 0.12) * sunFade;
+        col += uSunColor * (pow(sd, 1600.0) * 9.0 + pow(sd, 30.0) * 0.38 + pow(sd, 5.0) * 0.09) * sunFade;
 
         // вытянутые к горизонту облака
         vec2 cp = d.xz / max(h + 0.14, 0.05);
