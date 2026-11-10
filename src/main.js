@@ -357,6 +357,9 @@ function enterScene() {
     // Keep pointer-lock request inside the actual click gesture.
     try { Promise.resolve(player.lock()).catch(() => {}); } catch (error) { /* drag-to-look remains available */ }
   }
+  // Start rendering only after the player taps Start. This avoids wasting a
+  // phone GPU on a hidden scene and keeps the start screen responsive.
+  requestAnimationFrame(animate);
 }
 startBtn.addEventListener('click', enterScene);
 canvas.addEventListener('click', (e) => {
@@ -380,7 +383,6 @@ window.addEventListener('keydown', (e) => {
 // ---------- цикл ----------
 const clock = new THREE.Clock();
 let elapsed = 0;
-let frames = 0;
 let nightStartedMessageShown = false;
 const NIGHT_START_SECONDS = 180;
 const NIGHT_TRANSITION_SECONDS = 55;
@@ -406,8 +408,7 @@ document.addEventListener('fullscreenchange', resize);
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (started) elapsed += dt;
-  frames++;
+  elapsed += dt;
 
   player.update(dt);
   survival.update(dt);
@@ -457,12 +458,9 @@ function animate() {
     occlusionCuller.restore();
   }
 
-  if (frames === 2) {
-    startBtn.disabled = false;
-    startBtn.textContent = touch ? 'Начать прогулку' : 'Войти в парк';
-  }
 }
-animate();
+startBtn.disabled = false;
+startBtn.textContent = touch ? 'Начать прогулку' : 'Войти в парк';
 
 // для отладки из консоли
 window.__scene = {
