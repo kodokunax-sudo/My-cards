@@ -63,18 +63,92 @@ function mainRiverX(z) {
   return -900 + 840 * Math.sin(z / 1200);
 }
 
+function mainRiverStation(x, z) {
+  let station = z;
+  for (let i = 0; i < 4; i++) {
+    const angle = station / 1200;
+    const centerX = mainRiverX(station);
+    const slope = 0.7 * Math.cos(angle);
+    const curve = -(840 / (1200 * 1200)) * Math.sin(angle);
+    const dx = x - centerX;
+    const dz = z - station;
+    const derivative = -dx * slope - dz;
+    const second = 1 + slope * slope - dx * curve;
+    station = THREE.MathUtils.clamp(station - derivative / Math.max(0.2, second), -5000, 5000);
+  }
+  return {
+    station,
+    distance: Math.hypot(x - mainRiverX(station), z - station),
+  };
+}
+
 function mainRiverLateralDistance(x, z) {
-  const tangent = (840 / 1200) * Math.cos(z / 1200);
-  return Math.abs(x - mainRiverX(z)) / Math.sqrt(1 + tangent * tangent);
+  return mainRiverStation(x, z).distance;
+}
+
+function mainRiverHalfWidth(z) {
+  const pools = Math.max(
+    gaussian(z, -2850, 420),
+    gaussian(z, 250, 520),
+    gaussian(z, 2380, 460)
+  );
+  const pinch = Math.max(
+    gaussian(z, -1580, 300),
+    gaussian(z, 1280, 320),
+    gaussian(z, 3550, 280)
+  );
+  return THREE.MathUtils.clamp(
+    14 + 4.2 * Math.sin(z / 960 + 0.8) + 2.1 * Math.sin(z / 370) +
+      pools * 5.2 - pinch * 5.4,
+    9.2, 23.5
+  );
+}
+
+function mainRiverSurface(z) {
+  const downstreamDrop = (z + 4500) * 0.000065;
+  return RIVER_SURFACE_Y - downstreamDrop +
+    0.14 * Math.sin(z / 1380) + 0.07 * Math.sin(z / 510 + 0.8);
 }
 
 function tributaryZ(x) {
   return 4200 + 180 * Math.sin(x / 650);
 }
 
+function tributaryStation(x, z) {
+  let station = x;
+  for (let i = 0; i < 4; i++) {
+    const angle = station / 650;
+    const centerZ = tributaryZ(station);
+    const slope = (180 / 650) * Math.cos(angle);
+    const curve = -(180 / (650 * 650)) * Math.sin(angle);
+    const dx = x - station;
+    const dz = z - centerZ;
+    const derivative = dx - dz * slope;
+    const second = 1 + slope * slope - dz * curve;
+    station = THREE.MathUtils.clamp(station - derivative / Math.max(0.2, second), -3200, 3200);
+  }
+  return {
+    station,
+    distance: Math.hypot(x - station, z - tributaryZ(station)),
+  };
+}
+
 function tributaryLateralDistance(x, z) {
-  const tangent = (180 / 650) * Math.cos(x / 650);
-  return Math.abs(z - tributaryZ(x)) / Math.sqrt(1 + tangent * tangent);
+  return tributaryStation(x, z).distance;
+}
+
+function tributaryHalfWidth(x) {
+  const widePool = Math.max(gaussian(x, -1450, 430), gaussian(x, 900, 400));
+  const narrowBar = Math.max(gaussian(x, -300, 280), gaussian(x, 2050, 300));
+  return THREE.MathUtils.clamp(
+    10.8 + 2.8 * Math.sin(x / 720 - 0.4) + widePool * 3.8 - narrowBar * 3.0,
+    7.2, 17.5
+  );
+}
+
+function tributarySurface(x) {
+  const junctionZ = tributaryZ(x);
+  return mainRiverSurface(junctionZ - 120) + 0.06 * Math.sin(x / 880 + 0.4);
 }
 
 function gaussian(value, center, width) {
@@ -370,19 +444,32 @@ function createHeightFunction(routePoints) {
     const flatten = Math.max(parkBlend, houseBlend, trailBlend);
     height *= 1 - flatten;
 
-    // Variable-depth riverbeds. At the centre the river is roughly 3x deeper
-    // than the old 3.25m channel; shallow bars and deep pools alternate.
-    const mainDepth = mainRiverDepth(z);
-    const mainBankBlend = 1 - smoothstep(14.2, 33, mainRiverDistance);
-    const mainChannelFloor = RIVER_SURFACE_Y - mainDepth +
-      smoothstep(5.2, 14.2, mainRiverDistance) * mainDepth;
-    height = THREE.MathUtils.lerp(height, mainChannelFloor, mainBankBlend);
+    // Width, water level and depth are sampled from the closest point on
+    // each centreline. The wet edge and the start of the sandy bank therefore
+    // share the exact same cross-section.
+    const mainStation = mainRiverStation(x, z);
+    const mainWidth = mainRiverHalfWidth(mainStation.station);
+    const mainSurface = mainRiverSurface(mainStation.station);
+    const mainDepth = mainRiverDepth(mainStation.station);
+    const mainDistance = mainStation.distance;
+    const mainProfile = mainDistance <= mainWidth
+      ? mainSurface - mainDepth +
+        smoothstep(mainWidth * 0.34, mainWidth, mainDistance) * mainDepth
+      : mainSurface + smoothstep(mainWidth, mainWidth + 18, mainDistance) * 1.25;
+    const mainBankBlend = 1 - smoothstep(mainWidth + 18, mainWidth + 48, mainDistance);
+    height = THREE.MathUtils.lerp(height, mainProfile, mainBankBlend);
 
-    const sideDepth = tributaryDepth(x);
-    const tributaryBankBlend = 1 - smoothstep(11, 27, tributaryDistance);
-    const tributaryFloor = RIVER_SURFACE_Y - sideDepth +
-      smoothstep(3.8, 11, tributaryDistance) * sideDepth;
-    height = THREE.MathUtils.lerp(height, tributaryFloor, tributaryBankBlend);
+    const sideStation = tributaryStation(x, z);
+    const sideWidth = tributaryHalfWidth(sideStation.station);
+    const sideSurface = tributarySurface(sideStation.station);
+    const sideDepth = tributaryDepth(sideStation.station);
+    const sideDistance = sideStation.distance;
+    const sideProfile = sideDistance <= sideWidth
+      ? sideSurface - sideDepth +
+        smoothstep(sideWidth * 0.34, sideWidth, sideDistance) * sideDepth
+      : sideSurface + smoothstep(sideWidth, sideWidth + 15, sideDistance) * 1.05;
+    const tributaryBankBlend = 1 - smoothstep(sideWidth + 15, sideWidth + 42, sideDistance);
+    height = THREE.MathUtils.lerp(height, sideProfile, tributaryBankBlend);
     const bridgeBlend = 1 - smoothstep(7, 24, Math.hypot(x + 692, z - 300));
     height *= 1 - bridgeBlend;
 
@@ -508,11 +595,13 @@ function makeRibbon(points, halfWidth, y, heightAt = null, tangentPoints = point
     const nx = -dz / length;
     const nz = dx / length;
     const p = points[i];
-    const leftX = p.x + nx * halfWidth, leftZ = p.z + nz * halfWidth;
-    const rightX = p.x - nx * halfWidth, rightZ = p.z - nz * halfWidth;
+    const width = typeof halfWidth === 'function' ? halfWidth(p) : halfWidth;
+    const level = typeof y === 'function' ? y(p) : y;
+    const leftX = p.x + nx * width, leftZ = p.z + nz * width;
+    const rightX = p.x - nx * width, rightZ = p.z - nz * width;
     positions.push(
-      leftX, heightAt ? (heightAt(leftX, leftZ) ?? y) : y, leftZ,
-      rightX, heightAt ? (heightAt(rightX, rightZ) ?? y) : y, rightZ
+      leftX, heightAt ? (heightAt(leftX, leftZ) ?? level) : level, leftZ,
+      rightX, heightAt ? (heightAt(rightX, rightZ) ?? level) : level, rightZ
     );
     if (i < points.length - 1) {
       const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
@@ -524,6 +613,93 @@ function makeRibbon(points, halfWidth, y, heightAt = null, tangentPoints = point
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;
+}
+
+function makeSandBankRibbon(points, side, widthAt, heightAt, tangentPoints = points, indexOffset = 0) {
+  const rows = [-0.18, 2.5, 6, 10.5, 15.5, 21.5];
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const wet = new THREE.Color(0xa9824e);
+  const ochre = new THREE.Color(0xc99a58);
+  const pale = new THREE.Color(0xe0c27d);
+  const grey = new THREE.Color(0x99948a);
+  const color = new THREE.Color();
+
+  for (let i = 0; i < points.length; i++) {
+    const globalIndex = i + indexOffset;
+    const prev = tangentPoints[Math.max(0, globalIndex - 1)];
+    const next = tangentPoints[Math.min(tangentPoints.length - 1, globalIndex + 1)];
+    const dx = next.x - prev.x;
+    const dz = next.z - prev.z;
+    const length = Math.hypot(dx, dz) || 1;
+    const nx = -dz / length;
+    const nz = dx / length;
+    const point = points[i];
+    const halfWidth = widthAt(point);
+
+    for (let row = 0; row < rows.length; row++) {
+      const offset = rows[row];
+      const x = point.x + nx * side * (halfWidth + offset);
+      const z = point.z + nz * side * (halfWidth + offset);
+      const y = (heightAt(x, z) ?? 0) + 0.055;
+      positions.push(x, y, z);
+
+      const wetBlend = 1 - smoothstep(0, 11, offset);
+      const grain = valueNoise(x / 26, z / 26, 83);
+      const patch = valueNoise(x / 92, z / 92, 97);
+      color.copy(ochre).lerp(pale, THREE.MathUtils.clamp(0.18 + grain * 0.62, 0, 1));
+      color.lerp(wet, wetBlend * 0.62);
+      const greyPatch = smoothstep(0.72, 0.91, patch) * 0.58;
+      color.lerp(grey, greyPatch);
+      color.multiplyScalar(0.86 + grain * 0.22);
+      colors.push(color.r, color.g, color.b);
+    }
+  }
+
+  for (let i = 0; i < points.length - 1; i++) {
+    for (let row = 0; row < rows.length - 1; row++) {
+      const a = i * rows.length + row;
+      const b = a + rows.length;
+      indices.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function addSandBanks(scene, points, widthAt, heightAt, name) {
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 1,
+    metalness: 0,
+    side: THREE.DoubleSide,
+  });
+  const meshes = [];
+  const pointsPerChunk = 24;
+  for (let start = 0, part = 0; start < points.length - 1; start += pointsPerChunk, part++) {
+    const end = Math.min(points.length - 1, start + pointsPerChunk);
+    for (const side of [-1, 1]) {
+      const mesh = new THREE.Mesh(
+        makeSandBankRibbon(points.slice(start, end + 1), side, widthAt, heightAt, points, start),
+        material
+      );
+      mesh.name = `${name}-${side < 0 ? 'left' : 'right'}-${part}`;
+      mesh.userData.noCollider = true;
+      mesh.castShadow = false;
+      mesh.receiveShadow = true;
+      mesh.frustumCulled = true;
+      mesh.geometry.computeBoundingSphere();
+      scene.add(mesh);
+      meshes.push(mesh);
+    }
+  }
+  return meshes;
 }
 
 function pointInReservedArea(x, z, routePoints) {
@@ -996,14 +1172,19 @@ function createRiver(scene, rnd, heightAt) {
     points.push({ x: centerX(z), z });
   }
 
+  const mainWidthAt = (point) => mainRiverHalfWidth(point.z);
+  const mainLevelAt = (point) => mainRiverSurface(point.z);
   const waterMaterial = createFlowingWaterMaterial(0x286d7d);
-  const water = addRibbonChunks(scene, points, 14.2, RIVER_SURFACE_Y, waterMaterial,
+  const water = addRibbonChunks(scene, points, mainWidthAt, mainLevelAt, waterMaterial,
     'main-river-water', { noCollider: true, renderOrder: 2 });
 
-  const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x354f49, roughness: 1 });
-  const riverBedHeight = (x, z) => (heightAt(x, z) ?? (RIVER_SURFACE_Y - mainRiverDepth(z))) + 0.045;
+  const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x8a7659, roughness: 1 });
+  const riverBedHeight = (x, z) => (heightAt(x, z) ?? (mainRiverSurface(z) - mainRiverDepth(z))) + 0.045;
   const bed = addRibbonChunks(scene, points, 5.8, -3.25, bedMaterial,
     'main-river-bed', { walkable: true, receiveShadow: true, heightAt: riverBedHeight });
+  const sandBanks = addSandBanks(
+    scene, points, mainWidthAt, heightAt, 'main-river-sand'
+  );
 
   const pebbleGeo = new THREE.IcosahedronGeometry(2.2, 0);
   const pebbleMat = new THREE.MeshStandardMaterial({ color: 0x756c56, roughness: 1 });
@@ -1044,15 +1225,22 @@ function createRiver(scene, rnd, heightAt) {
   }
 
   return {
-    water, bed, waterMaterial, centerX, halfWidth: 14.2,
+    water, bed, sandBanks, waterMaterial, centerX, halfWidth: 14.2,
     region: {
       id: 'river',
       surfaceY: RIVER_SURFACE_Y,
+      surfaceAt: (x, z) => mainRiverSurface(mainRiverStation(x, z).station),
       bottomY: RIVER_SURFACE_Y - 12.8,
-      bottomAt: (x, z) => RIVER_SURFACE_Y - mainRiverDepth(z) + 0.08,
+      bottomAt: (x, z) => {
+        const station = mainRiverStation(x, z).station;
+        return mainRiverSurface(station) - mainRiverDepth(station) + 0.08;
+      },
       exitFeetY: RIVER_SURFACE_Y - 0.55,
       exitHeight: 0.95,
-      contains: (x, z) => mainRiverLateralDistance(x, z) <= 14.05,
+      contains: (x, z) => {
+        const station = mainRiverStation(x, z);
+        return station.distance <= mainRiverHalfWidth(station.station) + 0.1;
+      },
     },
   };
 }
@@ -1065,25 +1253,37 @@ function createTributary(scene, heightAt) {
     points.push({ x, z: centerZ(x) });
   }
 
+  const tributaryWidthAt = (point) => tributaryHalfWidth(point.x);
+  const tributaryLevelAt = (point) => tributarySurface(point.x);
   const waterMaterial = createFlowingWaterMaterial(0x327987);
-  const water = addRibbonChunks(scene, points, 11.0, RIVER_SURFACE_Y, waterMaterial,
+  const water = addRibbonChunks(scene, points, tributaryWidthAt, tributaryLevelAt, waterMaterial,
     'tributary-water', { noCollider: true, renderOrder: 2 });
 
-  const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x40564c, roughness: 1 });
-  const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? (RIVER_SURFACE_Y - tributaryDepth(x))) + 0.045;
+  const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x8e7b60, roughness: 1 });
+  const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? (tributarySurface(x) - tributaryDepth(x))) + 0.045;
   const bed = addRibbonChunks(scene, points, 4.4, -2.55, bedMaterial,
     'tributary-bed', { walkable: true, receiveShadow: true, heightAt: tributaryBedHeight });
+  const sandBanks = addSandBanks(
+    scene, points, tributaryWidthAt, heightAt, 'tributary-sand'
+  );
 
   return {
-    water, bed, waterMaterial,
+    water, bed, sandBanks, waterMaterial,
     region: {
       id: 'south-river',
       surfaceY: RIVER_SURFACE_Y,
+      surfaceAt: (x, z) => tributarySurface(tributaryStation(x, z).station),
       bottomY: RIVER_SURFACE_Y - 9.6,
-      bottomAt: (x, z) => RIVER_SURFACE_Y - tributaryDepth(x) + 0.08,
-      exitFeetY: WATER_Y - 0.55,
+      bottomAt: (x, z) => {
+        const station = tributaryStation(x, z).station;
+        return tributarySurface(station) - tributaryDepth(station) + 0.08;
+      },
+      exitFeetY: RIVER_SURFACE_Y - 0.55,
       exitHeight: 0.95,
-      contains: (x, z) => tributaryLateralDistance(x, z) <= 10.85,
+      contains: (x, z) => {
+        const station = tributaryStation(x, z);
+        return station.distance <= tributaryHalfWidth(station.station) + 0.1;
+      },
     },
   };
 }
