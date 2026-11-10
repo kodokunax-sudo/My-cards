@@ -209,7 +209,7 @@ function distanceToPolyline(x, z, points) {
   return best;
 }
 
-function registerChunkMesh(mesh, renderables, maxDistance) {
+function registerChunkMesh(mesh, renderables, maxDistance, occlusionCandidate = false) {
   mesh.frustumCulled = true;
   if (mesh.isInstancedMesh) mesh.computeBoundingSphere();
   else mesh.geometry.computeBoundingSphere();
@@ -217,6 +217,7 @@ function registerChunkMesh(mesh, renderables, maxDistance) {
   // Kept for diagnostics and optional distance-based LOD later. Actual
   // visibility is decided by Three.js per camera, including reflection cameras.
   mesh.userData.maxDrawDistance = maxDistance;
+  mesh.userData.occlusionCandidate = occlusionCandidate;
   renderables.push(mesh);
 }
 
@@ -864,7 +865,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     trunks.castShadow = true;
     trunks.receiveShadow = true;
     trunks.name = `forest-trunks-${key}`;
-    registerChunkMesh(trunks, renderables, 2800);
+    registerChunkMesh(trunks, renderables, 2800, true);
     scene.add(trunks);
     meshes.push(trunks);
 
@@ -875,7 +876,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       roundCrowns.castShadow = true;
       roundCrowns.receiveShadow = true;
       roundCrowns.name = `forest-crowns-${key}`;
-      registerChunkMesh(roundCrowns, renderables, 2800);
+      registerChunkMesh(roundCrowns, renderables, 2800, true);
       scene.add(roundCrowns);
       meshes.push(roundCrowns);
     }
@@ -887,7 +888,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       pineCrowns.castShadow = true;
       pineCrowns.receiveShadow = true;
       pineCrowns.name = `forest-pines-${key}`;
-      registerChunkMesh(pineCrowns, renderables, 2800);
+      registerChunkMesh(pineCrowns, renderables, 2800, true);
       scene.add(pineCrowns);
       meshes.push(pineCrowns);
     }
@@ -1045,7 +1046,7 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables) {
       largeRocks.castShadow = true;
       largeRocks.receiveShadow = true;
       largeRocks.name = `boulders-${key}`;
-      registerChunkMesh(largeRocks, renderables, 2500);
+      registerChunkMesh(largeRocks, renderables, 2500, true);
       scene.add(largeRocks);
       meshes.push(largeRocks);
     }
@@ -1065,7 +1066,7 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables) {
       smallRocks.castShadow = false;
       smallRocks.receiveShadow = false;
       smallRocks.name = `stones-${key}`;
-      registerChunkMesh(smallRocks, renderables, 1500);
+      registerChunkMesh(smallRocks, renderables, 1500, true);
       scene.add(smallRocks);
       meshes.push(smallRocks);
     }
