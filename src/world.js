@@ -65,6 +65,36 @@ function tributaryZ(x) {
   return 4200 + 180 * Math.sin(x / 650);
 }
 
+function gaussian(value, center, width) {
+  const t = (value - center) / width;
+  return Math.exp(-0.5 * t * t);
+}
+
+// Река состоит из глубоких плёсов и мелких перекатов, а не из одной
+// одинаковой ванны по всей длине.
+function mainRiverDepth(z) {
+  const longPool = 9.4 + 1.45 * Math.sin(z / 1350 + 0.55) +
+    0.85 * Math.sin(z / 470 - 0.3);
+  const deepPools = Math.max(
+    gaussian(z, -2850, 310),
+    gaussian(z, 250, 390),
+    gaussian(z, 2380, 330)
+  );
+  const shallowBars = Math.max(
+    gaussian(z, -1580, 245),
+    gaussian(z, 1280, 270),
+    gaussian(z, 3550, 210)
+  );
+  return THREE.MathUtils.clamp(longPool + deepPools * 1.4 - shallowBars * 6.1, 3.1, 12.8);
+}
+
+function tributaryDepth(x) {
+  const longPool = 6.9 + 1.05 * Math.sin(x / 820 - 0.7);
+  const deepPool = Math.max(gaussian(x, -1450, 370), gaussian(x, 900, 330));
+  const shallowBar = Math.max(gaussian(x, -300, 235), gaussian(x, 2050, 260));
+  return THREE.MathUtils.clamp(longPool + deepPool * 1.15 - shallowBar * 4.5, 2.8, 9.6);
+}
+
 function distanceToSegment2D(px, pz, a, b) {
   const dx = b.x - a.x, dz = b.z - a.z;
   const len2 = dx * dx + dz * dz || 1;
@@ -326,15 +356,18 @@ function createHeightFunction(routePoints) {
     const flatten = Math.max(parkBlend, houseBlend, trailBlend);
     height *= 1 - flatten;
 
-    // Shape the waterways as real shallow valleys: a narrow flat gravel bed,
-    // then a smooth bank that rises above the fixed waterline. Hills outside
-    // the bank remain untouched, so there is no 100m-wide flattened shelf.
-    const mainBankBlend = 1 - smoothstep(16, 42, mainRiverDistance);
-    const mainChannelFloor = -3.25 + smoothstep(5, 16, mainRiverDistance) * 3.55;
+    // Variable-depth riverbeds. At the centre the river is roughly 3x deeper
+    // than the old 3.25m channel; shallow bars and deep pools alternate.
+    const mainDepth = mainRiverDepth(z);
+    const mainBankBlend = 1 - smoothstep(14.2, 33, mainRiverDistance);
+    const mainChannelFloor = WATER_Y - mainDepth +
+      smoothstep(5.2, 14.2, mainRiverDistance) * mainDepth;
     height = THREE.MathUtils.lerp(height, mainChannelFloor, mainBankBlend);
 
-    const tributaryBankBlend = 1 - smoothstep(13, 34, tributaryDistance);
-    const tributaryFloor = -2.55 + smoothstep(4, 13, tributaryDistance) * 2.8;
+    const sideDepth = tributaryDepth(x);
+    const tributaryBankBlend = 1 - smoothstep(11, 27, tributaryDistance);
+    const tributaryFloor = WATER_Y - sideDepth +
+      smoothstep(3.8, 11, tributaryDistance) * sideDepth;
     height = THREE.MathUtils.lerp(height, tributaryFloor, tributaryBankBlend);
     const bridgeBlend = 1 - smoothstep(7, 24, Math.hypot(x + 692, z - 300));
     height *= 1 - bridgeBlend;
@@ -929,7 +962,9 @@ function addRibbonChunks(scene, points, halfWidth, y, material, name, options = 
     mesh.name = `${name}-${part}`;
     mesh.frustumCulled = true;
     mesh.geometry.computeBoundingSphere();
-    if (options.noCollider) mesh.userData.noCollider = true;
+    // Ribbon chunks (paths, riverbeds, water) are thin surfaces, not solid
+    // rectangular obstacles. Walkable ribbons stay in the floor raycast list.
+    mesh.userData.noCollider = true;
     if (options.walkable) mesh.userData.walkable = true;
     if (options.receiveShadow) mesh.receiveShadow = true;
     if (options.renderOrder !== undefined) mesh.renderOrder = options.renderOrder;
@@ -952,7 +987,7 @@ function createRiver(scene, rnd, heightAt) {
     'main-river-water', { noCollider: true, renderOrder: 2 });
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x354f49, roughness: 1 });
-  const riverBedHeight = (x, z) => Math.min(heightAt(x, z) ?? -3.25, -0.765) + 0.045;
+  const riverBedHeight = (x, z) => (heightAt(x, z) ?? (WATER_Y - mainRiverDepth(z))) + 0.045;
   const bed = addRibbonChunks(scene, points, 5.8, -3.25, bedMaterial,
     'main-river-bed', { walkable: true, receiveShadow: true, heightAt: riverBedHeight });
 
@@ -999,10 +1034,11 @@ function createRiver(scene, rnd, heightAt) {
     region: {
       id: 'river',
       surfaceY: 0.035,
-      bottomY: -3.25,
-      exitFeetY: 0.55,
-      exitHeight: 0.55,
-      contains: (x, z) => Math.abs(x - centerX(z)) <= 14.0,
+      bottomY: WATER_Y - 12.8,
+      bottomAt: (x, z) => WATER_Y - mainRiverDepth(z) + 0.08,
+      exitFeetY: WATER_Y - 0.55,
+      exitHeight: 0.95,
+      contains: (x, z) => Math.abs(x - centerX(z)) <= 13.35,
     },
   };
 }
@@ -1020,7 +1056,7 @@ function createTributary(scene, heightAt) {
     'tributary-water', { noCollider: true, renderOrder: 2 });
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x40564c, roughness: 1 });
-  const tributaryBedHeight = (x, z) => Math.min(heightAt(x, z) ?? -2.55, -0.765) + 0.045;
+  const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? (WATER_Y - tributaryDepth(x))) + 0.045;
   const bed = addRibbonChunks(scene, points, 4.4, -2.55, bedMaterial,
     'tributary-bed', { walkable: true, receiveShadow: true, heightAt: tributaryBedHeight });
 
@@ -1029,10 +1065,11 @@ function createTributary(scene, heightAt) {
     region: {
       id: 'south-river',
       surfaceY: 0.035,
-      bottomY: -2.55,
-      exitFeetY: 0.85,
-      exitHeight: 0.85,
-      contains: (x, z) => Math.abs(z - centerZ(x)) <= 10.8,
+      bottomY: WATER_Y - 9.6,
+      bottomAt: (x, z) => WATER_Y - tributaryDepth(x) + 0.08,
+      exitFeetY: WATER_Y - 0.55,
+      exitHeight: 0.95,
+      contains: (x, z) => Math.abs(z - centerZ(x)) <= 10.15,
     },
   };
 }
@@ -1051,16 +1088,22 @@ export function createWorld(scene) {
     { x: 0, z: 190 },
   ];
 
-  const analyticHeightAt = createHeightFunction(routePoints);
+  // Build the path curve once in XZ. The terrain flattening and visible road
+  // use this same sampled centreline, eliminating curve-vs-polyline drift.
+  const routeCurve = new THREE.CatmullRomCurve3(
+    routePoints.map((point) => new THREE.Vector3(point.x, 0, point.z)),
+    false, 'centripetal'
+  );
+  const routeGroundPoints = routeCurve.getPoints(120).map((point) => ({ x: point.x, z: point.z }));
+  const analyticHeightAt = createHeightFunction(routeGroundPoints);
   const heightAt = createRenderedTerrainSampler(analyticHeightAt);
   const renderables = [];
   const terrain = createTerrain(scene, analyticHeightAt, renderables);
 
-  // Road is sampled slightly above the exact terrain function to prevent
-  // z-fighting and disappearing strips between the 12.5m terrain triangles.
-  // Across the river it becomes a real approach ramp that meets the bridge deck.
+  // The road sits only 7cm above the sampled ground: no hovering strip and
+  // no large artificial flattening mismatch at the inside of bends.
   const roadSurfaceY = (x, z) => {
-    const groundY = (heightAt(x, z) ?? 0) + 0.22;
+    const groundY = (heightAt(x, z) ?? 0) + 0.07;
     const distanceAlongBridge = Math.abs(x + 692);
     const bridgeTop = 1.08 * (1 - smoothstep(45, 94, distanceAlongBridge));
     const bridgeCorridor = 1 - smoothstep(7, 14, Math.abs(z - 300));
@@ -1071,16 +1114,10 @@ export function createWorld(scene) {
     );
   };
 
-  const routeCurve = new THREE.CatmullRomCurve3(
-    routePoints.map((point) => new THREE.Vector3(
-      point.x, roadSurfaceY(point.x, point.z), point.z
-    )),
-    false, 'centripetal'
-  );
-  const roadPoints = routeCurve.getPoints(240).map((point) => ({ x: point.x, z: point.z }));
+  const roadPoints = routeCurve.getPoints(480).map((point) => ({ x: point.x, z: point.z }));
   const road = addRibbonChunks(
     scene, roadPoints, 3.8, 0.065,
-    new THREE.MeshStandardMaterial({ color: 0x85775e, roughness: 1 }),
+    new THREE.MeshStandardMaterial({ color: 0x8f8065, roughness: 1 }),
     'house-to-fountain-road',
     { walkable: true, receiveShadow: true, heightAt: roadSurfaceY }
   );
