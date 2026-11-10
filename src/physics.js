@@ -201,14 +201,20 @@ export function createPhysicsWorld(scene, worldInfo = null) {
     return found;
   }
 
-  function groundAt(x, z, feetY, maxStepUp = 0.9, maxDrop = 1.35) {
+  function terrainAt(x, z) {
+    const height = worldInfo?.heightAt?.(x, z);
+    return Number.isFinite(height) ? height : null;
+  }
+
+  function groundAt(x, z, feetY, maxStepUp = 1.4, maxDrop = 2.8) {
     const low = feetY - maxDrop;
     const high = feetY + maxStepUp;
     let best = null;
 
-    // The analytic height sampler is the real terrain collision surface.
-    const terrainY = worldInfo?.heightAt?.(x, z);
-    if (Number.isFinite(terrainY) && terrainY >= low && terrainY <= high) {
+    // The collision height is sampled from the same triangles and diagonal
+    // split as the rendered terrain mesh. This prevents walking below slopes.
+    const terrainY = terrainAt(x, z);
+    if (terrainY !== null && terrainY >= low && terrainY <= high) {
       best = terrainY;
     }
 
@@ -440,6 +446,7 @@ export function createPhysicsWorld(scene, worldInfo = null) {
 
   return {
     groundAt,
+    terrainAt,
     isBlocked,
     isHeadBlocked,
     resolvePosition,
