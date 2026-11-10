@@ -514,7 +514,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     else if (event.code === 'Escape' && panelOpen) showPanel(false);
   });
   canvas.addEventListener('mousedown', (event) => {
-    if (event.button !== 0 || panelOpen || !player.locked) return;
+    if (event.button !== 0 || panelOpen) return;
     mouseHeld = true;
     hitTarget();
     hitCooldown = 0.42;
