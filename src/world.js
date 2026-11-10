@@ -611,8 +611,8 @@ function createHeightFunction(routePoints) {
     const mainProfile = mainDistance <= mainWaterWidth
       ? mainSurface - mainDepth +
         smoothstep(mainWidth * 0.28, mainWaterWidth, mainDistance) * mainDepth
-      : mainSurface + smoothstep(mainWaterWidth + 2, mainWaterWidth + 42, mainDistance) * 1.25;
-    const mainBankBlend = 1 - smoothstep(mainWaterWidth + 18, mainWaterWidth + 112, mainDistance);
+      : mainSurface + smoothstep(mainWaterWidth, mainWaterWidth + 18, mainDistance) * 1.45;
+    const mainBankBlend = 1 - smoothstep(mainWaterWidth + 15, mainWaterWidth + 58, mainDistance);
     height = THREE.MathUtils.lerp(height, mainProfile, mainBankBlend);
 
     const sideStation = tributaryStation(x, z);
@@ -624,8 +624,8 @@ function createHeightFunction(routePoints) {
     const sideProfile = sideDistance <= sideWaterWidth
       ? sideSurface - sideDepth +
         smoothstep(sideWidth * 0.28, sideWaterWidth, sideDistance) * sideDepth
-      : sideSurface + smoothstep(sideWaterWidth + 2, sideWaterWidth + 38, sideDistance) * 1.15;
-    const tributaryBankBlend = 1 - smoothstep(sideWaterWidth + 16, sideWaterWidth + 96, sideDistance);
+      : sideSurface + smoothstep(sideWaterWidth, sideWaterWidth + 16, sideDistance) * 1.25;
+    const tributaryBankBlend = 1 - smoothstep(sideWaterWidth + 14, sideWaterWidth + 52, sideDistance);
     height = THREE.MathUtils.lerp(height, sideProfile, tributaryBankBlend);
 
     // Shape a broad, smooth approach trench down to the new bridge elevation.
@@ -794,6 +794,111 @@ function makeRibbon(points, halfWidth, y, heightAt = null, tangentPoints = point
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;
+}
+
+
+function addShorelineChunks(scene, points, halfWidthAt, surfaceAt, sampledTerrainAt, analyticTerrainAt, name) {
+  const rows = [-0.9, 0, 1.5, 4, 7.5, 12, 18, 26];
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    roughness: 0.98,
+    metalness: 0,
+    side: THREE.DoubleSide,
+  });
+  const wetSand = new THREE.Color(0x716650);
+  const sand = new THREE.Color(0xa88f65);
+  const drySand = new THREE.Color(0x94845f);
+  const grassEdge = new THREE.Color(0x65764d);
+  const color = new THREE.Color();
+  const normal = new THREE.Vector3();
+  const meshes = [];
+  const pointsPerChunk = 24;
+
+  for (let start = 0, part = 0; start < points.length - 1; start += pointsPerChunk, part++) {
+    const end = Math.min(points.length - 1, start + pointsPerChunk);
+    const count = end - start + 1;
+    const positions = [];
+    const colors = [];
+    const indices = [];
+
+    for (const side of [-1, 1]) {
+      const sideOffset = side * count * rows.length;
+      for (let i = 0; i < count; i++) {
+        const globalIndex = start + i;
+        const previous = points[Math.max(0, globalIndex - 1)];
+        const next = points[Math.min(points.length - 1, globalIndex + 1)];
+        const tangentX = next.x - previous.x;
+        const tangentZ = next.z - previous.z;
+        const tangentLength = Math.hypot(tangentX, tangentZ) || 1;
+        normal.set(-tangentZ / tangentLength, 0, tangentX / tangentLength);
+        const point = points[globalIndex];
+        const waterHalfWidth = halfWidthAt(point);
+        const surfaceY = surfaceAt(point);
+        const shorelineNoise = (valueNoise(point.x / 54, point.z / 54, 117 + side * 9) - 0.5) * 1.1;
+
+        for (let row = 0; row < rows.length; row++) {
+          const offset = rows[row] + (row > 1 ? shorelineNoise * (row / (rows.length - 1)) : 0);
+          const lateral = waterHalfWidth + offset;
+          const x = point.x + normal.x * lateral * side;
+          const z = point.z + normal.z * lateral * side;
+          const sampledY = sampledTerrainAt(x, z);
+          const analyticY = analyticTerrainAt(x, z);
+          let y;
+
+          if (offset <= 0) {
+            // The first strip tucks just beneath the water surface, hiding tiny gaps.
+            y = surfaceY - 0.12 + (offset + 0.9) * 0.11;
+          } else {
+            // Follow the smooth height function near the water, then merge into
+            // the exact triangles used by the visible terrain mesh.
+            const smoothGround = (analyticY ?? sampledY ?? surfaceY + 1.4) + 0.025;
+            const renderedGround = (sampledY ?? analyticY ?? surfaceY + 1.4) + 0.025;
+            const merge = smoothstep(17, 26, offset);
+            y = Math.max(surfaceY + 0.018, THREE.MathUtils.lerp(smoothGround, renderedGround, merge));
+          }
+
+          positions.push(x, y, z);
+
+          const progress = THREE.MathUtils.clamp((offset + 0.9) / 26.9, 0, 1);
+          if (progress < 0.30) color.copy(wetSand).lerp(sand, progress / 0.30);
+          else if (progress < 0.76) color.copy(sand).lerp(drySand, (progress - 0.30) / 0.46);
+          else color.copy(drySand).lerp(grassEdge, (progress - 0.76) / 0.24);
+          const grain = 0.94 + valueNoise(x / 13, z / 13, 129) * 0.12;
+          colors.push(color.r * grain, color.g * grain, color.b * grain);
+        }
+      }
+
+      for (let i = 0; i < count - 1; i++) {
+        for (let row = 0; row < rows.length - 1; row++) {
+          const a = sideOffset + i * rows.length + row;
+          const b = a + 1;
+          const c = sideOffset + (i + 1) * rows.length + row;
+          const d = c + 1;
+          indices.push(a, c, b, b, c, d);
+        }
+      }
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+
+    const bank = new THREE.Mesh(geometry, material);
+    bank.name = name + "-" + part;
+    bank.renderOrder = 1;
+    bank.receiveShadow = true;
+    bank.castShadow = false;
+    bank.frustumCulled = true;
+    bank.userData.noCollider = true;
+    bank.geometry.computeBoundingSphere();
+    scene.add(bank);
+    meshes.push(bank);
+  }
+
+  return meshes;
 }
 
 function pointInReservedArea(x, z, routePoints) {
@@ -1352,7 +1457,7 @@ function addRibbonChunks(scene, points, halfWidth, y, material, name, options = 
   return meshes;
 }
 
-function createRiver(scene, rnd, heightAt) {
+function createRiver(scene, rnd, heightAt, analyticHeightAt) {
   const centerX = mainRiverX;
   const points = [];
   for (let i = 0; i <= 1800; i++) {
@@ -1367,6 +1472,9 @@ function createRiver(scene, rnd, heightAt) {
   const waterMaterial = createFlowingWaterMaterial(0x286d7d);
   const water = addRibbonChunks(scene, points, mainWidthAt, mainLevelAt, waterMaterial,
     'main-river-water', { noCollider: true, renderOrder: 2 });
+  const banks = addShorelineChunks(
+    scene, points, mainWidthAt, mainLevelAt, heightAt, analyticHeightAt, 'main-river-bank'
+  );
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x8a7659, roughness: 1 });
   const riverBedHeight = (x, z) => (heightAt(x, z) ?? (mainRiverSurface(z) - mainRiverDepth(z))) + 0.045;
@@ -1412,7 +1520,7 @@ function createRiver(scene, rnd, heightAt) {
   }
 
   return {
-    water, bed, waterMaterial, centerX, halfWidth: 14.2,
+    water, banks, bed, waterMaterial, centerX, halfWidth: 14.2,
     region: {
       id: 'river',
       surfaceY: RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET,
@@ -1432,7 +1540,7 @@ function createRiver(scene, rnd, heightAt) {
   };
 }
 
-function createTributary(scene, heightAt) {
+function createTributary(scene, heightAt, analyticHeightAt) {
   const centerZ = tributaryZ;
   const points = [];
   for (let i = 0; i <= 1120; i++) {
@@ -1445,6 +1553,9 @@ function createTributary(scene, heightAt) {
   const waterMaterial = createFlowingWaterMaterial(0x327987);
   const water = addRibbonChunks(scene, points, tributaryWidthAt, tributaryLevelAt, waterMaterial,
     'tributary-water', { noCollider: true, renderOrder: 2 });
+  const banks = addShorelineChunks(
+    scene, points, tributaryWidthAt, tributaryLevelAt, heightAt, analyticHeightAt, 'tributary-bank'
+  );
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x8e7b60, roughness: 1 });
   const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? (tributarySurface(x) - tributaryDepth(x))) + 0.045;
@@ -1452,7 +1563,7 @@ function createTributary(scene, heightAt) {
     'tributary-bed', { walkable: true, receiveShadow: true, heightAt: tributaryBedHeight });
 
   return {
-    water, bed, waterMaterial,
+    water, banks, bed, waterMaterial,
     region: {
       id: 'south-river',
       surfaceY: RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET,
@@ -1558,8 +1669,8 @@ export function createWorld(scene) {
     }),
   }, houseBase);
 
-  const river = createRiver(scene, rnd, heightAt);
-  const tributary = createTributary(scene, heightAt);
+  const river = createRiver(scene, rnd, heightAt, analyticHeightAt);
+  const tributary = createTributary(scene, heightAt, analyticHeightAt);
   const forests = createForests(scene, heightAt, routePoints, rnd, renderables);
   const groundCover = createGroundCover(scene, heightAt, routePoints, rnd, renderables);
   const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables);
