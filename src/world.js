@@ -564,11 +564,13 @@ function createHeightFunction(routePoints) {
 
     const broad = (valueNoise(x / 1750, z / 1750, 11) - 0.5) * 104;
     const rolling = (valueNoise(x / 520, z / 520, 17) - 0.5) * 42;
-    const detail = (valueNoise(x / 175, z / 175, 23) - 0.5) * 13;
-    const microRelief = (valueNoise(x / 48, z / 48, 37) - 0.5) * 4.2 +
-      (valueNoise(x / 21, z / 21, 41) - 0.5) * 1.35;
+    const detail = (valueNoise(x / 175, z / 175, 23) - 0.5) * 16;
+    const fineRelief = (valueNoise(x / 86, z / 86, 29) - 0.5) * 5.8;
+    const microRelief = (valueNoise(x / 48, z / 48, 37) - 0.5) * 5.0 +
+      (valueNoise(x / 21, z / 21, 41) - 0.5) * 1.8 +
+      (valueNoise(x / 9, z / 9, 43) - 0.5) * 0.55;
     const ridgeNoise = 1 - Math.abs(valueNoise(x / 760, z / 760, 31) * 2 - 1);
-    let height = broad + rolling + detail + microRelief + (ridgeNoise - 0.44) * 20;
+    let height = broad + rolling + detail + fineRelief + microRelief + (ridgeNoise - 0.44) * 23;
 
     for (const [hx, hz, radius, peak] of HILLS) {
       const dx = x - hx, dz = z - hz;
@@ -608,9 +610,9 @@ function createHeightFunction(routePoints) {
     const mainWaterWidth = mainWidth * RIVER_WATER_WIDTH_SCALE;
     const mainProfile = mainDistance <= mainWaterWidth
       ? mainSurface - mainDepth +
-        smoothstep(mainWidth * 0.34, mainWaterWidth, mainDistance) * mainDepth
-      : mainSurface + smoothstep(mainWaterWidth, mainWaterWidth + 34, mainDistance) * 1.8;
-    const mainBankBlend = 1 - smoothstep(mainWaterWidth + 24, mainWaterWidth + 66, mainDistance);
+        smoothstep(mainWidth * 0.28, mainWaterWidth, mainDistance) * mainDepth
+      : mainSurface + smoothstep(mainWaterWidth + 2, mainWaterWidth + 42, mainDistance) * 1.25;
+    const mainBankBlend = 1 - smoothstep(mainWaterWidth + 18, mainWaterWidth + 112, mainDistance);
     height = THREE.MathUtils.lerp(height, mainProfile, mainBankBlend);
 
     const sideStation = tributaryStation(x, z);
@@ -621,9 +623,9 @@ function createHeightFunction(routePoints) {
     const sideWaterWidth = sideWidth * RIVER_WATER_WIDTH_SCALE;
     const sideProfile = sideDistance <= sideWaterWidth
       ? sideSurface - sideDepth +
-        smoothstep(sideWidth * 0.34, sideWaterWidth, sideDistance) * sideDepth
-      : sideSurface + smoothstep(sideWaterWidth, sideWaterWidth + 30, sideDistance) * 1.6;
-    const tributaryBankBlend = 1 - smoothstep(sideWaterWidth + 22, sideWaterWidth + 58, sideDistance);
+        smoothstep(sideWidth * 0.28, sideWaterWidth, sideDistance) * sideDepth
+      : sideSurface + smoothstep(sideWaterWidth + 2, sideWaterWidth + 38, sideDistance) * 1.15;
+    const tributaryBankBlend = 1 - smoothstep(sideWaterWidth + 16, sideWaterWidth + 96, sideDistance);
     height = THREE.MathUtils.lerp(height, sideProfile, tributaryBankBlend);
 
     // Shape a broad, smooth approach trench down to the new bridge elevation.
@@ -635,8 +637,10 @@ function createHeightFunction(routePoints) {
 
 
     const protectedFlat = Math.max(parkBlend, houseBlend, trailBlend);
-    const gully = Math.pow(Math.max(0, 1 - Math.abs(valueNoise(x / 610, z / 610, 49) * 2 - 1)), 5);
-    height -= gully * 8.5 * (1 - protectedFlat);
+    const gullyNoise = valueNoise(x / 610, z / 610, 49);
+    const gully = Math.pow(Math.max(0, 1 - Math.abs(gullyNoise * 2 - 1)), 5);
+    const shallowErosion = Math.pow(Math.max(0, 1 - Math.abs(valueNoise(x / 245, z / 245, 53) * 2 - 1)), 4);
+    height -= (gully * 10.5 + shallowErosion * 2.2) * (1 - protectedFlat);
     // A handful of winding erosion cuts add small ravines between the hills.
     const ravines = [
       [-3900, -1800, -2600, -650, 34, 7.5],
@@ -821,7 +825,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
         rotation: rnd() * TAU,
         hue: rnd(),
         pine,
-        variant: pine ? (rnd() < 0.52 ? 0 : 1) : Math.floor(rnd() * 3),
+        variant: pine ? Math.floor(rnd() * 3) : Math.floor(rnd() * 5),
       });
     }
   }
@@ -834,20 +838,23 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     const key = `${cx},${cz}`;
     let bucket = buckets.get(key);
     if (!bucket) {
-      bucket = { trees: [], variants: [[], [], [], [], []] };
+      bucket = { trees: [], variants: [[], [], [], [], [], [], [], []] };
       buckets.set(key, bucket);
     }
     bucket.trees.push(tree);
-    bucket.variants[(tree.pine ? 3 : 0) + tree.variant].push(tree);
+    bucket.variants[(tree.pine ? 5 : 0) + tree.variant].push(tree);
   }
 
   const trunkGeometry = new THREE.CylinderGeometry(0.25, 0.48, 8, 7);
   const crownGeometries = [
     new THREE.IcosahedronGeometry(5.3, 0),
     new THREE.DodecahedronGeometry(5.0, 0),
-    new THREE.SphereGeometry(4.8, 7, 5),
+    new THREE.SphereGeometry(4.8, 8, 6),
+    new THREE.OctahedronGeometry(5.0, 0),
+    new THREE.TetrahedronGeometry(5.2, 0),
     new THREE.ConeGeometry(4.9, 10.8, 7, 1),
     new THREE.ConeGeometry(5.4, 12.2, 6, 2),
+    new THREE.ConeGeometry(4.4, 13.6, 9, 2),
   ];
   const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x59432f, roughness: 1 });
   const crownMaterials = [
@@ -894,10 +901,11 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
         const tree = group[i];
         quaternion.setFromAxisAngle(up, tree.rotation);
         const isPine = tree.pine;
-        const crownY = isPine ? (variant === 4 ? 10.4 : 9.6) : 8.2;
+        const pineVariant = tree.variant;
+        const crownY = isPine ? [9.4, 10.0, 10.6][pineVariant] : [8.0, 8.1, 7.8, 8.2, 8.0][pineVariant];
         position.set(tree.x, tree.y + crownY * tree.scale, tree.z);
-        const width = isPine ? (variant === 4 ? 1.12 : 1.18) : (variant === 2 ? 1.34 : 1.25);
-        const height = isPine ? (variant === 4 ? 1.16 : 1.12) : (variant === 2 ? 0.82 : 1.12);
+        const width = isPine ? [1.16, 1.12, 1.04][pineVariant] : [1.25, 1.22, 1.34, 1.12, 1.28][pineVariant];
+        const height = isPine ? [1.08, 1.16, 1.24][pineVariant] : [1.12, 1.05, 0.82, 1.12, 1.18][pineVariant];
         scale.set(tree.scale * width, tree.scale * height, tree.scale * width);
         matrix.compose(position, quaternion, scale);
         crowns.setMatrixAt(i, matrix);
