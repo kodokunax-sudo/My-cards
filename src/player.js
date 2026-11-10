@@ -113,7 +113,7 @@ function createPlayerAvatar(scene) {
 
   // Blue fitted shirt follows the broad chest and torso silhouette.
   // The underlying muscles shape the fabric, but skin details stay covered.
-  ellipsoid(motion, shirt, [0, 1.105, -0.02], [0.365, 0.355, 0.225], 14);
+  ellipsoid(motion, shirt, [0, 1.105, -0.02], [0.365, 0.355, 0.255], 14);
   ellipsoid(motion, shirtDark, [0, 0.855, -0.018], [0.292, 0.075, 0.205], 12);
   ellipsoid(motion, shirtLight, [0, 1.31, 0.035], [0.205, 0.075, 0.185], 12);
 
@@ -276,7 +276,7 @@ function createPlayerAvatar(scene) {
       bodyX = -0.035 + Math.sin(phase) * 0.025;
       bodyZ = Math.sin(phase * 0.5) * 0.025;
       blendSpeed = 7.5;
-    } else if (!grounded && verticalVelocity > 0.15) {
+    } else if (!flying && !grounded && verticalVelocity > 0.15) {
       // Jump ascent: arms lift for balance and knees tuck slightly.
       phase += dt * 3.2;
       leftShoulderX = -1.05;
@@ -290,7 +290,7 @@ function createPlayerAvatar(scene) {
       bodyY = 0.018;
       bodyX = -0.10;
       blendSpeed = 8.5;
-    } else if (!grounded) {
+    } else if (!flying && !grounded) {
       // Falling: arms spread as a reflex, legs trail below the torso.
       phase += dt * 2.8;
       const flutter = Math.sin(phase) * 0.08;
