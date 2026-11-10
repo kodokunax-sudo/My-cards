@@ -28,7 +28,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 0.9));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.94;
+renderer.toneMappingExposure = 0.84;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
@@ -71,7 +71,7 @@ if (touch) {
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.22, 0.68, 0.91
+  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.15, 0.62, 0.94
 );
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
