@@ -195,7 +195,7 @@ function createRiverProfiles(baseHeightAt) {
     );
   }
 
-  const mainSurface = (station) => {
+  const mainSurfaceFromBanks = (station) => {
     const banks = mainBankData(station);
     // The water sits just below the lower of the two banks. Small ripples
     // remain, but the shoreline itself determines the actual water height.
@@ -204,7 +204,7 @@ function createRiverProfiles(baseHeightAt) {
       0.025 * Math.sin(station / 177);
   };
 
-  const mainDepth = (station) => {
+  const mainDepthFromBanks = (station) => {
     const banks = mainBankData(station);
     const width = mainRiverHalfWidth(station) * RIVER_WATER_WIDTH_SCALE;
     return THREE.MathUtils.clamp(
@@ -213,13 +213,13 @@ function createRiverProfiles(baseHeightAt) {
     );
   };
 
-  const tributarySurface = (station) => {
+  const tributarySurfaceFromBanks = (station) => {
     const banks = tributaryBankData(station);
     return banks.lowerBank - 0.30 +
       0.035 * Math.sin(station / 430 + 0.4);
   };
 
-  const tributaryDepth = (station) => {
+  const tributaryDepthFromBanks = (station) => {
     const banks = tributaryBankData(station);
     const width = tributaryHalfWidth(station) * RIVER_WATER_WIDTH_SCALE;
     return THREE.MathUtils.clamp(
@@ -227,6 +227,38 @@ function createRiverProfiles(baseHeightAt) {
       4.8, 19
     );
   };
+
+  // The tributary physically crosses the main river. Both water meshes and
+  // both riverbeds must share one elevation/depth at that exact junction.
+  let junctionX = -1100;
+  for (let i = 0; i < 8; i++) junctionX = mainRiverX(tributaryZ(junctionX));
+  const junctionStation = tributaryZ(junctionX);
+  const junctionSurface = Math.min(
+    mainSurfaceFromBanks(junctionStation),
+    tributarySurfaceFromBanks(junctionX)
+  );
+  const junctionDepth = Math.max(
+    mainDepthFromBanks(junctionStation),
+    tributaryDepthFromBanks(junctionX)
+  );
+
+  const mainJoinBlend = (station) =>
+    1 - smoothstep(90, 620, Math.abs(station - junctionStation));
+  const tributaryJoinBlend = (station) =>
+    1 - smoothstep(90, 620, Math.abs(station - junctionX));
+
+  const mainSurface = (station) => THREE.MathUtils.lerp(
+    mainSurfaceFromBanks(station), junctionSurface, mainJoinBlend(station)
+  );
+  const mainDepth = (station) => THREE.MathUtils.lerp(
+    mainDepthFromBanks(station), junctionDepth, mainJoinBlend(station)
+  );
+  const tributarySurface = (station) => THREE.MathUtils.lerp(
+    tributarySurfaceFromBanks(station), junctionSurface, tributaryJoinBlend(station)
+  );
+  const tributaryDepth = (station) => THREE.MathUtils.lerp(
+    tributaryDepthFromBanks(station), junctionDepth, tributaryJoinBlend(station)
+  );
 
   return {
     mainSurface,
