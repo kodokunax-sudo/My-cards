@@ -981,6 +981,124 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
   };
 }
 
+
+function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
+  const chunkSize = 640;
+  const buckets = new Map();
+  const add = (x, z, type, item) => {
+    const key = `${Math.floor(x / chunkSize)},${Math.floor(z / chunkSize)}`;
+    let bucket = buckets.get(key);
+    if (!bucket) { bucket = { grass: [], shrubs: [] }; buckets.set(key, bucket); }
+    bucket[type].push(item);
+  };
+
+  let attempts = 0;
+  let grassCount = 0;
+  while (grassCount < 7600 && attempts < 26000) {
+    attempts++;
+    const angle = rnd() * TAU;
+    const radius = 250 + rnd() * (GRASS_RADIUS - 330);
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius;
+    if (pointInReservedArea(x, z, routePoints) || rnd() < 0.12) continue;
+    const patch = valueNoise(x / 185, z / 185, 83);
+    if (patch < 0.37) continue;
+    const y = heightAt(x, z);
+    if (y === null || y === undefined) continue;
+    const size = 0.48 + rnd() * 0.82;
+    add(x, z, "grass", { x, z, y, size, angle: rnd() * TAU, hue: rnd() });
+    grassCount++;
+  }
+
+  attempts = 0;
+  let shrubCount = 0;
+  while (shrubCount < 2600 && attempts < 12000) {
+    attempts++;
+    const angle = rnd() * TAU;
+    const radius = 265 + rnd() * (GRASS_RADIUS - 350);
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius;
+    if (pointInReservedArea(x, z, routePoints) || rnd() < 0.34) continue;
+    const forestMask = valueNoise(x / 1250, z / 1250, 71) * 0.62 +
+      valueNoise(x / 2650, z / 2650, 73) * 0.38;
+    if (forestMask > 0.56) continue;
+    const y = heightAt(x, z);
+    if (y === null || y === undefined) continue;
+    add(x, z, "shrubs", {
+      x, z, y, sx: 0.8 + rnd() * 1.2, sy: 0.45 + rnd() * 0.8,
+      sz: 0.8 + rnd() * 1.2, angle: rnd() * TAU, hue: rnd(),
+    });
+    shrubCount++;
+  }
+
+  const grassGeometry = new THREE.ConeGeometry(0.32, 1.65, 3, 1);
+  const shrubGeometry = new THREE.DodecahedronGeometry(1, 0);
+  const grassMaterial = new THREE.MeshStandardMaterial({
+    color: 0x557b3d, roughness: 1, flatShading: true,
+  });
+  const shrubMaterial = new THREE.MeshStandardMaterial({
+    color: 0x426b38, roughness: 1, flatShading: true,
+  });
+  const matrix = new THREE.Matrix4();
+  const quaternion = new THREE.Quaternion();
+  const position = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  const meshes = [];
+
+  for (const [key, bucket] of buckets) {
+    if (bucket.grass.length) {
+      const grass = new THREE.InstancedMesh(grassGeometry, grassMaterial, bucket.grass.length);
+      for (let i = 0; i < bucket.grass.length; i++) {
+        const item = bucket.grass[i];
+        quaternion.setFromAxisAngle(up, item.angle);
+        position.set(item.x, item.y + item.size * 0.58, item.z);
+        scale.set(item.size * 0.78, item.size, item.size * 0.78);
+        matrix.compose(position, quaternion, scale);
+        grass.setMatrixAt(i, matrix);
+        grass.setColorAt(i, new THREE.Color().setHSL(
+          0.24 + item.hue * 0.08, 0.34 + item.hue * 0.22, 0.20 + item.hue * 0.12
+        ));
+      }
+      grass.instanceMatrix.needsUpdate = true;
+      if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
+      grass.userData.noCollider = true;
+      grass.castShadow = false;
+      grass.receiveShadow = false;
+      grass.name = `wild-grass-${key}`;
+      registerChunkMesh(grass, renderables, 1700, true);
+      scene.add(grass);
+      meshes.push(grass);
+    }
+
+    if (bucket.shrubs.length) {
+      const shrubs = new THREE.InstancedMesh(shrubGeometry, shrubMaterial, bucket.shrubs.length);
+      for (let i = 0; i < bucket.shrubs.length; i++) {
+        const item = bucket.shrubs[i];
+        quaternion.setFromAxisAngle(up, item.angle);
+        position.set(item.x, item.y + item.sy * 0.72, item.z);
+        scale.set(item.sx, item.sy, item.sz);
+        matrix.compose(position, quaternion, scale);
+        shrubs.setMatrixAt(i, matrix);
+        shrubs.setColorAt(i, new THREE.Color().setHSL(
+          0.25 + item.hue * 0.07, 0.30 + item.hue * 0.2, 0.17 + item.hue * 0.12
+        ));
+      }
+      shrubs.instanceMatrix.needsUpdate = true;
+      if (shrubs.instanceColor) shrubs.instanceColor.needsUpdate = true;
+      shrubs.userData.noCollider = true;
+      shrubs.castShadow = true;
+      shrubs.receiveShadow = true;
+      shrubs.name = `wild-shrubs-${key}`;
+      registerChunkMesh(shrubs, renderables, 2200, true);
+      scene.add(shrubs);
+      meshes.push(shrubs);
+    }
+  }
+
+  return { grass: grassCount, shrubs: shrubCount, chunks: buckets.size, meshes };
+}
+
 function createRocks(scene, heightAt, routePoints, rnd, renderables) {
   const boulderData = [];
   const smallData = [];
@@ -1435,6 +1553,7 @@ export function createWorld(scene) {
   const river = createRiver(scene, rnd, heightAt);
   const tributary = createTributary(scene, heightAt);
   const forests = createForests(scene, heightAt, routePoints, rnd, renderables);
+  const groundCover = createGroundCover(scene, heightAt, routePoints, rnd, renderables);
   const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables);
 
   return {
@@ -1443,6 +1562,7 @@ export function createWorld(scene) {
     river,
     tributary,
     forests,
+    groundCover,
     isForestBlocked: forests.isBlocked,
     resolveForestPosition: forests.resolve,
     rocks,
