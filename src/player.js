@@ -9,8 +9,8 @@ const RUN_SPEED = 10.2;
 const FLY_SPEED = 14.0;
 const FLY_FAST = 34.0;
 const BODY_RADIUS = 0.29;
-const STEP_UP = 0.62;
-const MAX_STEP_DOWN = 1.25;
+const STEP_UP = 1.4;
+const MAX_STEP_DOWN = 3.0;
 const JUMP_SPEED = 6.4;
 const AIR_CONTROL = 5.0;
 const GROUND_ACCELERATION = 19.0;
@@ -204,8 +204,16 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
 
     if (grounded) {
       const floor = physics.groundAt(nx, nz, feetY, STEP_UP, MAX_STEP_DOWN);
-      if (floor === null) return false;
-      nextFeet = floor;
+      const terrainFloor = physics.terrainAt?.(nx, nz);
+      if (floor === null && !Number.isFinite(terrainFloor)) return false;
+      nextFeet = floor !== null ? floor : terrainFloor;
+      // Refuse near-vertical walls, but do not let a small interpolation or
+      // substep difference turn a climbable hillside into a missing floor.
+      const horizontalStep = Math.hypot(dx, dz);
+      const allowedRise = Math.max(STEP_UP, horizontalStep * 2.2 + 0.24);
+      const allowedDrop = Math.max(MAX_STEP_DOWN, horizontalStep * 4.0 + 0.35);
+      const heightDelta = nextFeet - feetY;
+      if (heightDelta > allowedRise || heightDelta < -allowedDrop) return false;
     }
 
     if (physics.isBlocked(nx, nextFeet, nz, BODY_RADIUS, PLAYER_HEIGHT)) return false;
@@ -506,8 +514,12 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
           camera.position.x, camera.position.z, previousFeet, 0.14,
           Math.max(MAX_STEP_DOWN, previousFeet - nextFeet + 0.14)
         );
-        if (floor !== null && nextFeet <= floor && previousFeet >= floor - 0.12) {
-          nextFeet = floor;
+        const terrainFloor = physics.terrainAt?.(camera.position.x, camera.position.z);
+        const landingFloor = floor !== null ? floor : terrainFloor;
+        if (Number.isFinite(landingFloor) && nextFeet <= landingFloor + 0.04) {
+          // Also recover if a previous frame placed the capsule a little below
+          // the rendered surface. Never keep integrating gravity underground.
+          nextFeet = landingFloor;
           velocity.y = 0;
           grounded = true;
         }
@@ -516,7 +528,9 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       feetY = nextFeet;
     } else {
       const floor = physics.groundAt(camera.position.x, camera.position.z, feetY, STEP_UP, MAX_STEP_DOWN);
+      const terrainFloor = physics.terrainAt?.(camera.position.x, camera.position.z);
       if (floor !== null) feetY = floor;
+      else if (Number.isFinite(terrainFloor) && Math.abs(terrainFloor - feetY) < 3.8) feetY = terrainFloor;
       velocity.y = 0;
     }
 
