@@ -169,7 +169,7 @@ export function createEnvironment(scene) {
   const trunkGeo = new THREE.CylinderGeometry(0.32, 0.55, 5.0, 7);
   const foliageGeo = new THREE.IcosahedronGeometry(3.4, 1);
   const trunkMat = new THREE.MeshStandardMaterial({ color: PALETTE.bark, roughness: 1.0 });
-  const foliageMat = new THREE.MeshStandardMaterial({ color: PALETTE.foliage, roughness: 0.95, flatShading: true });
+  const foliageMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.98, flatShading: true });
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, treeCount);
   const crowns = new THREE.InstancedMesh(foliageGeo, foliageMat, treeCount);
   trunks.castShadow = true; crowns.castShadow = true;
@@ -182,7 +182,12 @@ export function createEnvironment(scene) {
     pos.set(x, 2.5 * s, z); scl.set(s, s, s); m.compose(pos, q, scl); trunks.setMatrixAt(i, m);
     pos.set(x, (5.0 + rnd() * 1.4) * s, z); scl.set(s * 1.15, s * 0.9, s * 1.15); m.compose(pos, q, scl);
     crowns.setMatrixAt(i, m);
-    crowns.setColorAt(i, new THREE.Color().setHSL(0.26 + rnd() * 0.05, 0.32 + rnd() * 0.16, 0.22 + rnd() * 0.12));
+    const foliageHue = 0.29 + rnd() * 0.035;
+    const foliageSaturation = 0.56 + rnd() * 0.12;
+    const foliageLightness = 0.15 + rnd() * 0.07;
+    crowns.setColorAt(i, new THREE.Color().setHSL(
+      foliageHue, foliageSaturation, foliageLightness
+    ));
   }
   if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
   group.add(trunks, crowns);
