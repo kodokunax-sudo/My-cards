@@ -364,26 +364,6 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 
-// авто-понижение качества, если кадр стабильно тяжёлый
-let sampleStart = 0, sampleCount = 0;
-function sampleQuality(dt) {
-  if (forced || quality === 'low') return;
-  if (sampleStart === 0) { sampleStart = performance.now(); return; }
-  sampleCount++;
-  if (sampleCount < 45) return;
-  const avg = (performance.now() - sampleStart) / sampleCount;
-  sampleCount = 0; sampleStart = performance.now();
-  if (avg > 42) {
-    const i = order.indexOf(quality);
-    if (i < order.length - 1) {
-      quality = order[i + 1];
-      applyQuality();
-      hud.toast(`Качество снижено до «${quality === 'medium' ? 'среднего' : 'низкого'}» для плавности`);
-    }
-  }
-}
-applyQuality();
-
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
