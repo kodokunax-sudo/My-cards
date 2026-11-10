@@ -439,8 +439,6 @@ function createHeightFunction(routePoints) {
     // The former 136m flat bench made the water read as a giant rectangular slab.
     // Distances are measured perpendicular to the curved centreline,
     // matching the normal-based ribbon geometry used by the visible water.
-    const mainRiverDistance = mainRiverLateralDistance(x, z);
-    const tributaryDistance = tributaryLateralDistance(x, z);
     const flatten = Math.max(parkBlend, houseBlend, trailBlend);
     height *= 1 - flatten;
 
