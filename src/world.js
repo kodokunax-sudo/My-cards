@@ -58,7 +58,10 @@ function valueNoise(x, z, seed = 1) {
 }
 
 const RIVER_SURFACE_Y = 0.035;
+const RIVER_LEVEL_OFFSET = -4.0;
 const RIVER_WATER_WIDTH_SCALE = 1.2;
+const BRIDGE_VERTICAL_OFFSET = -3.0;
+const BRIDGE_DECK_TOP_Y = 1.08 + BRIDGE_VERTICAL_OFFSET;
 
 function mainRiverX(z) {
   return -900 + 840 * Math.sin(z / 1200);
@@ -114,7 +117,7 @@ function mainRiverSurface(z) {
 
   // River elevation changes gradually along the course. At the bridge it
   // drops into a noticeably lower, deeper reach without moving the terrain.
-  return RIVER_SURFACE_Y - downstreamDrop - bridgeCut +
+  return RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET - downstreamDrop - bridgeCut +
     lowerReach + raisedReach - shallowReach +
     0.34 * Math.sin(z / 1280 + 0.25) +
     0.17 * Math.sin(z / 455 + 0.8);
@@ -596,8 +599,13 @@ function createHeightFunction(routePoints) {
       : sideSurface + smoothstep(sideWidth, sideWidth + 15, sideDistance) * 1.05;
     const tributaryBankBlend = 1 - smoothstep(sideWidth + 15, sideWidth + 42, sideDistance);
     height = THREE.MathUtils.lerp(height, sideProfile, tributaryBankBlend);
-    // Keep the river channel carved beneath the bridge. Flattening the
-    // terrain here used to fill the riverbed back up to ground level.
+
+    // Lower a broad, smoothly graded approach trench by 3m on both sides
+    // of the bridge. The riverbed itself remains lower and is not filled in.
+    const bridgeApproachX = 1 - smoothstep(45, 150, Math.abs(x + 692));
+    const bridgeApproachZ = 1 - smoothstep(8, 18, Math.abs(z - 300));
+    const bridgeApproachBlend = bridgeApproachX * bridgeApproachZ;
+    height = Math.min(height, BRIDGE_VERTICAL_OFFSET * bridgeApproachBlend);
 
 
     const protectedFlat = Math.max(parkBlend, houseBlend, trailBlend);
@@ -1274,7 +1282,7 @@ function createRiver(scene, rnd, heightAt) {
         const station = mainRiverStation(x, z).station;
         return mainRiverSurface(station) - mainRiverDepth(station) + 0.08;
       },
-      exitFeetY: RIVER_SURFACE_Y - 0.55,
+      exitFeetY: RIVER_SURFACE_Y + RIVER_LEVEL_OFFSET - 0.55,
       exitHeight: 0.95,
       contains: (x, z) => {
         const station = mainRiverStation(x, z);
@@ -1354,14 +1362,10 @@ export function createWorld(scene) {
   // no large artificial flattening mismatch at the inside of bends.
   const roadSurfaceY = (x, z) => {
     const groundY = (heightAt(x, z) ?? 0) + 0.07;
-    const distanceAlongBridge = Math.abs(x + 692);
-    const bridgeTop = 1.08 * (1 - smoothstep(45, 94, distanceAlongBridge));
-    const bridgeCorridor = 1 - smoothstep(7, 14, Math.abs(z - 300));
-    return THREE.MathUtils.lerp(
-      groundY,
-      Math.max(groundY, bridgeTop + 0.04),
-      bridgeCorridor
-    );
+    const approachBlend = 1 - smoothstep(45, 150, Math.abs(x + 692));
+    const pathCorridor = 1 - smoothstep(7, 14, Math.abs(z - 300));
+    const rampY = THREE.MathUtils.lerp(groundY, BRIDGE_DECK_TOP_Y + 0.04, approachBlend);
+    return THREE.MathUtils.lerp(groundY, rampY, pathCorridor);
   };
 
   const roadPoints = routeCurve.getPoints(480).map((point) => ({ x: point.x, z: point.z }));
@@ -1373,7 +1377,7 @@ export function createWorld(scene) {
   );
 
   const bridge = new THREE.Group();
-  bridge.position.set(-692, 0, 300);
+  bridge.position.set(-692, BRIDGE_VERTICAL_OFFSET, 300);
   const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(90, 0.30, 10), new THREE.MeshStandardMaterial({
     color: 0x715239, roughness: 0.9,
   }));
