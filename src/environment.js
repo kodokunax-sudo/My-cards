@@ -329,7 +329,7 @@ export function createEnvironment(scene) {
   group.add(birds);
 
   // ---------- солнце ----------
-  const sun = new THREE.DirectionalLight(0xffd9ac, 2.15);
+  const sun = new THREE.DirectionalLight(0xffd9ac, 1.62);
   sun.position.set(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z).multiplyScalar(300);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -347,12 +347,12 @@ export function createEnvironment(scene) {
   scene.add(sun);
   scene.add(sun.target);
 
-  const hemi = new THREE.HemisphereLight(0xbcd6ff, 0x8a7558, 1.18);
+  const hemi = new THREE.HemisphereLight(0xbcd6ff, 0x8a7558, 1.02);
   scene.add(hemi);
-  const fill = new THREE.DirectionalLight(0x9fc0ff, 0.48);
+  const fill = new THREE.DirectionalLight(0x9fc0ff, 0.36);
   fill.position.set(-SUN_DIR.x * 200, 120, -SUN_DIR.z * 200);
   scene.add(fill);
-  const bounce = new THREE.DirectionalLight(0xffd9b0, 0.20);
+  const bounce = new THREE.DirectionalLight(0xffd9b0, 0.14);
   bounce.position.set(0, -120, 60);
   scene.add(bounce);
   const moon = new THREE.DirectionalLight(0x7896d8, 0);
@@ -375,10 +375,10 @@ export function createEnvironment(scene) {
     sun,
     setTimeOfDay(nightProgress = 0) {
       const n = THREE.MathUtils.clamp(nightProgress, 0, 1);
-      sun.intensity = THREE.MathUtils.lerp(2.15, 0.12, n);
-      hemi.intensity = THREE.MathUtils.lerp(1.18, 0.34, n);
-      fill.intensity = THREE.MathUtils.lerp(0.48, 0.08, n);
-      bounce.intensity = THREE.MathUtils.lerp(0.20, 0.025, n);
+      sun.intensity = THREE.MathUtils.lerp(1.62, 0.12, n);
+      hemi.intensity = THREE.MathUtils.lerp(1.02, 0.34, n);
+      fill.intensity = THREE.MathUtils.lerp(0.36, 0.08, n);
+      bounce.intensity = THREE.MathUtils.lerp(0.14, 0.025, n);
       moon.intensity = 0.48 * n;
       for (const light of lampLights) light.intensity = 13 * n;
     },
