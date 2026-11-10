@@ -136,6 +136,57 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   stoneMesh.computeBoundingSphere();
   scene.add(stoneMesh);
 
+  // First-person tool models: crafted tools appear in the lower-right camera view.
+  const viewModel = new THREE.Group();
+  viewModel.name = 'survival-held-tool';
+  viewModel.position.set(0.40, -0.34, -0.66);
+  camera.add(viewModel);
+  const handleMaterial = new THREE.MeshStandardMaterial({ color: 0x805a38, roughness: 0.96 });
+  const woodHeadMaterial = new THREE.MeshStandardMaterial({ color: 0x513a27, roughness: 1 });
+  const stoneHeadMaterial = new THREE.MeshStandardMaterial({ color: 0x77776f, roughness: 1, flatShading: true });
+  const metalEdgeMaterial = new THREE.MeshStandardMaterial({ color: 0x92989a, roughness: 0.78, metalness: 0.18 });
+
+  function toolPart(group, geometry, material, x, y, z, rotationZ = 0) {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.rotation.z = rotationZ;
+    mesh.castShadow = false;
+    mesh.userData.noCollider = true;
+    group.add(mesh);
+  }
+
+  function makeHeldTool(type, stone) {
+    const group = new THREE.Group();
+    group.visible = false;
+    toolPart(group, new THREE.CylinderGeometry(0.032, 0.045, 0.68, 9), handleMaterial, 0, -0.20, 0);
+    const headMaterial = stone ? stoneHeadMaterial : woodHeadMaterial;
+    if (type === 'axe') {
+      toolPart(group, new THREE.BoxGeometry(0.32, 0.17, 0.13), headMaterial, -0.05, 0.17, 0);
+      if (stone) toolPart(group, new THREE.BoxGeometry(0.075, 0.20, 0.145), metalEdgeMaterial, -0.205, 0.17, 0);
+    } else {
+      toolPart(group, new THREE.BoxGeometry(0.44, 0.10, 0.12), headMaterial, 0, 0.17, 0);
+      toolPart(group, new THREE.ConeGeometry(0.075, 0.20, 6), headMaterial, -0.24, 0.17, 0, -Math.PI / 2);
+      toolPart(group, new THREE.ConeGeometry(0.075, 0.20, 6), headMaterial, 0.24, 0.17, 0, Math.PI / 2);
+    }
+    viewModel.add(group);
+    return group;
+  }
+
+  const heldTools = {
+    woodAxe: makeHeldTool('axe', false),
+    woodPickaxe: makeHeldTool('pickaxe', false),
+    stoneAxe: makeHeldTool('axe', true),
+    stonePickaxe: makeHeldTool('pickaxe', true),
+  };
+  let toolSwing = 0;
+
+  function refreshHeldTool() {
+    for (const [id, group] of Object.entries(heldTools)) group.visible = selectedTool === id;
+    viewModel.visible = selectedTool !== 'hands' && player.mode !== 'cinematic' && !player.swimming;
+  }
+
+  refreshHeldTool();
+
   function addWorkbenchMesh() {
     if (!workbench || workbenchGroup) return;
     const group = new THREE.Group();
@@ -240,6 +291,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   }
 
   function renderPanel() {
+    refreshHeldTool();
     resourceEl.innerHTML =
       '<div><span>Дерево</span><b>' + inventory.logs + '</b></div>' +
       '<div><span>Доски</span><b>' + inventory.planks + '</b></div>' +
@@ -380,6 +432,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
   function hitTarget() {
     if (panelOpen || player.mode === 'fly' || player.swimming) return;
+    toolSwing = 1;
     const target = currentTarget();
     if (!target) {
       if (messageCooldown <= 0) {
@@ -472,6 +525,12 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   function update(dt) {
     messageCooldown = Math.max(0, messageCooldown - dt);
     hitCooldown = Math.max(0, hitCooldown - dt);
+    toolSwing = Math.max(0, toolSwing - dt * 3.8);
+    const swingArc = Math.sin((1 - toolSwing) * Math.PI) * toolSwing;
+    viewModel.rotation.x = -0.12 + swingArc * 0.78;
+    viewModel.rotation.z = -0.28 - swingArc * 0.18;
+    viewModel.position.y = -0.34 - swingArc * 0.045;
+    refreshHeldTool();
     if (mouseHeld && hitCooldown <= 0) {
       hitTarget();
       hitCooldown = selectedTool === 'hands' ? 0.72 : 0.46;
