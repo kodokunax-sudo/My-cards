@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 const SAVE_KEY = 'titan-survival-v1';
-const NODE_COUNT = 50;
+const NODE_COUNT = 500;
 const RESPAWN_MS = 5 * 60 * 1000;
 const TREE_HP = 12;
 const STONE_HP = 12;
@@ -448,11 +448,12 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       target.tree.health -= damage;
       if (target.tree.health <= 0) {
         world.forests.remove(target.tree);
-        inventory.logs += 5;
+        const woodYield = 2 + Math.floor(Math.random() * 6);
+        inventory.logs += woodYield;
         inventory.sticks += 1;
         save();
         renderPanel();
-        toast('Дерево срублено: +5 дерева, +1 палка.');
+        toast('Дерево срублено: +' + woodYield + ' древесины, +1 палка.');
       } else {
         toast('Удар по дереву: осталось ' + target.tree.health + '/' + TREE_HP + '.');
       }
@@ -470,10 +471,11 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       target.node.hp = STONE_HP;
       writeNode(target.node);
       stoneMesh.instanceMatrix.needsUpdate = true;
-      inventory.stone += 3;
+      const stoneYield = 2 + Math.floor(Math.random() * 3);
+      inventory.stone += stoneYield;
       save();
       renderPanel();
-      toast('Каменная глыба разрушена: +3 камня. Через 5 минут она появится в другом месте.');
+      toast('Каменная глыба разрушена: +' + stoneYield + ' камня. Через 5 минут она появится в другом месте.');
     } else {
       toast('Камень раскалывается: осталось ' + target.node.hp + '/' + STONE_HP + '.');
     }
