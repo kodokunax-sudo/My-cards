@@ -331,14 +331,17 @@ export function createEnvironment(scene) {
   sun.position.set(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z).multiplyScalar(300);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -190;
-  sun.shadow.camera.right = 190;
-  sun.shadow.camera.top = 190;
-  sun.shadow.camera.bottom = -190;
-  sun.shadow.camera.near = 20;
-  sun.shadow.camera.far = 700;
-  sun.shadow.bias = -0.0006;
-  sun.shadow.normalBias = 0.06;
+  // The shadow frustum follows the player instead of staying at the origin.
+  // This makes trees and rocks cast shadows around the current walking area.
+  sun.shadow.camera.left = -170;
+  sun.shadow.camera.right = 170;
+  sun.shadow.camera.top = 170;
+  sun.shadow.camera.bottom = -170;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 720;
+  sun.shadow.bias = -0.00045;
+  sun.shadow.normalBias = 0.035;
+  sun.shadow.radius = 3;
   scene.add(sun);
   scene.add(sun.target);
 
@@ -353,6 +356,12 @@ export function createEnvironment(scene) {
   const moon = new THREE.DirectionalLight(0x7896d8, 0);
   moon.position.set(-140, 220, -180);
   scene.add(moon);
+
+  const shadowDirection = new THREE.Vector3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z).normalize();
+  const shadowFocus = new THREE.Vector3();
+  let lastShadowX = NaN;
+  let lastShadowY = NaN;
+  let lastShadowZ = NaN;
 
   const tmpM = new THREE.Matrix4();
   const tmpQ = new THREE.Quaternion();
@@ -376,7 +385,31 @@ export function createEnvironment(scene) {
       sun.shadow.mapSize.set(size, size);
       if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
     },
-    update(t, pixelRatio) {
+    update(t, pixelRatio, focusPosition = null) {
+      let shadowNeedsUpdate = false;
+      if (focusPosition) {
+        // Snap the shadow camera in small increments to avoid shimmering while
+        // keeping the shadow map local and affordable on laptop GPUs.
+        const nextX = Math.round(focusPosition.x / 12) * 12;
+        const nextZ = Math.round(focusPosition.z / 12) * 12;
+        const nextY = THREE.MathUtils.clamp(focusPosition.y - 8, -10, 205);
+        if (!Number.isFinite(lastShadowX) ||
+          Math.abs(nextX - lastShadowX) >= 12 ||
+          Math.abs(nextZ - lastShadowZ) >= 12 ||
+          Math.abs(nextY - lastShadowY) >= 10) {
+          shadowFocus.set(nextX, nextY, nextZ);
+          sun.target.position.copy(shadowFocus);
+          sun.position.copy(shadowFocus).addScaledVector(shadowDirection, 320);
+          sun.target.updateMatrixWorld(true);
+          sun.updateMatrixWorld(true);
+          sun.shadow.camera.updateProjectionMatrix();
+          lastShadowX = nextX;
+          lastShadowY = nextY;
+          lastShadowZ = nextZ;
+          shadowNeedsUpdate = true;
+        }
+      }
+
       fireflyMat.uniforms.uTime.value = t;
       fireflyMat.uniforms.uPixelRatio.value = pixelRatio;
       birdMat.uniforms.uTime.value = t;
@@ -392,6 +425,7 @@ export function createEnvironment(scene) {
         birds.setMatrixAt(i, tmpM);
       }
       birds.instanceMatrix.needsUpdate = true;
+      return shadowNeedsUpdate;
     },
   };
 }
