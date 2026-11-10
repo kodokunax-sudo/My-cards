@@ -140,9 +140,9 @@ function createTerrainMaterial() {
           float flecks = terrainNoise(p * 2.7);
           float bladeLines = 1.0 - smoothstep(0.02, 0.18,
             abs(sin(p.x * 2.9 + sin(p.y * 0.73) * 1.7 + terrainNoise(p * 0.42) * 2.0)));
-          float texture = macroNoise * 0.16 + midNoise * 0.22 +
+          float groundDetail = macroNoise * 0.16 + midNoise * 0.22 +
             fineNoise * 0.18 + flecks * 0.08 + bladeLines * 0.035;
-          diffuseColor.rgb *= 0.76 + texture;
+          diffuseColor.rgb *= 0.76 + groundDetail;
 
           float slope = 1.0 - clamp(vTerrainNormal.y, 0.0, 1.0);
           float exposedRock = smoothstep(0.24, 0.68, slope);
