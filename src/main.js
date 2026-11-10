@@ -340,6 +340,10 @@ window.addEventListener('keydown', (e) => {
     hud.toast(on ? 'Звук включён' : 'Звук выключен');
   }
   if (e.code === 'Escape') player.unlock();
+  if (e.code === 'KeyO' && !e.repeat) {
+    player.unlock();
+    setSettingsOpen(settingsPanel?.hidden !== false);
+  }
 });
 
 // ---------- цикл ----------
