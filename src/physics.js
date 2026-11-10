@@ -279,6 +279,7 @@ export function createPhysicsWorld(scene, worldInfo = null) {
   }
 
   function isHeadBlocked(x, headY, z, radius) {
+    if (worldInfo?.isForestBlocked?.(x, headY - 0.55, z, radius, 0.55)) return true;
     const minY = headY - 0.55;
     for (const shape of nearbyShapes(x, z, radius + 1)) {
       if (headY <= shape.minY + EPSILON || minY >= shape.maxY - EPSILON) continue;
@@ -288,6 +289,7 @@ export function createPhysicsWorld(scene, worldInfo = null) {
   }
 
   function isBlocked(x, feetY, z, radius, height) {
+    if (worldInfo?.isForestBlocked?.(x, feetY, z, radius, height)) return true;
     for (const shape of nearbyShapes(x, z, radius + 1)) {
       if (shapeBlocks(shape, x, feetY, z, radius, height)) return true;
     }
@@ -424,6 +426,13 @@ export function createPhysicsWorld(scene, worldInfo = null) {
         }
       }
       if (!pushed) break;
+    }
+
+    const forest = worldInfo?.resolveForestPosition?.(px, pz, feetY, radius, height);
+    if (forest?.changed) {
+      px = forest.x;
+      pz = forest.z;
+      changed = true;
     }
 
     return { x: px, z: pz, changed };
