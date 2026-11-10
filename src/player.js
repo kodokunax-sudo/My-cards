@@ -246,6 +246,9 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       const surface = activeWater?.surfaceY ?? 0;
       const headClearedSurface = feetY + EYE_HEIGHT >= surface - 0.12;
       exitFloor = physics.terrainAt?.(nx, nz);
+      if (!Number.isFinite(exitFloor)) {
+        exitFloor = physics.groundAt(nx, nz, feetY, 1.45, 2.2);
+      }
       const reachableShore = Number.isFinite(exitFloor) &&
         exitFloor >= feetY - 0.65 &&
         exitFloor <= feetY + 1.45;
