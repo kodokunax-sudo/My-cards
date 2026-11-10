@@ -565,8 +565,10 @@ function createHeightFunction(routePoints) {
     const broad = (valueNoise(x / 1750, z / 1750, 11) - 0.5) * 104;
     const rolling = (valueNoise(x / 520, z / 520, 17) - 0.5) * 42;
     const detail = (valueNoise(x / 175, z / 175, 23) - 0.5) * 13;
+    const microRelief = (valueNoise(x / 48, z / 48, 37) - 0.5) * 4.2 +
+      (valueNoise(x / 21, z / 21, 41) - 0.5) * 1.35;
     const ridgeNoise = 1 - Math.abs(valueNoise(x / 760, z / 760, 31) * 2 - 1);
-    let height = broad + rolling + detail + (ridgeNoise - 0.44) * 20;
+    let height = broad + rolling + detail + microRelief + (ridgeNoise - 0.44) * 20;
 
     for (const [hx, hz, radius, peak] of HILLS) {
       const dx = x - hx, dz = z - hz;
@@ -603,11 +605,12 @@ function createHeightFunction(routePoints) {
     const mainSurface = mainRiverSurface(mainStation.station);
     const mainDepth = mainRiverDepth(mainStation.station);
     const mainDistance = mainStation.distance;
-    const mainProfile = mainDistance <= mainWidth
+    const mainWaterWidth = mainWidth * RIVER_WATER_WIDTH_SCALE;
+    const mainProfile = mainDistance <= mainWaterWidth
       ? mainSurface - mainDepth +
-        smoothstep(mainWidth * 0.34, mainWidth, mainDistance) * mainDepth
-      : mainSurface + smoothstep(mainWidth, mainWidth + 18, mainDistance) * 1.25;
-    const mainBankBlend = 1 - smoothstep(mainWidth + 18, mainWidth + 48, mainDistance);
+        smoothstep(mainWidth * 0.34, mainWaterWidth, mainDistance) * mainDepth
+      : mainSurface + smoothstep(mainWaterWidth, mainWaterWidth + 34, mainDistance) * 1.8;
+    const mainBankBlend = 1 - smoothstep(mainWaterWidth + 24, mainWaterWidth + 66, mainDistance);
     height = THREE.MathUtils.lerp(height, mainProfile, mainBankBlend);
 
     const sideStation = tributaryStation(x, z);
@@ -615,11 +618,12 @@ function createHeightFunction(routePoints) {
     const sideSurface = tributarySurface(sideStation.station);
     const sideDepth = tributaryDepth(sideStation.station);
     const sideDistance = sideStation.distance;
-    const sideProfile = sideDistance <= sideWidth
+    const sideWaterWidth = sideWidth * RIVER_WATER_WIDTH_SCALE;
+    const sideProfile = sideDistance <= sideWaterWidth
       ? sideSurface - sideDepth +
-        smoothstep(sideWidth * 0.34, sideWidth, sideDistance) * sideDepth
-      : sideSurface + smoothstep(sideWidth, sideWidth + 15, sideDistance) * 1.05;
-    const tributaryBankBlend = 1 - smoothstep(sideWidth + 15, sideWidth + 42, sideDistance);
+        smoothstep(sideWidth * 0.34, sideWaterWidth, sideDistance) * sideDepth
+      : sideSurface + smoothstep(sideWaterWidth, sideWaterWidth + 30, sideDistance) * 1.6;
+    const tributaryBankBlend = 1 - smoothstep(sideWaterWidth + 22, sideWaterWidth + 58, sideDistance);
     height = THREE.MathUtils.lerp(height, sideProfile, tributaryBankBlend);
 
     // Shape a broad, smooth approach trench down to the new bridge elevation.
@@ -633,6 +637,22 @@ function createHeightFunction(routePoints) {
     const protectedFlat = Math.max(parkBlend, houseBlend, trailBlend);
     const gully = Math.pow(Math.max(0, 1 - Math.abs(valueNoise(x / 610, z / 610, 49) * 2 - 1)), 5);
     height -= gully * 8.5 * (1 - protectedFlat);
+    // A handful of winding erosion cuts add small ravines between the hills.
+    const ravines = [
+      [-3900, -1800, -2600, -650, 34, 7.5],
+      [900, -4300, 2050, -2750, 28, 6.2],
+      [2500, 900, 3900, 2450, 31, 8.0],
+      [-3050, 2550, -1450, 3650, 25, 5.8],
+      [400, 1450, 1550, 2750, 22, 5.2],
+    ];
+    let erosion = 0;
+    for (const [ax, az, bx, bz, width, depth] of ravines) {
+      const distance = distanceToSegment2D(x, z, { x: ax, z: az }, { x: bx, z: bz });
+      const channel = Math.exp(-Math.pow(distance / width, 2) * 1.7);
+      const shoulder = Math.exp(-Math.pow(distance / (width * 2.8), 2) * 0.75);
+      erosion = Math.max(erosion, channel * depth + shoulder * depth * 0.22);
+    }
+    height -= erosion * (1 - protectedFlat);
     return THREE.MathUtils.clamp(height, -65, 225);
   };
 }
@@ -790,19 +810,18 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       const x = x0 + (rnd() - 0.5) * cell * 0.82;
       const z = z0 + (rnd() - 0.5) * cell * 0.82;
       if (Math.hypot(x, z) > half || pointInReservedArea(x, z, routePoints)) continue;
-
       const forestMask =
         valueNoise(x / 1250, z / 1250, 71) * 0.62 +
         valueNoise(x / 2650, z / 2650, 73) * 0.38;
       if (forestMask < 0.30 || rnd() > 0.44) continue;
-
-      const groundY = heightAt(x, z) ?? 0;
+      const pine = rnd() < 0.34;
       trees.push({
-        x, z, y: groundY,
-        scale: 0.82 + rnd() * 0.78,
+        x, z, y: heightAt(x, z) ?? 0,
+        scale: 0.78 + rnd() * 0.88,
         rotation: rnd() * TAU,
         hue: rnd(),
-        pine: rnd() < 0.34,
+        pine,
+        variant: pine ? (rnd() < 0.52 ? 0 : 1) : Math.floor(rnd() * 3),
       });
     }
   }
@@ -815,22 +834,29 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     const key = `${cx},${cz}`;
     let bucket = buckets.get(key);
     if (!bucket) {
-      bucket = { deciduous: [], pine: [] };
+      bucket = { trees: [], variants: [[], [], [], [], []] };
       buckets.set(key, bucket);
     }
-    bucket[tree.pine ? 'pine' : 'deciduous'].push(tree);
+    bucket.trees.push(tree);
+    bucket.variants[(tree.pine ? 3 : 0) + tree.variant].push(tree);
   }
 
   const trunkGeometry = new THREE.CylinderGeometry(0.25, 0.48, 8, 7);
-  const deciduousGeometry = new THREE.IcosahedronGeometry(5.3, 0);
-  const pineGeometry = new THREE.ConeGeometry(4.9, 10.8, 7, 1);
+  const crownGeometries = [
+    new THREE.IcosahedronGeometry(5.3, 0),
+    new THREE.DodecahedronGeometry(5.0, 0),
+    new THREE.SphereGeometry(4.8, 7, 5),
+    new THREE.ConeGeometry(4.9, 10.8, 7, 1),
+    new THREE.ConeGeometry(5.4, 12.2, 6, 2),
+  ];
   const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x59432f, roughness: 1 });
-  const deciduousMaterial = new THREE.MeshStandardMaterial({
-    color: 0x315b35, roughness: 0.98, flatShading: true,
-  });
-  const pineMaterial = new THREE.MeshStandardMaterial({
-    color: 0x294b32, roughness: 0.98, flatShading: true,
-  });
+  const crownMaterials = [
+    new THREE.MeshStandardMaterial({ color: 0x315b35, roughness: 0.98, flatShading: true }),
+    new THREE.MeshStandardMaterial({ color: 0x315b35, roughness: 0.98, flatShading: true }),
+    new THREE.MeshStandardMaterial({ color: 0x315b35, roughness: 0.98, flatShading: true }),
+    new THREE.MeshStandardMaterial({ color: 0x294b32, roughness: 0.98, flatShading: true }),
+    new THREE.MeshStandardMaterial({ color: 0x294b32, roughness: 0.98, flatShading: true }),
+  ];
 
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
@@ -840,48 +866,16 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
   const meshes = [];
 
   for (const [key, bucket] of buckets) {
-    const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, bucket.deciduous.length + bucket.pine.length);
+    const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, bucket.trees.length);
     trunks.userData.noCollider = true;
-    const roundCrowns = bucket.deciduous.length
-      ? new THREE.InstancedMesh(deciduousGeometry, deciduousMaterial, bucket.deciduous.length)
-      : null;
-    const pineCrowns = bucket.pine.length
-      ? new THREE.InstancedMesh(pineGeometry, pineMaterial, bucket.pine.length)
-      : null;
-
-    let trunkIndex = 0, roundIndex = 0, pineIndex = 0;
-    for (const tree of bucket.deciduous.concat(bucket.pine)) {
+    for (let i = 0; i < bucket.trees.length; i++) {
+      const tree = bucket.trees[i];
       quaternion.setFromAxisAngle(up, tree.rotation);
       position.set(tree.x, tree.y + 4 * tree.scale, tree.z);
       scale.set(tree.scale, tree.scale, tree.scale);
       matrix.compose(position, quaternion, scale);
-      trunks.setMatrixAt(trunkIndex++, matrix);
+      trunks.setMatrixAt(i, matrix);
     }
-
-    for (const tree of bucket.deciduous) {
-      quaternion.setFromAxisAngle(up, tree.rotation);
-      position.set(tree.x, tree.y + 8.2 * tree.scale, tree.z);
-      scale.set(tree.scale * 1.25, tree.scale * 1.25, tree.scale * 1.25);
-      matrix.compose(position, quaternion, scale);
-      roundCrowns.setMatrixAt(roundIndex, matrix);
-      roundCrowns.setColorAt(roundIndex, new THREE.Color().setHSL(
-        0.28 + tree.hue * 0.05, 0.34 + tree.hue * 0.17, 0.16 + tree.hue * 0.13
-      ));
-      roundIndex++;
-    }
-
-    for (const tree of bucket.pine) {
-      quaternion.setFromAxisAngle(up, tree.rotation);
-      position.set(tree.x, tree.y + 9.6 * tree.scale, tree.z);
-      scale.set(tree.scale * 1.18, tree.scale * 1.12, tree.scale * 1.18);
-      matrix.compose(position, quaternion, scale);
-      pineCrowns.setMatrixAt(pineIndex, matrix);
-      pineCrowns.setColorAt(pineIndex, new THREE.Color().setHSL(
-        0.31 + tree.hue * 0.035, 0.34 + tree.hue * 0.18, 0.14 + tree.hue * 0.11
-      ));
-      pineIndex++;
-    }
-
     trunks.instanceMatrix.needsUpdate = true;
     trunks.castShadow = true;
     trunks.receiveShadow = true;
@@ -890,33 +884,43 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     scene.add(trunks);
     meshes.push(trunks);
 
-    if (roundCrowns) {
-      roundCrowns.instanceMatrix.needsUpdate = true;
-      if (roundCrowns.instanceColor) roundCrowns.instanceColor.needsUpdate = true;
-      roundCrowns.userData.noCollider = true;
-      roundCrowns.castShadow = true;
-      roundCrowns.receiveShadow = true;
-      roundCrowns.name = `forest-crowns-${key}`;
-      registerChunkMesh(roundCrowns, renderables, 2800, true);
-      scene.add(roundCrowns);
-      meshes.push(roundCrowns);
-    }
-
-    if (pineCrowns) {
-      pineCrowns.instanceMatrix.needsUpdate = true;
-      if (pineCrowns.instanceColor) pineCrowns.instanceColor.needsUpdate = true;
-      pineCrowns.userData.noCollider = true;
-      pineCrowns.castShadow = true;
-      pineCrowns.receiveShadow = true;
-      pineCrowns.name = `forest-pines-${key}`;
-      registerChunkMesh(pineCrowns, renderables, 2800, true);
-      scene.add(pineCrowns);
-      meshes.push(pineCrowns);
+    for (let variant = 0; variant < bucket.variants.length; variant++) {
+      const group = bucket.variants[variant];
+      if (!group.length) continue;
+      const crowns = new THREE.InstancedMesh(
+        crownGeometries[variant], crownMaterials[variant], group.length
+      );
+      for (let i = 0; i < group.length; i++) {
+        const tree = group[i];
+        quaternion.setFromAxisAngle(up, tree.rotation);
+        const isPine = tree.pine;
+        const crownY = isPine ? (variant === 4 ? 10.4 : 9.6) : 8.2;
+        position.set(tree.x, tree.y + crownY * tree.scale, tree.z);
+        const width = isPine ? (variant === 4 ? 1.12 : 1.18) : (variant === 2 ? 1.34 : 1.25);
+        const height = isPine ? (variant === 4 ? 1.16 : 1.12) : (variant === 2 ? 0.82 : 1.12);
+        scale.set(tree.scale * width, tree.scale * height, tree.scale * width);
+        matrix.compose(position, quaternion, scale);
+        crowns.setMatrixAt(i, matrix);
+        const baseHue = isPine ? 0.31 : 0.28;
+        const hueRange = isPine ? 0.035 : 0.05;
+        crowns.setColorAt(i, new THREE.Color().setHSL(
+          baseHue + tree.hue * hueRange,
+          0.34 + tree.hue * 0.17,
+          (isPine ? 0.14 : 0.16) + tree.hue * (isPine ? 0.11 : 0.13)
+        ));
+      }
+      crowns.instanceMatrix.needsUpdate = true;
+      if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
+      crowns.userData.noCollider = true;
+      crowns.castShadow = true;
+      crowns.receiveShadow = true;
+      crowns.name = `forest-crowns-${key}-${variant}`;
+      registerChunkMesh(crowns, renderables, 2800, true);
+      scene.add(crowns);
+      meshes.push(crowns);
     }
   }
 
-  // Keep trunks solid without registering ~140k individual Three.js
-  // collider objects. A compact spatial grid answers only nearby tree queries.
   const collisionCellSize = 16;
   const collisionGrid = new Map();
   for (const tree of trees) {
@@ -924,17 +928,10 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     const cz = Math.floor(tree.z / collisionCellSize);
     const key = `${cx},${cz}`;
     let bucket = collisionGrid.get(key);
-    if (!bucket) {
-      bucket = [];
-      collisionGrid.set(key, bucket);
-    }
+    if (!bucket) { bucket = []; collisionGrid.set(key, bucket); }
     bucket.push({
-      x: tree.x,
-      z: tree.z,
-      radius: 0.48 * tree.scale,
-      minY: tree.y,
-      maxY: tree.y + 8 * tree.scale,
-      seed: tree.rotation,
+      x: tree.x, z: tree.z, radius: 0.48 * tree.scale,
+      minY: tree.y, maxY: tree.y + 8 * tree.scale, seed: tree.rotation,
     });
   }
 
@@ -953,15 +950,12 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
           if (!bucket) continue;
           for (const tree of bucket) {
             if (feetY + height <= tree.minY + 0.035 || feetY >= tree.maxY) continue;
-            let dx = px - tree.x;
-            let dz = pz - tree.z;
+            let dx = px - tree.x, dz = pz - tree.z;
             let distance = Math.hypot(dx, dz);
             const combinedRadius = radius + tree.radius;
             if (distance >= combinedRadius) continue;
             if (distance < 0.0001) {
-              dx = Math.cos(tree.seed);
-              dz = Math.sin(tree.seed);
-              distance = 1;
+              dx = Math.cos(tree.seed); dz = Math.sin(tree.seed); distance = 1;
             }
             if (!resolve) return { blocked: true, x: px, z: pz, changed };
             const penetration = combinedRadius - distance + 0.015;
@@ -977,9 +971,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
   }
 
   return {
-    count: trees.length,
-    chunks: buckets.size,
-    meshes,
+    count: trees.length, chunks: buckets.size, meshes,
     isBlocked(x, feetY, z, radius, height) {
       return forestCollision(x, z, feetY, height, radius, false).blocked;
     },
