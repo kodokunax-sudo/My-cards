@@ -338,7 +338,7 @@ function createTerrainMaterial() {
 
     float terrainTributaryDistance(vec2 p, out float station) {
       station = p.x;
-      for (int i = 0; i < 5; i++) {
+      for (int i = 0; i < 2; i++) {
         float angle = station / 650.0;
         float centreZ = 4200.0 + 180.0 * sin(angle);
         float slope = (180.0 / 650.0) * cos(angle);
@@ -347,7 +347,7 @@ function createTerrainMaterial() {
         float dz = p.y - centreZ;
         float derivative = dx - dz * slope;
         float second = 1.0 + slope * slope - dz * curve;
-        station -= derivative / max(0.2, second);
+        station = clamp(station - derivative / max(0.2, second), -3200.0, 3200.0);
       }
       vec2 centre = vec2(station, 4200.0 + 180.0 * sin(station / 650.0));
       return length(p - centre);
