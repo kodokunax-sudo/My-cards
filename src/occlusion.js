@@ -66,7 +66,7 @@ export function createOcclusionCuller(renderer, scene, camera) {
 
   const depthMaterial = new THREE.MeshDepthMaterial({
     depthPacking: THREE.BasicDepthPacking,
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
   });
   const proxyMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff,
@@ -370,6 +370,10 @@ export function createOcclusionCuller(renderer, scene, camera) {
     }
 
     pollQueries(now);
+    if (!enabled || (renderer.shadowMap?.enabled && renderer.shadowMap.needsUpdate)) {
+      restoreVisibility();
+      return;
+    }
 
     if (depthValid && !depthDirty) {
       issueQueries(settings.queryBudget);
@@ -379,6 +383,10 @@ export function createOcclusionCuller(renderer, scene, camera) {
            camera.quaternion.angleTo(candidate.resultQuaternion) > 0.18)) {
           candidate.occluded = false;
         }
+      }
+      if (!enabled) {
+        restoreVisibility();
+        return;
       }
       applyVisibility();
     } else {
