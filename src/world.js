@@ -412,7 +412,79 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     }
   }
 
-  return { count: trees.length, chunks: buckets.size, meshes };
+  // Keep trunks solid without registering ~140k individual Three.js
+  // collider objects. A compact spatial grid answers only nearby tree queries.
+  const collisionCellSize = 16;
+  const collisionGrid = new Map();
+  for (const tree of trees) {
+    const cx = Math.floor(tree.x / collisionCellSize);
+    const cz = Math.floor(tree.z / collisionCellSize);
+    const key = `${cx},${cz}`;
+    let bucket = collisionGrid.get(key);
+    if (!bucket) {
+      bucket = [];
+      collisionGrid.set(key, bucket);
+    }
+    bucket.push({
+      x: tree.x,
+      z: tree.z,
+      radius: 0.48 * tree.scale,
+      minY: tree.y,
+      maxY: tree.y + 8 * tree.scale,
+      seed: tree.rotation,
+    });
+  }
+
+  function forestCollision(x, z, feetY, height, radius, resolve = false) {
+    let px = x, pz = z, changed = false;
+    const iterations = resolve ? 4 : 1;
+    for (let iteration = 0; iteration < iterations; iteration++) {
+      let pushed = false;
+      const minCellX = Math.floor((px - radius - 1) / collisionCellSize);
+      const maxCellX = Math.floor((px + radius + 1) / collisionCellSize);
+      const minCellZ = Math.floor((pz - radius - 1) / collisionCellSize);
+      const maxCellZ = Math.floor((pz + radius + 1) / collisionCellSize);
+      for (let cx = minCellX; cx <= maxCellX; cx++) {
+        for (let cz = minCellZ; cz <= maxCellZ; cz++) {
+          const bucket = collisionGrid.get(`${cx},${cz}`);
+          if (!bucket) continue;
+          for (const tree of bucket) {
+            if (feetY + height <= tree.minY + 0.035 || feetY >= tree.maxY) continue;
+            let dx = px - tree.x;
+            let dz = pz - tree.z;
+            let distance = Math.hypot(dx, dz);
+            const combinedRadius = radius + tree.radius;
+            if (distance >= combinedRadius) continue;
+            if (distance < 0.0001) {
+              dx = Math.cos(tree.seed);
+              dz = Math.sin(tree.seed);
+              distance = 1;
+            }
+            if (!resolve) return { blocked: true, x: px, z: pz, changed };
+            const penetration = combinedRadius - distance + 0.015;
+            px += (dx / distance) * penetration;
+            pz += (dz / distance) * penetration;
+            pushed = changed = true;
+          }
+        }
+      }
+      if (!pushed) break;
+    }
+    return { blocked: changed, x: px, z: pz, changed };
+  }
+
+  trunks.userData.noCollider = true;
+  return {
+    count: trees.length,
+    chunks: buckets.size,
+    meshes,
+    isBlocked(x, feetY, z, radius, height) {
+      return forestCollision(x, z, feetY, height, radius, false).blocked;
+    },
+    resolve(x, z, feetY, radius, height) {
+      return forestCollision(x, z, feetY, height, radius, true);
+    },
+  };
 }
 
 function createRocks(scene, heightAt, routePoints, rnd, renderables) {
@@ -860,6 +932,8 @@ export function createWorld(scene) {
     river,
     tributary,
     forests,
+    isForestBlocked: forests.isBlocked,
+    resolveForestPosition: forests.resolve,
     rocks,
     terrain,
     renderables,
