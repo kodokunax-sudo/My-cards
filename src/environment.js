@@ -217,6 +217,7 @@ export function createEnvironment(scene) {
     cityPart.castShadow = false;
     cityPart.receiveShadow = false;
     cityPart.name = `distant-city-sector-${sector}`;
+    cityPart.userData.occlusionCandidate = true;
     cityPart.computeBoundingSphere();
     cityPart.frustumCulled = true;
     group.add(cityPart);
@@ -232,6 +233,7 @@ export function createEnvironment(scene) {
     cone.position.set(Math.cos(a) * r, h / 2 - 20, Math.sin(a) * r);
     cone.rotation.y = rnd() * 6.28;
     cone.userData.solid = true;
+    cone.userData.occlusionCandidate = true;
     group.add(cone);
   }
 
