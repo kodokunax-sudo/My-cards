@@ -140,7 +140,8 @@
       зеркальная вода и огромный светящийся кристалл на вершине.
       Идите по мосту через бассейн, поднимитесь к подножию — и оцените масштаб.
     </p>
-    <button id="start-btn" disabled>Загрузка сцены…</button>
+    <button id="start-btn" type="button">ИГРАТЬ</button>
+    <div id="boot-status" role="status" aria-live="polite">Мир начнёт загружаться после нажатия кнопки.</div>
     <div class="keys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>движение</span></div>
       <div><kbd>мышь</kbd><span>обзор</span></div>
@@ -156,35 +157,6 @@
   </div>
 </div>
 
-<script>
-(() => {
-  const showBootError = (message) => {
-    const button = document.getElementById('start-btn');
-    if (!button || !button.disabled || !button.textContent.includes('Загрузка')) return;
-    button.disabled = false;
-    button.textContent = 'ПОВТОРИТЬ ЗАГРУЗКУ';
-    const note = document.querySelector('.overlay-inner .note');
-    if (note) note.textContent = message || 'Не удалось запустить сцену. Нажмите кнопку, чтобы повторить загрузку.';
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      window.location.reload();
-    }, { capture: true, once: true });
-  };
-
-  window.addEventListener('error', (event) => {
-    showBootError(event.message || 'Не удалось загрузить один из файлов сцены.');
-  }, true);
-  window.addEventListener('unhandledrejection', (event) => {
-    showBootError(event.reason?.message || 'Ошибка при запуске сцены.');
-  });
-
-  window.setTimeout(() => {
-    showBootError('Сцена не ответила за 18 секунд. Обновите страницу; при слабом устройстве попробуйте ?quality=low.');
-  }, 18000);
-})();
-</script>
-
-<script type="module" src="./src/main.js"></script>
+<script defer src="./src/boot.js"></script>
 </body>
 </html>
