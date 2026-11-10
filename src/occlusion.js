@@ -269,7 +269,7 @@ export function createOcclusionCuller(renderer, scene, camera) {
         samplesPassed = true;
       }
 
-      if (candidate.queryGeneration === generation) {
+      if (candidate.queryGeneration === generation && !depthDirty) {
         candidate.occluded = !samplesPassed;
         candidate.lastResultAt = now;
         candidate.resultPosition.copy(camera.position);
