@@ -886,7 +886,7 @@ function addRibbonChunks(scene, points, halfWidth, y, material, name, options = 
   return meshes;
 }
 
-function createRiver(scene, rnd) {
+function createRiver(scene, rnd, heightAt) {
   const centerX = mainRiverX;
   const points = [];
   for (let i = 0; i <= 150; i++) {
