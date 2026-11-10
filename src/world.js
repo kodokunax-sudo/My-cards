@@ -98,6 +98,61 @@ function createTerrainMaterial() {
     metalness: 0,
   });
 
+  // Small tileable grass/soil textures are generated locally so the scene
+  // needs no external image downloads. World-space UVs keep scale consistent.
+  const textureSize = 256;
+  const colorPixels = new Uint8Array(textureSize * textureSize * 4);
+  const bumpPixels = new Uint8Array(textureSize * textureSize * 4);
+  for (let y = 0; y < textureSize; y++) {
+    for (let x = 0; x < textureSize; x++) {
+      const u = x / textureSize;
+      const v = y / textureSize;
+      const wave = Math.sin((u * 13 + Math.sin(v * Math.PI * 6) * 0.22) * Math.PI * 2);
+      const cross = Math.cos((v * 9 + Math.sin(u * Math.PI * 8) * 0.18) * Math.PI * 2);
+      const hash = hash2(x, y, 127);
+      const fine = hash2(x * 3, y * 3, 131);
+      const blade = Math.pow(Math.max(0, Math.sin((u * 71 + Math.sin(v * Math.PI * 14) * 0.65) * Math.PI * 2)), 10);
+      const grain = wave * 0.34 + cross * 0.22 + (hash - 0.5) * 0.30 + (fine - 0.5) * 0.14;
+      const shade = THREE.MathUtils.clamp(0.5 + grain * 0.42 - blade * 0.22, 0, 1);
+      const index = (y * textureSize + x) * 4;
+      colorPixels[index] = Math.round(226 + shade * 27);
+      colorPixels[index + 1] = Math.round(232 + shade * 23);
+      colorPixels[index + 2] = Math.round(213 + shade * 31);
+      colorPixels[index + 3] = 255;
+
+      const relief = THREE.MathUtils.clamp(128 + grain * 44 - blade * 36, 0, 255);
+      bumpPixels[index] = relief;
+      bumpPixels[index + 1] = relief;
+      bumpPixels[index + 2] = relief;
+      bumpPixels[index + 3] = 255;
+    }
+  }
+
+  const grassTexture = new THREE.DataTexture(
+    colorPixels, textureSize, textureSize, THREE.RGBAFormat, THREE.UnsignedByteType
+  );
+  grassTexture.wrapS = THREE.RepeatWrapping;
+  grassTexture.wrapT = THREE.RepeatWrapping;
+  grassTexture.magFilter = THREE.LinearFilter;
+  grassTexture.minFilter = THREE.LinearMipmapLinearFilter;
+  grassTexture.generateMipmaps = true;
+  grassTexture.colorSpace = THREE.SRGBColorSpace;
+  grassTexture.needsUpdate = true;
+
+  const grassBump = new THREE.DataTexture(
+    bumpPixels, textureSize, textureSize, THREE.RGBAFormat, THREE.UnsignedByteType
+  );
+  grassBump.wrapS = THREE.RepeatWrapping;
+  grassBump.wrapT = THREE.RepeatWrapping;
+  grassBump.magFilter = THREE.LinearFilter;
+  grassBump.minFilter = THREE.LinearMipmapLinearFilter;
+  grassBump.generateMipmaps = true;
+  grassBump.needsUpdate = true;
+
+  material.map = grassTexture;
+  material.bumpMap = grassBump;
+  material.bumpScale = 0.075;
+
   const noiseGLSL = `
     float terrainHash(vec2 p) {
       return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -268,8 +323,8 @@ function createHeightFunction(routePoints) {
     // The former 136m flat bench made the water read as a giant rectangular slab.
     const mainRiverDistance = Math.abs(x - mainRiverX(z));
     const tributaryDistance = Math.abs(z - tributaryZ(x));
-    const riverBlend = 1 - smoothstep(12, 50, mainRiverDistance);
-    const tributaryBlend = 1 - smoothstep(10, 38, tributaryDistance);
+    const riverBlend = 1 - smoothstep(4, 24, mainRiverDistance);
+    const tributaryBlend = 1 - smoothstep(4, 18, tributaryDistance);
     const flatten = Math.max(parkBlend, houseBlend, trailBlend, riverBlend, tributaryBlend);
     height *= 1 - flatten;
 
@@ -313,6 +368,7 @@ function createTerrain(scene, heightAt, renderables) {
       const side = cellsPerChunk + 3;
       const positions = new Float32Array(side * side * 3);
       const colors = new Float32Array(side * side * 3);
+      const uvs = new Float32Array(side * side * 2);
       const normalIndices = [];
       const indices = [];
 
@@ -330,6 +386,9 @@ function createTerrain(scene, heightAt, renderables) {
           positions[index] = x;
           positions[index + 1] = h - 0.62 * underPlaza;
           positions[index + 2] = z;
+          const uvIndex = (iz * side + ix) * 2;
+          uvs[uvIndex] = x / 16;
+          uvs[uvIndex + 1] = z / 16;
 
           const variation = valueNoise(x / 115, z / 115, 61);
           color.copy(grass).lerp(low, (1 - variation) * 0.32);
@@ -367,6 +426,7 @@ function createTerrain(scene, heightAt, renderables) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
       geometry.setIndex(normalIndices);
       geometry.computeVertexNormals();
       // Keep halo triangles out of the draw call while retaining their normals.
@@ -857,7 +917,7 @@ function createHouse(scene, materials, baseY = 0) {
 
 function addRibbonChunks(scene, points, halfWidth, y, material, name, options = {}) {
   const meshes = [];
-  const pointsPerChunk = 12;
+  const pointsPerChunk = 24;
   for (let start = 0, part = 0; start < points.length - 1; start += pointsPerChunk, part++) {
     const end = Math.min(points.length - 1, start + pointsPerChunk);
     const mesh = new THREE.Mesh(
@@ -879,18 +939,19 @@ function addRibbonChunks(scene, points, halfWidth, y, material, name, options = 
 function createRiver(scene, rnd, heightAt) {
   const centerX = mainRiverX;
   const points = [];
-  for (let i = 0; i <= 240; i++) {
-    const z = -4500 + (9000 * i) / 240;
+  for (let i = 0; i <= 480; i++) {
+    const z = -4500 + (9000 * i) / 480;
     points.push({ x: centerX(z), z });
   }
 
   const waterMaterial = createFlowingWaterMaterial(0x286d7d);
-  const water = addRibbonChunks(scene, points, 12.4, 0.035, waterMaterial,
+  const water = addRibbonChunks(scene, points, 9.6, 0.035, waterMaterial,
     'main-river-water', { noCollider: true, renderOrder: 2 });
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x354f49, roughness: 1 });
-  const bed = addRibbonChunks(scene, points, 11.8, -3.25, bedMaterial,
-    'main-river-bed', { walkable: true, receiveShadow: true });
+  const riverBedHeight = (x, z) => (heightAt(x, z) ?? -3.25) + 0.045;
+  const bed = addRibbonChunks(scene, points, 12.2, -3.25, bedMaterial,
+    'main-river-bed', { walkable: true, receiveShadow: true, heightAt: riverBedHeight });
 
   const pebbleGeo = new THREE.IcosahedronGeometry(2.2, 0);
   const pebbleMat = new THREE.MeshStandardMaterial({ color: 0x756c56, roughness: 1 });
@@ -931,33 +992,34 @@ function createRiver(scene, rnd, heightAt) {
   }
 
   return {
-    water, bed, waterMaterial, centerX, halfWidth: 12.4,
+    water, bed, waterMaterial, centerX, halfWidth: 9.6,
     region: {
       id: 'river',
       surfaceY: 0.035,
       bottomY: -3.25,
       exitFeetY: 0.55,
       exitHeight: 0.55,
-      contains: (x, z) => Math.abs(x - centerX(z)) <= 11.9,
+      contains: (x, z) => Math.abs(x - centerX(z)) <= 9.3,
     },
   };
 }
 
-function createTributary(scene) {
+function createTributary(scene, heightAt) {
   const centerZ = tributaryZ;
   const points = [];
-  for (let i = 0; i <= 180; i++) {
-    const x = -2800 + (5600 * i) / 180;
+  for (let i = 0; i <= 360; i++) {
+    const x = -2800 + (5600 * i) / 360;
     points.push({ x, z: centerZ(x) });
   }
 
   const waterMaterial = createFlowingWaterMaterial(0x327987);
-  const water = addRibbonChunks(scene, points, 9.2, 0.035, waterMaterial,
+  const water = addRibbonChunks(scene, points, 7.2, 0.035, waterMaterial,
     'tributary-water', { noCollider: true, renderOrder: 2 });
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x40564c, roughness: 1 });
-  const bed = addRibbonChunks(scene, points, 8.7, -2.55, bedMaterial,
-    'tributary-bed', { walkable: true, receiveShadow: true });
+  const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? -2.55) + 0.045;
+  const bed = addRibbonChunks(scene, points, 9.6, -2.55, bedMaterial,
+    'tributary-bed', { walkable: true, receiveShadow: true, heightAt: tributaryBedHeight });
 
   return {
     water, bed, waterMaterial,
@@ -967,7 +1029,7 @@ function createTributary(scene) {
       bottomY: -2.55,
       exitFeetY: 0.85,
       exitHeight: 0.85,
-      contains: (x, z) => Math.abs(z - centerZ(x)) <= 8.8,
+      contains: (x, z) => Math.abs(z - centerZ(x)) <= 7.0,
     },
   };
 }
@@ -1063,7 +1125,7 @@ export function createWorld(scene) {
   }, houseBase);
 
   const river = createRiver(scene, rnd, heightAt);
-  const tributary = createTributary(scene);
+  const tributary = createTributary(scene, heightAt);
   const forests = createForests(scene, heightAt, routePoints, rnd, renderables);
   const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables);
 
