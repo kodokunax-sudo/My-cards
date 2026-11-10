@@ -157,7 +157,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     avatar.root.position.set(camera.position.x, feetY, camera.position.z);
     avatarEuler.setFromQuaternion(camera.quaternion, 'YXZ');
     avatar.root.rotation.y = avatarEuler.y;
-    avatar.root.visible = mode !== 'fly' && mode !== 'cinematic';
+    avatar.root.visible = mode !== 'cinematic';
     avatar.hitbox.position.copy(avatar.root.position);
     avatar.hitbox.rotation.y = avatar.root.rotation.y;
     avatar.hitbox.visible = hitboxVisible && avatar.root.visible;
