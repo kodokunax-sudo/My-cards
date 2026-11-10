@@ -9,6 +9,23 @@
   document.body.classList.add('menu');
   if (isTouch) document.body.classList.add('touch');
 
+  // Persist the app's downloaded scripts, audio and visual assets between visits.
+  let offlineCacheReady = Promise.resolve();
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    offlineCacheReady = navigator.serviceWorker.register('./sw.js')
+      .then(() => navigator.serviceWorker.ready)
+      .then(() => new Promise((resolve) => {
+        if (navigator.serviceWorker.controller) return resolve();
+        const finish = () => resolve();
+        navigator.serviceWorker.addEventListener('controllerchange', finish, { once: true });
+        window.setTimeout(finish, 1400);
+      }))
+      .catch((error) => {
+        console.warn('[Titan cache] Service worker unavailable:', error);
+      });
+  }
+  try { navigator.storage?.persist?.(); } catch (error) { /* best effort on supported browsers */ }
+
   let loading = false;
   let loaded = false;
 
@@ -59,7 +76,9 @@
       await new Promise((resolve) => requestAnimationFrame(() =>
         requestAnimationFrame(resolve)
       ));
-      setStatus('Загружаем 3D-движок, модели и окружение...');
+      setStatus('Подготавливаем локальный кэш...');
+      await offlineCacheReady;
+      setStatus('Загружаем 3D-движок и ближайшую область...');
       await import('./main.js');
 
       if (typeof window.__titanStartGame !== 'function') {
