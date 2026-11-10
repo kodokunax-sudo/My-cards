@@ -21,9 +21,9 @@ const overlay = document.getElementById('overlay');
 const startBtn = document.getElementById('start-btn');
 
 const renderer = new THREE.WebGLRenderer({
-  canvas, antialias: true, powerPreference: 'high-performance', stencil: false,
+  canvas, antialias: false, powerPreference: 'high-performance', stencil: false,
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 0.9));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -74,28 +74,245 @@ const bloom = new UnrealBloomPass(
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
-// ---------- адаптивное качество ----------
+// ---------- графика, дальность прорисовки и адаптивная производительность ----------
 const QUALITY = {
-  high:   { pr: 1.8, bloom: true,  cube: 3,  shadow: 2048 },
-  medium: { pr: 1.1, bloom: true,  cube: 6,  shadow: 1024 },
-  low:    { pr: 0.7, bloom: false, cube: 14, shadow: 512 },
+  low: {
+    pr: 0.62, bloom: false, cubeInterval: 30, cubeSize: 64,
+    shadow: 512, shadows: false, reflections: false, particles: false,
+  },
+  medium: {
+    pr: 0.86, bloom: false, cubeInterval: 12, cubeSize: 96,
+    shadow: 1024, shadows: true, reflections: true, particles: true,
+  },
+  high: {
+    pr: 1.22, bloom: true, cubeInterval: 4, cubeSize: 192,
+    shadow: 2048, shadows: true, reflections: true, particles: true,
+  },
 };
-const order = ['high', 'medium', 'low'];
-let quality = 'high';
+const QUALITY_ORDER = ['low', 'medium', 'high'];
+const SETTINGS_KEY = 'titan-graphics-settings-v2';
+const qualitySelect = document.getElementById('graphics-quality');
+const viewDistanceInput = document.getElementById('view-distance');
+const viewDistanceValue = document.getElementById('view-distance-value');
+const shadowsInput = document.getElementById('graphics-shadows');
+const reflectionsInput = document.getElementById('graphics-reflections');
+const bloomInput = document.getElementById('graphics-bloom');
+const graphicsStatus = document.getElementById('graphics-status');
+const settingsToggle = document.getElementById('settings-toggle');
+const settingsPanel = document.getElementById('settings-panel');
+const settingsClose = document.getElementById('settings-close');
 
+function detectDeviceQuality() {
+  const memory = Number(navigator.deviceMemory || 0);
+  const cores = Number(navigator.hardwareConcurrency || 0);
+  if ((memory > 0 && memory <= 4) || (cores > 0 && cores <= 4) ||
+    (touch && window.innerWidth < 900)) return 'low';
+  return 'medium';
+}
+
+function loadSavedSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+const savedSettings = loadSavedSettings();
 const forced = new URLSearchParams(location.search).get('quality');
-if (forced && QUALITY[forced]) quality = forced;
-else if (touch && window.innerWidth < 900) quality = 'medium';
+let autoQuality = !QUALITY[forced];
+let quality = QUALITY[forced] ? forced :
+  (QUALITY[savedSettings?.quality] ? savedSettings.quality : detectDeviceQuality());
+if (savedSettings && savedSettings.auto === true && !forced) autoQuality = true;
+else if (savedSettings && savedSettings.auto === false && !forced) autoQuality = false;
+
+let drawDistance = THREE.MathUtils.clamp(
+  Number(savedSettings?.drawDistance) || 3200, 900, 8000
+);
+let graphicsOptions = {
+  shadows: QUALITY[quality].shadows,
+  reflections: QUALITY[quality].reflections,
+  bloom: QUALITY[quality].bloom,
+};
+if (savedSettings?.options && typeof savedSettings.options === 'object') {
+  graphicsOptions = {
+    shadows: savedSettings.options.shadows !== false,
+    reflections: savedSettings.options.reflections !== false,
+    bloom: savedSettings.options.bloom === true,
+  };
+}
+
+function saveGraphicsSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      quality, auto: autoQuality, drawDistance, options: graphicsOptions,
+    }));
+  } catch (error) {
+    // Private browsing or storage limits must not prevent graphics changes.
+  }
+}
+
+function updateDistanceLabel() {
+  if (viewDistanceValue) {
+    viewDistanceValue.value = (drawDistance / 1000).toLocaleString('ru-RU', {
+      minimumFractionDigits: 1, maximumFractionDigits: 1,
+    }) + ' км';
+    viewDistanceValue.textContent = viewDistanceValue.value;
+  }
+}
+
+function updateGraphicsStatus() {
+  if (!graphicsStatus) return;
+  const label = quality === 'low' ? 'Низкое' : quality === 'high' ? 'Высокое' : 'Среднее';
+  graphicsStatus.textContent = autoQuality
+    ? `Авто: ${label.toLowerCase()} качество. Если FPS упадёт, качество будет снижено.`
+    : `Ручной режим: ${label.toLowerCase()} качество. Настройки сохраняются на этом устройстве.`;
+}
+
+function syncGraphicsControls() {
+  if (qualitySelect) qualitySelect.value = autoQuality ? 'auto' : quality;
+  if (viewDistanceInput) viewDistanceInput.value = String(drawDistance);
+  if (shadowsInput) shadowsInput.checked = graphicsOptions.shadows;
+  if (reflectionsInput) reflectionsInput.checked = graphicsOptions.reflections;
+  if (bloomInput) bloomInput.checked = graphicsOptions.bloom;
+  updateDistanceLabel();
+  updateGraphicsStatus();
+}
+
+function applyDrawDistance() {
+  camera.far = drawDistance;
+  camera.updateProjectionMatrix();
+  water.setDrawDistance(drawDistance);
+  // The exponential fog eases into the selected far plane instead of hiding
+  // the world much earlier than the slider promises.
+  scene.fog.density = 0.00020 * (3200 / drawDistance);
+  saveGraphicsSettings();
+  updateDistanceLabel();
+}
 
 function applyQuality() {
-  const q = QUALITY[quality];
-  const pr = Math.min(window.devicePixelRatio, q.pr);
-  renderer.setPixelRatio(pr);
-  bloom.enabled = q.bloom;
-  water.setCubeInterval(q.cube);
-  env.setShadowSize(q.shadow);
-  renderer.shadowMap.needsUpdate = true;
+  const profile = QUALITY[quality];
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, profile.pr));
+  bloom.enabled = graphicsOptions.bloom;
+  renderer.shadowMap.enabled = graphicsOptions.shadows;
+  env.setShadowSize(profile.shadow);
+  renderer.shadowMap.needsUpdate = graphicsOptions.shadows;
+
+  water.setCubeInterval(profile.cubeInterval);
+  water.setReflectionSize(profile.cubeSize);
+  water.setReflectionsEnabled(graphicsOptions.reflections);
+  water.setParticleEffectsEnabled(profile.particles);
+  applyDrawDistance();
   resize();
+  updateGraphicsStatus();
+}
+
+function chooseQuality(nextQuality, resetOptions = true) {
+  if (!QUALITY[nextQuality]) return;
+  quality = nextQuality;
+  if (resetOptions) {
+    graphicsOptions = {
+      shadows: QUALITY[quality].shadows,
+      reflections: QUALITY[quality].reflections,
+      bloom: QUALITY[quality].bloom,
+    };
+  }
+  syncGraphicsControls();
+  applyQuality();
+  saveGraphicsSettings();
+}
+
+function setSettingsOpen(open) {
+  if (!settingsPanel || !settingsToggle) return;
+  settingsPanel.hidden = !open;
+  settingsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+settingsToggle?.addEventListener('click', () => {
+  setSettingsOpen(settingsPanel?.hidden !== false);
+});
+settingsClose?.addEventListener('click', () => setSettingsOpen(false));
+document.addEventListener('keydown', (event) => {
+  if (event.code === 'Escape' && settingsPanel && !settingsPanel.hidden) {
+    setSettingsOpen(false);
+  }
+});
+qualitySelect?.addEventListener('change', () => {
+  if (qualitySelect.value === 'auto') {
+    autoQuality = true;
+    chooseQuality(detectDeviceQuality(), true);
+  } else {
+    autoQuality = false;
+    chooseQuality(qualitySelect.value, true);
+  }
+});
+viewDistanceInput?.addEventListener('input', () => {
+  drawDistance = THREE.MathUtils.clamp(Number(viewDistanceInput.value) || 3200, 900, 8000);
+  applyDrawDistance();
+});
+shadowsInput?.addEventListener('change', () => {
+  graphicsOptions.shadows = shadowsInput.checked;
+  applyQuality();
+  saveGraphicsSettings();
+});
+reflectionsInput?.addEventListener('change', () => {
+  graphicsOptions.reflections = reflectionsInput.checked;
+  applyQuality();
+  saveGraphicsSettings();
+});
+bloomInput?.addEventListener('change', () => {
+  graphicsOptions.bloom = bloomInput.checked;
+  applyQuality();
+  saveGraphicsSettings();
+});
+
+// The browser's own frustum culling discards chunks behind the camera.
+// The far plane additionally clips terrain, trees and props beyond this radius.
+camera.far = drawDistance;
+syncGraphicsControls();
+applyQuality();
+
+// Auto quality reacts faster to sustained slow frames, but never overrides
+// a manually selected Low / Medium / High profile.
+let sampleStart = 0;
+let sampleCount = 0;
+let slowSamples = 0;
+let fastSamples = 0;
+function sampleQuality() {
+  if (!autoQuality) return;
+  if (sampleStart === 0) {
+    sampleStart = performance.now();
+    return;
+  }
+  sampleCount++;
+  if (sampleCount < 75) return;
+  const averageFrameMs = (performance.now() - sampleStart) / sampleCount;
+  sampleCount = 0;
+  sampleStart = performance.now();
+
+  if (averageFrameMs > 31) {
+    slowSamples++;
+    fastSamples = 0;
+  } else if (averageFrameMs < 19) {
+    fastSamples++;
+    slowSamples = 0;
+  } else {
+    slowSamples = 0;
+    fastSamples = 0;
+  }
+
+  if (slowSamples >= 2) {
+    const index = QUALITY_ORDER.indexOf(quality);
+    if (index > 0) {
+      chooseQuality(QUALITY_ORDER[index - 1], true);
+      hud.toast(`Автонастройка: качество снижено до «${quality === 'low' ? 'низкого' : 'среднего'}»`);
+    }
+    slowSamples = 0;
+  } else if (fastSamples >= 12 && quality !== 'high') {
+    const index = QUALITY_ORDER.indexOf(quality);
+    chooseQuality(QUALITY_ORDER[index + 1], true);
+    hud.toast('Автонастройка: качество повышено');
+    fastSamples = 0;
+  }
 }
 
 // ---------- ввод ----------
@@ -193,7 +410,9 @@ function animate() {
     scene.fog.density = 0.055;
   } else {
     scene.fog.color.copy(dayFog).lerp(nightFog, nightProgress);
-    scene.fog.density = THREE.MathUtils.lerp(0.00020, 0.00038, nightProgress);
+    scene.fog.density = THREE.MathUtils.lerp(
+      0.00020 * (3200 / drawDistance), 0.00038 * (3200 / drawDistance), nightProgress
+    );
   }
   if (elapsed >= NIGHT_START_SECONDS && !nightStartedMessageShown) {
     nightStartedMessageShown = true;
@@ -204,7 +423,7 @@ function animate() {
   water.update(elapsed, dt, renderer.getPixelRatio(), beneathFountainSurface);
   hud.update(camera, player);
   audio.setDistance(Math.hypot(camera.position.x, camera.position.z));
-  sampleQuality(dt);
+  sampleQuality();
 
   composer.render();
 
