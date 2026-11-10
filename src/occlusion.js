@@ -59,6 +59,8 @@ export function createOcclusionCuller(renderer, scene, camera) {
       queryGeneration: -1,
       lastIssuedGeneration: -1,
       lastResultAt: 0,
+      resultPosition: new THREE.Vector3(),
+      resultQuaternion: new THREE.Quaternion(),
     });
   });
 
@@ -80,6 +82,7 @@ export function createOcclusionCuller(renderer, scene, camera) {
 
   let depthTarget = null;
   let depthValid = false;
+  let depthDirty = true;
   let generation = 0;
   let queryCursor = 0;
   let activeCandidates = [];
@@ -269,6 +272,8 @@ export function createOcclusionCuller(renderer, scene, camera) {
       if (candidate.queryGeneration === generation) {
         candidate.occluded = !samplesPassed;
         candidate.lastResultAt = now;
+        candidate.resultPosition.copy(camera.position);
+        candidate.resultQuaternion.copy(camera.quaternion);
       }
 
       gl.deleteQuery(candidate.query);
@@ -357,20 +362,31 @@ export function createOcclusionCuller(renderer, scene, camera) {
 
     const cameraChanged = !hasCameraSnapshot || projectionChanged ||
       cameraMove > 1.8 || cameraTurn > 0.035;
-    if (cameraChanged && now - lastDepthAt >= MIN_REFRESH_MS) {
+    if (cameraChanged) depthDirty = true;
+
+    if (depthDirty && now - lastDepthAt >= MIN_REFRESH_MS) {
       renderDepthPass(now, settings.depthHeight);
+      depthDirty = false;
     }
 
     pollQueries(now);
 
-    if (depthValid) {
+    if (depthValid && !depthDirty) {
       issueQueries(settings.queryBudget);
+      for (const candidate of candidates) {
+        if (candidate.occluded &&
+          (camera.position.distanceTo(candidate.resultPosition) > 18 ||
+           camera.quaternion.angleTo(candidate.resultQuaternion) > 0.18)) {
+          candidate.occluded = false;
+        }
+      }
+      applyVisibility();
+    } else {
+      // The cached depth image belongs to an older camera pose. Show all
+      // chunks until a fresh depth pass is ready rather than risk hiding
+      // something that has just entered the view.
+      restoreVisibility();
     }
-
-    // Old query results are retained during small movements, but a large
-    // camera jump clears them above. Every result is refreshed as the query
-    // batches advance through the current frustum.
-    applyVisibility();
   }
 
   function restore() {
