@@ -8,6 +8,8 @@ const WALK_SPEED = 5.4;
 const RUN_SPEED = 10.2;
 const FLY_SPEED = 14.0;
 const FLY_FAST = 34.0;
+const FLY_BOOST_RAMP_SECONDS = 3.0;
+const FLY_BOOST_MAX_MULTIPLIER = 3.0;
 const BODY_RADIUS = 0.34;
 const STEP_UP = 1.4;
 const MAX_STEP_DOWN = 3.0;
@@ -377,6 +379,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
   let vertical = 0;
   let runToggle = false;
   let mode = 'walk';
+  let flyBoostTime = 0;
   let grounded = true;
   let swimming = false;
   let underwater = false;
@@ -466,6 +469,7 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     if (mode === next) return;
     const previous = mode;
     mode = next;
+    if (next === 'fly' || previous === 'fly') flyBoostTime = 0;
 
     if (next === 'fly' || next === 'cinematic') {
       velocity.set(0, 0, 0);
@@ -814,13 +818,31 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     if (mode === 'fly') {
       camera.getWorldDirection(forward);
       right.set(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
-      const speed = sprinting ? FLY_FAST : FLY_SPEED;
       direction.set(0, 0, 0);
       if (mx || mz) {
         direction.addScaledVector(forward, mz).addScaledVector(right, mx);
         direction.normalize().multiplyScalar(Math.min(1, Math.hypot(mx, mz)));
       }
       const lift = (keys.Space ? 1 : 0) - (keys.ControlLeft ? 1 : 0) + vertical;
+
+      // Flying builds momentum while the player actively moves. After three
+      // continuous seconds the flight reaches 3x its current base speed.
+      const hasFlightInput = Math.hypot(mx, mz, lift) > 0.04;
+      if (hasFlightInput) {
+        flyBoostTime = Math.min(FLY_BOOST_RAMP_SECONDS, flyBoostTime + dt);
+      } else {
+        flyBoostTime = Math.max(0, flyBoostTime - dt * 1.6);
+      }
+      const boostProgress = THREE.MathUtils.clamp(
+        flyBoostTime / FLY_BOOST_RAMP_SECONDS, 0, 1
+      );
+      const easedBoost = boostProgress * boostProgress * (3 - 2 * boostProgress);
+      const flightMultiplier = THREE.MathUtils.lerp(
+        1, FLY_BOOST_MAX_MULTIPLIER, easedBoost
+      );
+      const baseFlightSpeed = sprinting ? FLY_FAST : FLY_SPEED;
+      const speed = baseFlightSpeed * flightMultiplier;
+
       camera.position.addScaledVector(direction, speed * dt);
       camera.position.y = THREE.MathUtils.clamp(camera.position.y + lift * speed * dt, -100, 500);
       feetY = camera.position.y - EYE_HEIGHT;
@@ -970,6 +992,11 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     get maxOxygen() { return MAX_OXYGEN; },
     get oxygenRatio() { return oxygen / MAX_OXYGEN; },
     get activeWater() { return activeWater; },
+    get flySpeedMultiplier() {
+      const progress = THREE.MathUtils.clamp(flyBoostTime / FLY_BOOST_RAMP_SECONDS, 0, 1);
+      const eased = progress * progress * (3 - 2 * progress);
+      return THREE.MathUtils.lerp(1, FLY_BOOST_MAX_MULTIPLIER, eased);
+    },
     get body() { return avatar.root; },
     get hitbox() {
       return {
