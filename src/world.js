@@ -1050,9 +1050,9 @@ function createRiver(scene, rnd, heightAt) {
       surfaceY: RIVER_SURFACE_Y,
       bottomY: RIVER_SURFACE_Y - 12.8,
       bottomAt: (x, z) => RIVER_SURFACE_Y - mainRiverDepth(z) + 0.08,
-      exitFeetY: WATER_Y - 0.55,
+      exitFeetY: RIVER_SURFACE_Y - 0.55,
       exitHeight: 0.95,
-      contains: (x, z) => Math.abs(x - centerX(z)) <= 13.35,
+      contains: (x, z) => mainRiverLateralDistance(x, z) <= 14.05,
     },
   };
 }
@@ -1083,7 +1083,7 @@ function createTributary(scene, heightAt) {
       bottomAt: (x, z) => RIVER_SURFACE_Y - tributaryDepth(x) + 0.08,
       exitFeetY: WATER_Y - 0.55,
       exitHeight: 0.95,
-      contains: (x, z) => Math.abs(z - centerZ(x)) <= 10.15,
+      contains: (x, z) => tributaryLateralDistance(x, z) <= 10.85,
     },
   };
 }
