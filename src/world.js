@@ -997,7 +997,7 @@ function createRiver(scene, rnd, heightAt) {
   }
 
   const waterMaterial = createFlowingWaterMaterial(0x286d7d);
-  const water = addRibbonChunks(scene, points, 14.2, 0.035, waterMaterial,
+  const water = addRibbonChunks(scene, points, 14.2, RIVER_SURFACE_Y, waterMaterial,
     'main-river-water', { noCollider: true, renderOrder: 2 });
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x354f49, roughness: 1 });
@@ -1066,7 +1066,7 @@ function createTributary(scene, heightAt) {
   }
 
   const waterMaterial = createFlowingWaterMaterial(0x327987);
-  const water = addRibbonChunks(scene, points, 11.0, 0.035, waterMaterial,
+  const water = addRibbonChunks(scene, points, 11.0, RIVER_SURFACE_Y, waterMaterial,
     'tributary-water', { noCollider: true, renderOrder: 2 });
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x40564c, roughness: 1 });
