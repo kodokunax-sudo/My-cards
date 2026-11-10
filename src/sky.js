@@ -76,7 +76,9 @@ export function createSky(scene) {
     `,
   });
 
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(3000, 48, 32), material);
+  const SKY_DOME_BASE_RADIUS = 3000;
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(SKY_DOME_BASE_RADIUS, 48, 32), material);
+  let lastDomeScale = 1;
   dome.userData.noCollider = true;
   dome.frustumCulled = false;
   dome.renderOrder = -1000;
@@ -88,6 +90,16 @@ export function createSky(scene) {
       uniforms.uTime.value = t;
       uniforms.uNight.value = THREE.MathUtils.clamp(nightProgress, 0, 1);
       dome.position.copy(camera.position);
+
+      // Keep the sky shell inside the camera's far plane. The sphere is a
+      // real 3D mesh, so a short draw distance would otherwise clip the whole
+      // 3km dome and make the sky disappear.
+      const visibleRadius = Math.max(100, camera.far * 0.92);
+      const nextScale = visibleRadius / SKY_DOME_BASE_RADIUS;
+      if (Math.abs(nextScale - lastDomeScale) > 0.001) {
+        dome.scale.setScalar(nextScale);
+        lastDomeScale = nextScale;
+      }
     },
   };
 }
