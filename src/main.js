@@ -18,6 +18,14 @@ import { createWorld } from './world.js';
 import { createOcclusionCuller } from './occlusion.js';
 import { createSurvival } from './survival.js';
 
+
+window.__titanBootStatus?.('Подготавливаем графику и игровые модули...');
+await new Promise((resolve) => requestAnimationFrame(() =>
+  requestAnimationFrame(resolve)
+));
+window.__titanBootStatus?.('Создаём мир, модели, воду и физику...');
+
+
 const canvas = document.getElementById('scene');
 const overlay = document.getElementById('overlay');
 const startBtn = document.getElementById('start-btn');
@@ -348,6 +356,7 @@ async function requestMobileLandscape() {
 function enterScene() {
   if (started) return;
   started = true;
+  document.body.classList.remove('menu');
   overlay.classList.add('hidden');
   audio.start();
   if (touch) {
@@ -361,7 +370,7 @@ function enterScene() {
   // phone GPU on a hidden scene and keeps the start screen responsive.
   requestAnimationFrame(animate);
 }
-startBtn.addEventListener('click', enterScene);
+window.__titanStartGame = enterScene;
 canvas.addEventListener('click', (e) => {
   if (started && !player.locked && !touch && e.pointerType === 'mouse') {
     try { Promise.resolve(player.lock()).catch(() => {}); } catch (error) { /* drag-to-look remains available */ }
