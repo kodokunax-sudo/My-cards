@@ -854,7 +854,7 @@ export function createWorld(scene) {
   // z-fighting and disappearing strips between the 12.5m terrain triangles.
   // Across the river it becomes a real approach ramp that meets the bridge deck.
   const roadSurfaceY = (x, z) => {
-    const groundY = (heightAt(x, z) ?? 0) + 0.42;
+    const groundY = (heightAt(x, z) ?? 0) + 0.22;
     const distanceAlongBridge = Math.abs(x + 692);
     const bridgeTop = 1.08 * (1 - smoothstep(45, 94, distanceAlongBridge));
     const bridgeCorridor = 1 - smoothstep(7, 14, Math.abs(z - 300));
