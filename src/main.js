@@ -16,6 +16,7 @@ import { createAmbience } from './audio.js';
 import { createTouchControls } from './touch.js';
 import { createWorld } from './world.js';
 import { createOcclusionCuller } from './occlusion.js';
+import { createSurvival } from './survival.js';
 
 const canvas = document.getElementById('scene');
 const overlay = document.getElementById('overlay');
@@ -66,6 +67,8 @@ const touch = createTouchControls(player, {
 if (touch) {
   touch.setSoundState(audio.enabled);
 }
+
+const survival = createSurvival(scene, camera, canvas, world, player, hud);
 
 // ---------- постобработка ----------
 const composer = new EffectComposer(renderer);
@@ -377,6 +380,7 @@ function animate() {
   frames++;
 
   player.update(dt);
+  survival.update(dt);
   touch?.setSwimState(player.swimming);
   if (player.consumeDrownedEvent()) {
     hud.toast('Вы утонули: закончился кислород. Вы вернулись к стартовому дому.');
@@ -433,5 +437,5 @@ animate();
 // для отладки из консоли
 window.__scene = {
   scene, camera, renderer, fountain, water, world, player, physics,
-  occlusionCuller, FOUNTAIN_HEIGHT,
+  occlusionCuller, survival, FOUNTAIN_HEIGHT,
 };
