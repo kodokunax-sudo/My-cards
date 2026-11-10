@@ -15,6 +15,7 @@ import { createHud } from './hud.js';
 import { createAmbience } from './audio.js';
 import { createTouchControls } from './touch.js';
 import { createWorld } from './world.js';
+import { createOcclusionCuller } from './occlusion.js';
 
 const canvas = document.getElementById('scene');
 const overlay = document.getElementById('overlay');
@@ -44,6 +45,7 @@ const env = createEnvironment(scene);
 const fountain = createFountain(scene);
 const water = createWater(scene, fountain, camera, renderer);
 const world = createWorld(scene);
+const occlusionCuller = createOcclusionCuller(renderer, scene, camera);
 const hud = createHud();
 const audio = createAmbience();
 const physics = createPhysicsWorld(scene, world);
@@ -412,7 +414,14 @@ function animate() {
   audio.setDistance(Math.hypot(camera.position.x, camera.position.z));
   sampleQuality();
 
-  composer.render();
+  try {
+    if (started) occlusionCuller.update(quality);
+    composer.render();
+  } finally {
+    // Reflection rendering has already completed above. Restore the chunks
+    // immediately after the main camera so other camera passes see the world.
+    occlusionCuller.restore();
+  }
 
   if (frames === 2) {
     startBtn.disabled = false;
@@ -422,4 +431,7 @@ function animate() {
 animate();
 
 // для отладки из консоли
-window.__scene = { scene, camera, renderer, fountain, water, world, player, physics, FOUNTAIN_HEIGHT };
+window.__scene = {
+  scene, camera, renderer, fountain, water, world, player, physics,
+  occlusionCuller, FOUNTAIN_HEIGHT,
+};
