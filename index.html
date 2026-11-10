@@ -68,6 +68,46 @@
   </div>
 
   <div id="toast"></div>
+
+  <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings-panel">
+    ⚙ ГРАФИКА
+  </button>
+  <section id="settings-panel" class="panel settings-panel" hidden>
+    <div class="settings-heading">
+      <div>
+        <h2>НАСТРОЙКИ</h2>
+        <p>Графика и производительность</p>
+      </div>
+      <button id="settings-close" type="button" aria-label="Закрыть настройки">×</button>
+    </div>
+
+    <label class="setting-row" for="graphics-quality">
+      <span>Качество графики</span>
+      <select id="graphics-quality">
+        <option value="auto">Авто</option>
+        <option value="low">Низкое</option>
+        <option value="medium">Среднее</option>
+        <option value="high">Высокое</option>
+      </select>
+    </label>
+
+    <label class="setting-block" for="view-distance">
+      <span class="setting-label">
+        <span>Дальность прорисовки</span>
+        <output id="view-distance-value">3,2 км</output>
+      </span>
+      <input id="view-distance" type="range" min="900" max="8000" step="100" value="3200" />
+      <span class="setting-scale"><span>0,9 км</span><span>8 км</span></span>
+    </label>
+
+    <div class="setting-toggles">
+      <label><input id="graphics-shadows" type="checkbox" /> Тени</label>
+      <label><input id="graphics-reflections" type="checkbox" checked /> Отражения воды</label>
+      <label><input id="graphics-bloom" type="checkbox" /> Свечение</label>
+    </div>
+
+    <div class="settings-footnote" id="graphics-status">Автоматическое качество подстраивается под устройство.</div>
+  </section>
 </div>
 
 <div id="touch-layer" class="hidden">
