@@ -915,7 +915,7 @@ function makeRibbon(points, halfWidth, y, heightAt = null, tangentPoints = point
 }
 
 
-function addShorelineChunks(scene, points, halfWidthAt, surfaceAt, sampledTerrainAt, analyticTerrainAt, name) {
+function addShorelineChunks(scene, points, halfWidthAt, surfaceAt, sampledTerrainAt, analyticTerrainAt, name, streamer = null) {
   const rows = [-0.9, 0, 1.5, 4, 7.5, 12, 18, 26];
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
@@ -935,6 +935,8 @@ function addShorelineChunks(scene, points, halfWidthAt, surfaceAt, sampledTerrai
 
   for (let start = 0, part = 0; start < points.length - 1; start += pointsPerChunk, part++) {
     const end = Math.min(points.length - 1, start + pointsPerChunk);
+    const anchor = points[Math.floor((start + end) * 0.5)];
+    const buildPart = () => {
     const count = end - start + 1;
     const positions = [];
     const colors = [];
@@ -1015,6 +1017,9 @@ function addShorelineChunks(scene, points, halfWidthAt, surfaceAt, sampledTerrai
     bank.geometry.computeBoundingSphere();
     scene.add(bank);
     meshes.push(bank);
+    };
+    if (streamer) streamer.enqueue(anchor.x, anchor.z, 'river', buildPart);
+    else buildPart();
   }
 
   return meshes;
@@ -1666,30 +1671,33 @@ function createHouse(scene, materials, baseY = 0) {
   };
 }
 
-function addRibbonChunks(scene, points, halfWidth, y, material, name, options = {}) {
+function addRibbonChunks(scene, points, halfWidth, y, material, name, options = {}, streamer = null) {
   const meshes = [];
   const pointsPerChunk = 24;
   for (let start = 0, part = 0; start < points.length - 1; start += pointsPerChunk, part++) {
     const end = Math.min(points.length - 1, start + pointsPerChunk);
-    const mesh = new THREE.Mesh(
-      makeRibbon(points.slice(start, end + 1), halfWidth, y, options.heightAt ?? null, points, start), material
-    );
-    mesh.name = `${name}-${part}`;
-    mesh.frustumCulled = true;
-    mesh.geometry.computeBoundingSphere();
-    // Ribbon chunks (paths, riverbeds, water) are thin surfaces, not solid
-    // rectangular obstacles. Walkable ribbons stay in the floor raycast list.
-    mesh.userData.noCollider = true;
-    if (options.walkable) mesh.userData.walkable = true;
-    if (options.receiveShadow) mesh.receiveShadow = true;
-    if (options.renderOrder !== undefined) mesh.renderOrder = options.renderOrder;
-    scene.add(mesh);
-    meshes.push(mesh);
+    const anchor = points[Math.floor((start + end) * 0.5)];
+    const buildPart = () => {
+      const mesh = new THREE.Mesh(
+        makeRibbon(points.slice(start, end + 1), halfWidth, y, options.heightAt ?? null, points, start), material
+      );
+      mesh.name = `${name}-${part}`;
+      mesh.frustumCulled = true;
+      mesh.geometry.computeBoundingSphere();
+      mesh.userData.noCollider = true;
+      if (options.walkable) mesh.userData.walkable = true;
+      if (options.receiveShadow) mesh.receiveShadow = true;
+      if (options.renderOrder !== undefined) mesh.renderOrder = options.renderOrder;
+      scene.add(mesh);
+      meshes.push(mesh);
+    };
+    if (streamer) streamer.enqueue(anchor.x, anchor.z, 'river', buildPart);
+    else buildPart();
   }
   return meshes;
 }
 
-function createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles) {
+function createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles, streamer) {
   const centerX = mainRiverX;
   const points = [];
   for (let i = 0; i <= 1800; i++) {
@@ -1703,15 +1711,15 @@ function createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles) {
   const mainLevelAt = (point) => riverProfiles.mainSurface(point.z);
   const waterMaterial = createFlowingWaterMaterial(0x286d7d);
   const water = addRibbonChunks(scene, points, mainWidthAt, mainLevelAt, waterMaterial,
-    'main-river-water', { noCollider: true, renderOrder: 2 });
+    'main-river-water', { noCollider: true, renderOrder: 2 }, streamer);
   const banks = addShorelineChunks(
-    scene, points, mainWidthAt, mainLevelAt, heightAt, analyticHeightAt, 'main-river-bank'
+    scene, points, mainWidthAt, mainLevelAt, heightAt, analyticHeightAt, 'main-river-bank', streamer
   );
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x8a7659, roughness: 1 });
   const riverBedHeight = (x, z) => (heightAt(x, z) ?? (riverProfiles.mainSurface(z) - riverProfiles.mainDepth(z))) + 0.045;
   const bed = addRibbonChunks(scene, points, 5.8, -3.25, bedMaterial,
-    'main-river-bed', { walkable: true, receiveShadow: true, heightAt: riverBedHeight });
+    'main-river-bed', { walkable: true, receiveShadow: true, heightAt: riverBedHeight }, streamer);
 
   const pebbleGeo = new THREE.IcosahedronGeometry(2.2, 0);
   const pebbleMat = new THREE.MeshStandardMaterial({ color: 0x756c56, roughness: 1 });
@@ -1772,7 +1780,7 @@ function createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles) {
   };
 }
 
-function createTributary(scene, heightAt, analyticHeightAt, riverProfiles) {
+function createTributary(scene, heightAt, analyticHeightAt, riverProfiles, streamer) {
   const centerZ = tributaryZ;
   const points = [];
   for (let i = 0; i <= 1120; i++) {
@@ -1784,15 +1792,15 @@ function createTributary(scene, heightAt, analyticHeightAt, riverProfiles) {
   const tributaryLevelAt = (point) => riverProfiles.tributarySurface(point.x);
   const waterMaterial = createFlowingWaterMaterial(0x327987);
   const water = addRibbonChunks(scene, points, tributaryWidthAt, tributaryLevelAt, waterMaterial,
-    'tributary-water', { noCollider: true, renderOrder: 2 });
+    'tributary-water', { noCollider: true, renderOrder: 2 }, streamer);
   const banks = addShorelineChunks(
-    scene, points, tributaryWidthAt, tributaryLevelAt, heightAt, analyticHeightAt, 'tributary-bank'
+    scene, points, tributaryWidthAt, tributaryLevelAt, heightAt, analyticHeightAt, 'tributary-bank', streamer
   );
 
   const bedMaterial = new THREE.MeshStandardMaterial({ color: 0x8e7b60, roughness: 1 });
   const tributaryBedHeight = (x, z) => (heightAt(x, z) ?? (riverProfiles.tributarySurface(x) - riverProfiles.tributaryDepth(x))) + 0.045;
   const bed = addRibbonChunks(scene, points, 4.4, -2.55, bedMaterial,
-    'tributary-bed', { walkable: true, receiveShadow: true, heightAt: tributaryBedHeight });
+    'tributary-bed', { walkable: true, receiveShadow: true, heightAt: tributaryBedHeight }, streamer);
 
   return {
     water, banks, bed, waterMaterial,
@@ -1907,8 +1915,8 @@ export async function createWorld(scene, onProgress = () => {}) {
     }),
   }, houseBase);
 
-  const river = createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles);
-  const tributary = createTributary(scene, heightAt, analyticHeightAt, riverProfiles);
+  const river = createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles, streamer);
+  const tributary = createTributary(scene, heightAt, analyticHeightAt, riverProfiles, streamer);
   onProgress('Готовим только ближайшие участки...');
   const forests = createForests(scene, heightAt, routePoints, rnd, renderables);
   const groundCover = createGroundCover(scene, heightAt, routePoints, rnd, renderables);
