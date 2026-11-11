@@ -12,17 +12,9 @@
   // Persist the app's downloaded scripts, audio and visual assets between visits.
   let offlineCacheReady = Promise.resolve();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    // Start registering while the player is in the menu, but never make game
+    // startup wait for a service-worker control handshake.
     offlineCacheReady = navigator.serviceWorker.register('./sw.js')
-      .then(() => Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise((resolve) => window.setTimeout(resolve, 1800)),
-      ]))
-      .then(() => new Promise((resolve) => {
-        if (navigator.serviceWorker.controller) return resolve();
-        const finish = () => resolve();
-        navigator.serviceWorker.addEventListener('controllerchange', finish, { once: true });
-        window.setTimeout(finish, 700);
-      }))
       .catch((error) => {
         console.warn('[Titan cache] Service worker unavailable:', error);
       });
