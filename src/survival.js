@@ -272,7 +272,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     const resourceIds = ['logs', 'planks', 'sticks', 'stone'];
     for (let index = 0; index < resourceIds.length; index++) {
       const id = resourceIds[index];
-      heldResources[id].visible = selectedSlot === index + 3 && inventory[id] > 0;
+      heldResources[id].visible = selectedSlot === index + 4 && inventory[id] > 0;
     }
     const holdingResource = resourceIds.some((id) => heldResources[id].visible);
     viewModel.visible = (selectedTool !== 'hands' || holdingResource) &&
