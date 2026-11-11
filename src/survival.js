@@ -925,7 +925,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     if (match) {
       const model = document.createElement('span');
       model.className = 'slot-model-wrap';
-      model.innerHTML = itemModelMarkup(match.recipe.output);
+      model.innerHTML = itemModelMarkup(match.recipe.output === 'fieldWorkplace' ? 'workbench' : match.recipe.output);
       const count = document.createElement('span');
       count.className = 'slot-count';
       count.textContent = match.recipe.count > 1 ? String(match.recipe.count) : '';
@@ -1015,7 +1015,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   function placeWorkbench() {
     if (workbench) return true;
     if (player.mode === 'fly' || player.swimming || !player.grounded) {
-      toast('Верстак можно поставить только на земле.');
+      toast('Полевое рабочее место можно поставить только на земле.');
       return false;
     }
     const forward = new THREE.Vector3();
@@ -1035,7 +1035,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       break;
     }
     if (!chosen) {
-      toast('Рядом нет свободного места для верстака.');
+      toast('Рядом нет свободного места для полевого рабочего места.');
       return false;
     }
     workbench = chosen;
@@ -1120,6 +1120,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     // Stone deposits can be cracked by hand, but pickaxes make the work much faster.
     target.node.hp -= selectedTool === 'stonePickaxe' ? 6 : selectedTool === 'woodPickaxe' ? 3 : 1;
     if (target.node.hp <= 0) {
+      unmarkResourcePosition(target.node);
       target.node.active = false;
       target.node.due = Date.now() + RESPAWN_MS;
       target.node.hp = STONE_HP;
@@ -1269,6 +1270,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
         continue;
       }
       Object.assign(node, nextPosition, { active: true, hp: STONE_HP, due: 0 });
+      markResourcePosition(node);
       writeNode(node);
       changed = true;
     }
