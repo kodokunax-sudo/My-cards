@@ -755,7 +755,10 @@ function createWorldChunkStreamer() {
     update(x, z) {
       const nearby = nearbyJobs(x, z);
       if (nearby.length) buildOne(nearby[0]);
-      const pending = nearby.filter((job) => !job.done).length;
+      return this.updateProgress(x, z);
+    },
+    updateProgress(x, z) {
+      const pending = nearbyJobs(x, z).length;
       return { loaded, pending, percent: pending ? Math.round(loaded / (loaded + pending) * 100) : 100 };
     },
     get progress() {
@@ -1038,6 +1041,7 @@ function createChunkRandom(cx, cz, salt = 1) {
 function createForests(scene, heightAt, routePoints, rnd, renderables) {
   const trees = [];
   const treeById = new Map();
+  const depletedIds = new Set();
   const chunkSize = 640;
   const cell = 16;
   const half = GRASS_RADIUS - 80;
@@ -1071,7 +1075,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     tree.seed = tree.rotation;
     tree.minY = tree.y;
     tree.maxY = tree.y + 8 * tree.scale;
-    tree.removed = false;
+    tree.removed = depletedIds.has(tree.id);
     const cx = Math.floor(tree.x / collisionCellSize);
     const cz = Math.floor(tree.z / collisionCellSize);
     const key = `${cx},${cz}`;
@@ -1136,7 +1140,8 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       quaternion.setFromAxisAngle(up, tree.rotation);
       position.set(tree.x, tree.y + 4 * tree.scale, tree.z);
       scale.set(tree.scale, tree.scale, tree.scale);
-      matrix.compose(position, quaternion, scale);
+      if (tree.removed) matrix.makeScale(0, 0, 0);
+      else matrix.compose(position, quaternion, scale);
       trunks.setMatrixAt(i, matrix);
       tree.trunkMesh = trunks;
       tree.trunkInstanceId = i;
@@ -1163,7 +1168,8 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
         const width = isPine ? [1.16, 1.12, 1.04][pineVariant] : [1.25, 1.22, 1.34, 1.12, 1.28][pineVariant];
         const height = isPine ? [1.08, 1.16, 1.24][pineVariant] : [1.12, 1.05, 0.82, 1.12, 1.18][pineVariant];
         scale.set(tree.scale * width, tree.scale * height, tree.scale * width);
-        matrix.compose(position, quaternion, scale);
+        if (tree.removed) matrix.makeScale(0, 0, 0);
+        else matrix.compose(position, quaternion, scale);
         crowns.setMatrixAt(i, matrix);
         const baseHue = isPine ? 0.315 : 0.295;
         const hueRange = isPine ? 0.022 : 0.035;
@@ -1227,7 +1233,9 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
   }
 
   function removeTree(tree) {
-    if (!tree || tree.removed) return false;
+    if (!tree) return false;
+    depletedIds.add(tree.id);
+    if (tree.removed) return true;
     tree.removed = true;
     const zeroScale = new THREE.Matrix4().makeScale(0, 0, 0);
     tree.trunkMesh?.setMatrixAt(tree.trunkInstanceId, zeroScale);
@@ -1296,7 +1304,13 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     trees,
     updateNear,
     remove: removeTree,
-    removeById(id) { return removeTree(treeById.get(id)); },
+    removeById(id) {
+      const tree = treeById.get(id);
+      if (tree) return removeTree(tree);
+      depletedIds.add(id);
+      return true;
+    },
+    get depletedIds() { return Array.from(depletedIds); },
     isNearTree,
     isBlocked(x, feetY, z, radius, height) {
       return forestCollision(x, z, feetY, height, radius, false).blocked;
@@ -1830,6 +1844,7 @@ export async function createWorld(scene, onProgress = () => {}) {
   const heightAt = createRenderedTerrainSampler(analyticHeightAt);
   const renderables = [];
   const streamer = createWorldChunkStreamer();
+  let streamTick = 0;
   const terrain = createTerrain(scene, analyticHeightAt, renderables, streamer);
 
   // The road sits only 7cm above the sampled ground: no hovering strip and
@@ -1930,11 +1945,13 @@ export async function createWorld(scene, onProgress = () => {}) {
     update(time, playerPosition = { x: -1600, z: 900 }) {
       river.waterMaterial.userData.setTime(time);
       tributary.waterMaterial.userData.setTime(time);
-      const terrainProgress = streamer.update(playerPosition.x, playerPosition.z);
-      forests.updateNear(playerPosition.x, playerPosition.z, 1);
-      groundCover.updateNear(playerPosition.x, playerPosition.z, 1);
-      rocks.updateNear(playerPosition.x, playerPosition.z, 1);
-      return terrainProgress;
+      streamTick++;
+      if (streamTick % 4 === 0) streamer.update(playerPosition.x, playerPosition.z);
+      else if (streamTick % 4 === 1) forests.updateNear(playerPosition.x, playerPosition.z, 1);
+      else if (streamTick % 4 === 2) groundCover.updateNear(playerPosition.x, playerPosition.z, 1);
+      else rocks.updateNear(playerPosition.x, playerPosition.z, 1);
+      const progress = streamer.updateProgress(playerPosition.x, playerPosition.z);
+      return { ...progress, pending: progress.pending + 1 };
     },
     get streamingProgress() { return streamer.progress; },
     getWaterRegionAt(x, z) {
