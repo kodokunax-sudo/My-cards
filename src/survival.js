@@ -589,13 +589,13 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     } else {
       if (isIron) {
         toolPart(group, new THREE.BoxGeometry(0.58, 0.115, 0.15), metalEdgeMaterial, 0, 0.20, 0);
-        toolPart(group, new THREE.ConeGeometry(0.085, 0.32, 7), metalEdgeMaterial, -0.31, 0.20, 0, 0, 1, 1, 1, 0, 0);
-        toolPart(group, new THREE.ConeGeometry(0.085, 0.32, 7), metalEdgeMaterial, 0.31, 0.20, 0, Math.PI, 1, 1, 1, 0, 0);
+        toolPart(group, new THREE.ConeGeometry(0.085, 0.32, 7), metalEdgeMaterial, -0.31, 0.20, 0, Math.PI / 2, 1, 1, 1, 0, 0);
+        toolPart(group, new THREE.ConeGeometry(0.085, 0.32, 7), metalEdgeMaterial, 0.31, 0.20, 0, -Math.PI / 2, 1, 1, 1, 0, 0);
         toolPart(group, new THREE.BoxGeometry(0.10, 0.18, 0.18), metalEdgeMaterial, 0, 0.20, 0);
       } else if (isStone) {
         toolPart(group, new THREE.BoxGeometry(0.50, 0.12, 0.15), stoneHeadMaterial, 0, 0.20, 0);
-        toolPart(group, new THREE.DodecahedronGeometry(0.17, 0), stoneHeadMaterial, -0.29, 0.20, 0, 0, 1.1, 0.82, 0.8);
-        toolPart(group, new THREE.DodecahedronGeometry(0.17, 0), stoneHeadMaterial, 0.29, 0.20, 0, 0, 1.1, 0.82, 0.8);
+        toolPart(group, new THREE.ConeGeometry(0.085, 0.30, 5), stoneHeadMaterial, -0.30, 0.20, 0, Math.PI / 2, 1.05, 1, 0.85);
+        toolPart(group, new THREE.ConeGeometry(0.085, 0.30, 5), stoneHeadMaterial, 0.30, 0.20, 0, -Math.PI / 2, 1.05, 1, 0.85);
         toolPart(group, new THREE.TorusGeometry(0.064, 0.018, 5, 10), handleMaterial, 0, 0.08, 0, Math.PI / 2);
         toolPart(group, new THREE.TorusGeometry(0.064, 0.018, 5, 10), handleMaterial, 0, 0.30, 0, Math.PI / 2);
       } else {
@@ -723,13 +723,83 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     const activeStack = hotbarSlots[selectedSlot];
     selectedTool = activeStack && TOOL_IDS.includes(activeStack.id) ? activeStack.id : 'hands';
     for (const [id, group] of Object.entries(heldTools)) group.visible = selectedTool === id;
-    const resourceIds = Object.keys(heldResources);
-    for (const id of resourceIds) {
-      heldResources[id].visible = !!activeStack && activeStack.id === id && activeStack.count > 0;
+    for (const [id, group] of Object.entries(heldResources)) {
+      group.visible = !!activeStack && activeStack.id === id && activeStack.count > 0;
     }
-    const holdingResource = resourceIds.some((id) => heldResources[id].visible);
-    viewModel.visible = (selectedTool !== 'hands' || holdingResource) &&
-      player.mode !== 'cinematic' && !player.swimming;
+    heldHands.visible = !activeStack;
+    activeHeldId = selectedTool !== 'hands' ? selectedTool :
+      activeStack && heldResources[activeStack.id] ? activeStack.id : 'hands';
+    activeHeldModel = selectedTool !== 'hands' ? heldTools[selectedTool] :
+      activeStack && heldResources[activeStack.id] ? heldResources[activeStack.id] : heldHands;
+    viewModel.visible = player.mode !== 'cinematic' && !player.swimming;
+  }
+
+  function smoothStep(value) {
+    const t = THREE.MathUtils.clamp(value, 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
+  function sampleMotion(keys, progress) {
+    if (progress <= keys[0][0]) return keys[0][1];
+    for (let i = 1; i < keys.length; i++) {
+      const next = keys[i];
+      if (progress > next[0]) continue;
+      const previous = keys[i - 1];
+      const t = smoothStep((progress - previous[0]) / (next[0] - previous[0]));
+      return previous[1] + (next[1] - previous[1]) * t;
+    }
+    return keys[keys.length - 1][1];
+  }
+
+  function animateHeldItem(dt) {
+    heldIdleTime += dt;
+    const model = activeHeldModel || heldHands;
+    const isSwinging = toolSwing > 0;
+    const progress = THREE.MathUtils.clamp(1 - toolSwing, 0, 1);
+
+    heldMotion.position.set(0, Math.sin(heldIdleTime * 2.1) * 0.008, 0);
+    heldMotion.rotation.set(0, Math.sin(heldIdleTime * 0.85) * 0.012, 0);
+
+    if (!isSwinging) {
+      model.position.set(0, 0, 0);
+      model.rotation.set(0, 0, 0);
+      return;
+    }
+
+    let rotationX;
+    let rotationY;
+    let rotationZ;
+    let positionY;
+    let positionZ;
+
+    if (model.userData.swingType === 'axe') {
+      rotationX = sampleMotion([[0, 0], [0.34, -0.95], [0.54, 0.46], [1, 0]], progress);
+      rotationY = sampleMotion([[0, 0], [0.34, -0.18], [0.54, 0.25], [1, 0]], progress);
+      rotationZ = sampleMotion([[0, 0], [0.34, -0.58], [0.54, 0.52], [1, 0]], progress);
+      positionY = sampleMotion([[0, 0], [0.34, 0.08], [0.54, -0.10], [1, 0]], progress);
+      positionZ = sampleMotion([[0, 0], [0.34, 0.045], [0.54, -0.13], [1, 0]], progress);
+    } else if (model.userData.swingType === 'pickaxe') {
+      rotationX = sampleMotion([[0, 0], [0.32, -1.12], [0.53, 0.68], [1, 0]], progress);
+      rotationY = sampleMotion([[0, 0], [0.32, 0.10], [0.53, -0.12], [1, 0]], progress);
+      rotationZ = sampleMotion([[0, 0], [0.32, 0.24], [0.53, -0.30], [1, 0]], progress);
+      positionY = sampleMotion([[0, 0], [0.32, 0.10], [0.53, -0.12], [1, 0]], progress);
+      positionZ = sampleMotion([[0, 0], [0.32, 0.03], [0.53, -0.16], [1, 0]], progress);
+    } else if (model.userData.swingType === 'hands') {
+      rotationX = sampleMotion([[0, 0], [0.28, -0.28], [0.48, 0.52], [1, 0]], progress);
+      rotationY = 0;
+      rotationZ = sampleMotion([[0, 0], [0.28, -0.12], [0.48, 0.14], [1, 0]], progress);
+      positionY = sampleMotion([[0, 0], [0.28, 0.035], [0.48, -0.06], [1, 0]], progress);
+      positionZ = sampleMotion([[0, 0], [0.28, 0.04], [0.48, -0.12], [1, 0]], progress);
+    } else {
+      rotationX = sampleMotion([[0, 0], [0.30, -0.42], [0.50, 0.32], [1, 0]], progress);
+      rotationY = sampleMotion([[0, 0], [0.30, -0.16], [0.50, 0.12], [1, 0]], progress);
+      rotationZ = sampleMotion([[0, 0], [0.30, -0.24], [0.50, 0.26], [1, 0]], progress);
+      positionY = sampleMotion([[0, 0], [0.30, 0.045], [0.50, -0.07], [1, 0]], progress);
+      positionZ = sampleMotion([[0, 0], [0.30, 0.025], [0.50, -0.09], [1, 0]], progress);
+    }
+
+    model.rotation.set(rotationX, rotationY, rotationZ);
+    model.position.set(0, positionY, positionZ);
   }
 
   refreshHeldTool();
@@ -1605,6 +1675,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
   function hitTarget() {
     if (panelOpen || player.mode === 'fly' || player.swimming) return;
+    refreshHeldTool();
     toolSwing = 1;
     const target = currentTarget();
     if (!target) {
@@ -1841,11 +1912,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     messageCooldown = Math.max(0, messageCooldown - dt);
     hitCooldown = Math.max(0, hitCooldown - dt);
     toolSwing = Math.max(0, toolSwing - dt * 3.8);
-    const swingArc = Math.sin((1 - toolSwing) * Math.PI) * toolSwing;
-    viewModel.rotation.x = -0.12 + swingArc * 0.78;
-    viewModel.rotation.z = -0.28 - swingArc * 0.18;
-    viewModel.position.y = -0.34 - swingArc * 0.045;
+    viewModel.rotation.set(-0.12, 0, -0.28);
+    viewModel.position.set(0.40, -0.34, -0.66);
     refreshHeldTool();
+    animateHeldItem(dt);
     if (mouseHeld && hitCooldown <= 0) {
       hitTarget();
       hitCooldown = selectedTool === 'hands' ? 0.72 : 0.46;
