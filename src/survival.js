@@ -144,7 +144,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       const radius = Math.sqrt(340 * 340 + Math.random() * (5300 * 5300 - 340 * 340));
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
-      if (!world.canSpawnResourceAt(x, z, 10)) continue;
+      if (!world.canSpawnResourceAt(x, z, 10) || resourcePositionCrowded(x, z)) continue;
       if (oldPosition && Math.hypot(x - oldPosition.x, z - oldPosition.z) < 75) continue;
       let crowded = false;
       for (const other of nodes) {
