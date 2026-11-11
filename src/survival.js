@@ -546,14 +546,16 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     group.add(mesh);
   }
 
-  function makeHeldTool(type, stone) {
+  function makeHeldTool(type, materialKind) {
     const group = new THREE.Group();
     group.visible = false;
     toolPart(group, new THREE.CylinderGeometry(0.032, 0.045, 0.68, 9), handleMaterial, 0, -0.20, 0);
-    const headMaterial = stone ? stoneHeadMaterial : woodHeadMaterial;
+    const headMaterial = materialKind === 'stone' ? stoneHeadMaterial :
+      materialKind === 'iron' ? metalEdgeMaterial : woodHeadMaterial;
     if (type === 'axe') {
       toolPart(group, new THREE.BoxGeometry(0.32, 0.17, 0.13), headMaterial, -0.05, 0.17, 0);
-      if (stone) toolPart(group, new THREE.BoxGeometry(0.075, 0.20, 0.145), metalEdgeMaterial, -0.205, 0.17, 0);
+      if (materialKind === 'stone') toolPart(group, new THREE.BoxGeometry(0.075, 0.20, 0.145), metalEdgeMaterial, -0.205, 0.17, 0);
+      if (materialKind === 'iron') toolPart(group, new THREE.BoxGeometry(0.20, 0.22, 0.15), headMaterial, -0.19, 0.17, 0);
     } else {
       toolPart(group, new THREE.BoxGeometry(0.44, 0.10, 0.12), headMaterial, 0, 0.17, 0);
       toolPart(group, new THREE.ConeGeometry(0.075, 0.20, 6), headMaterial, -0.24, 0.17, 0, -Math.PI / 2);
@@ -564,10 +566,12 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   }
 
   const heldTools = {
-    woodAxe: makeHeldTool('axe', false),
-    woodPickaxe: makeHeldTool('pickaxe', false),
-    stoneAxe: makeHeldTool('axe', true),
-    stonePickaxe: makeHeldTool('pickaxe', true),
+    woodAxe: makeHeldTool('axe', 'wood'),
+    woodPickaxe: makeHeldTool('pickaxe', 'wood'),
+    stoneAxe: makeHeldTool('axe', 'stone'),
+    stonePickaxe: makeHeldTool('pickaxe', 'stone'),
+    ironAxe: makeHeldTool('axe', 'iron'),
+    ironPickaxe: makeHeldTool('pickaxe', 'iron'),
   };
   const heldResources = {};
   function makeHeldResource(id) {
@@ -590,6 +594,14 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       toolPart(group, new THREE.TorusGeometry(0.13, 0.035, 5, 12), handleMaterial, 0, -0.08, 0);
     } else if (id === 'handle') {
       toolPart(group, new THREE.CylinderGeometry(0.035, 0.045, 0.46, 7), handleMaterial, 0, -0.08, 0);
+    } else if (id === 'stoneWedge') {
+      toolPart(group, new THREE.ConeGeometry(0.16, 0.32, 5), stoneHeadMaterial, 0, -0.08, 0, Math.PI);
+    } else if (id === 'bark') {
+      toolPart(group, new THREE.BoxGeometry(0.28, 0.10, 0.16), woodHeadMaterial, 0, -0.08, 0);
+    } else if (id === 'ironScrap' || id === 'metalFastener') {
+      toolPart(group, new THREE.BoxGeometry(0.28, 0.12, 0.18), metalEdgeMaterial, 0, -0.08, 0);
+    } else if (id === 'ironOre' || id === 'ironIngot') {
+      toolPart(group, new THREE.DodecahedronGeometry(0.15, 0), id === 'ironOre' ? stoneHeadMaterial : metalEdgeMaterial, 0, -0.08, 0);
     } else {
       toolPart(group, new THREE.DodecahedronGeometry(0.15, 0), stoneHeadMaterial, 0, -0.08, 0);
     }
@@ -1210,7 +1222,9 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   function currentTarget() {
     raycaster.setFromCamera(center, camera);
     const localTrees = world.forests.getInteractiveMeshes(camera.position.x, camera.position.z);
-    const hits = raycaster.intersectObjects(localTrees.concat(stoneMesh, fiberMesh, branchMesh), false);
+    const hits = raycaster.intersectObjects(localTrees.concat(
+      stoneMesh, fiberMesh, branchMesh, ...scrapMeshes, ironOreMesh
+    ), false);
     for (const hit of hits) {
       if (hit.distance > 6.2 || hit.instanceId === undefined) continue;
       if (hit.object === stoneMesh) {
@@ -1222,6 +1236,13 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       } else if (hit.object === branchMesh) {
         const node = branchNodes[hit.instanceId];
         if (node && node.active) return { type: 'branch', node };
+      } else if (scrapMeshes.includes(hit.object)) {
+        const node = scrapNodes[hit.instanceId];
+        const type = scrapMeshes.indexOf(hit.object);
+        if (node && node.active && node.type === type) return { type: 'scrap', node };
+      } else if (hit.object === ironOreMesh) {
+        const node = ironOreNodes[hit.instanceId];
+        if (node && node.active) return { type: 'ironOre', node };
       } else {
         const tree = hit.object.userData.treeInstances && hit.object.userData.treeInstances[hit.instanceId];
         if (tree && !tree.removed) return { type: 'tree', tree };
@@ -1237,7 +1258,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     if (!target) {
       if (messageCooldown <= 0) {
         messageCooldown = 0.6;
-        toast('Наведи прицел на дерево, камень, ветку или куст.');
+        toast('Наведи прицел на дерево, камень, ветку, куст или старый металл.');
       }
       return;
     }
@@ -1264,7 +1285,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     }
 
     if (target.type === 'tree') {
-      const damage = selectedTool === 'stoneAxe' ? 8 : selectedTool === 'woodAxe' ? 4 : 1;
+      const damage = selectedTool === 'ironAxe' ? 12 :
+        selectedTool === 'stoneAxe' ? 8 : selectedTool === 'woodAxe' ? 4 : 1;
       target.tree.health = target.tree.health || TREE_HP;
       target.tree.health -= damage;
       if (target.tree.health <= 0) {
@@ -1281,8 +1303,61 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       return;
     }
 
+    if (target.type === 'scrap') {
+      if (!['stoneAxe', 'stonePickaxe', 'ironAxe', 'ironPickaxe'].includes(selectedTool)) {
+        toast('Для разбора старого металла нужен каменный или железный инструмент.');
+        return;
+      }
+      const damage = selectedTool.startsWith('iron') ? 4 : 2;
+      target.node.hp -= damage;
+      if (target.node.hp <= 0) {
+        unmarkResourcePosition(target.node);
+        target.node.active = false;
+        target.node.due = Date.now() + RESPAWN_MS;
+        writeScrapNode(target.node);
+        for (const mesh of scrapMeshes) mesh.instanceMatrix.needsUpdate = true;
+        const amount = target.node.type === 2 ? 4 + Math.floor(Math.random() * 3) :
+          target.node.type === 1 ? 3 + Math.floor(Math.random() * 2) :
+          target.node.type === 3 ? 1 + Math.floor(Math.random() * 2) :
+          2 + Math.floor(Math.random() * 2);
+        const missing = addToInventory('ironScrap', amount);
+        save();
+        renderPanel();
+        toast('Старый объект разобран: +' + (amount - missing) + ' железного лома.' +
+          (missing ? ' Инвентарь заполнен.' : ' Через 5 минут объект заменится другим.'));
+      } else {
+        toast('Металл поддаётся: осталось ' + target.node.hp + ' прочности.');
+      }
+      return;
+    }
+
+    if (target.type === 'ironOre') {
+      if (selectedTool !== 'stonePickaxe' && selectedTool !== 'ironPickaxe') {
+        toast('Железную жилу можно добыть каменной или железной киркой.');
+        return;
+      }
+      target.node.hp -= selectedTool === 'ironPickaxe' ? 9 : 4;
+      if (target.node.hp <= 0) {
+        unmarkResourcePosition(target.node);
+        target.node.active = false;
+        target.node.due = Date.now() + RESPAWN_MS;
+        writeIronOreNode(target.node);
+        ironOreMesh.instanceMatrix.needsUpdate = true;
+        const amount = 2 + Math.floor(Math.random() * 3);
+        const missing = addToInventory('ironOre', amount);
+        save();
+        renderPanel();
+        toast('Железная жила добыта: +' + (amount - missing) + ' руды.' +
+          (missing ? ' Инвентарь заполнен.' : ' Через 5 минут появится новая жила.'));
+      } else {
+        toast('Железная жила: осталось ' + target.node.hp + '/18 прочности.');
+      }
+      return;
+    }
+
     // Stone deposits can be cracked by hand, but pickaxes make the work much faster.
-    target.node.hp -= selectedTool === 'stonePickaxe' ? 6 : selectedTool === 'woodPickaxe' ? 3 : 1;
+    target.node.hp -= selectedTool === 'ironPickaxe' ? 12 :
+      selectedTool === 'stonePickaxe' ? 6 : selectedTool === 'woodPickaxe' ? 3 : 1;
     if (target.node.hp <= 0) {
       unmarkResourcePosition(target.node);
       target.node.active = false;
