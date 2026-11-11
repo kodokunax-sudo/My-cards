@@ -1149,20 +1149,117 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
         ],
       },
       {
-        id: 'handle', output: 'handle', count: 1, width: 2, height: 1, bench: true,
+        id: 'handle', output: 'handle', count: 1, width: 2, height: 1, station: 'field',
         cells: [{ x: 0, y: 0, id: 'branch' }, { x: 1, y: 0, id: 'sharpShard' }],
       },
       {
-        id: 'stoneAxe', output: 'stoneAxe', count: 1, width: 3, height: 2, bench: true,
+        id: 'stoneAxe', output: 'stoneAxe', count: 1, width: 3, height: 2, station: 'field',
         cells: [
           { x: 0, y: 0, id: 'sharpShard' }, { x: 1, y: 0, id: 'handle' },
           { x: 1, y: 1, id: 'rope' }, { x: 2, y: 1, id: 'rope' },
         ],
       },
+      {
+        id: 'stonePickaxe', output: 'stonePickaxe', count: 1, width: 3, height: 2, station: 'field',
+        cells: [
+          { x: 0, y: 0, id: 'sharpShard' }, { x: 1, y: 0, id: 'handle' },
+          { x: 0, y: 1, id: 'rope' }, { x: 2, y: 1, id: 'rope' },
+        ],
+      },
+      {
+        id: 'stoneWedge', output: 'stoneWedge', count: 1, width: 3, height: 1, station: 'field',
+        cells: [
+          { x: 0, y: 0, id: 'stone' }, { x: 1, y: 0, id: 'stone' },
+          { x: 2, y: 0, id: 'stone' },
+        ],
+      },
+      {
+        id: 'bark', output: 'bark', count: 2, width: 2, height: 1, station: 'field',
+        cells: [{ x: 0, y: 0, id: 'logs' }, { x: 1, y: 0, id: 'sharpShard' }],
+      },
+      {
+        id: 'roughBoards', output: 'planks', count: 2, width: 1, height: 1,
+        station: 'field', tools: ['stoneAxe', 'stoneWedge'],
+        cells: [{ x: 0, y: 0, id: 'logs' }],
+      },
+      {
+        id: 'woodWorkshop', output: 'woodWorkshop', count: 1, width: 3, height: 1,
+        station: 'field',
+        cells: [
+          { x: 0, y: 0, id: 'planks', count: 8 },
+          { x: 1, y: 0, id: 'logs', count: 4 },
+          { x: 2, y: 0, id: 'rope', count: 6 },
+        ],
+      },
+      {
+        id: 'furnace', output: 'furnace', count: 1, width: 3, height: 1,
+        station: 'wood',
+        cells: [
+          { x: 0, y: 0, id: 'stone', count: 6 },
+          { x: 1, y: 0, id: 'planks', count: 4 },
+          { x: 2, y: 0, id: 'bark', count: 2 },
+        ],
+      },
+      {
+        id: 'ironIngotScrap', output: 'ironIngot', count: 1, width: 2, height: 1,
+        station: 'furnace',
+        cells: [
+          { x: 0, y: 0, id: 'ironScrap', count: 3 },
+          { x: 1, y: 0, id: 'bark', count: 2 },
+        ],
+      },
+      {
+        id: 'ironIngotOre', output: 'ironIngot', count: 1, width: 2, height: 1,
+        station: 'furnace',
+        cells: [
+          { x: 0, y: 0, id: 'ironOre', count: 2 },
+          { x: 1, y: 0, id: 'bark', count: 2 },
+        ],
+      },
+      {
+        id: 'metalFastener', output: 'metalFastener', count: 2, width: 1, height: 1,
+        station: 'furnace',
+        cells: [{ x: 0, y: 0, id: 'ironIngot' }],
+      },
+      {
+        id: 'fullWorkbench', output: 'fullWorkbench', count: 1, width: 2, height: 2,
+        station: 'wood',
+        cells: [
+          { x: 0, y: 0, id: 'planks', count: 10 },
+          { x: 1, y: 0, id: 'ironIngot', count: 6 },
+          { x: 0, y: 1, id: 'stone', count: 4 },
+          { x: 1, y: 1, id: 'metalFastener', count: 2 },
+        ],
+      },
+      {
+        id: 'ironAxe', output: 'ironAxe', count: 1, width: 3, height: 2,
+        station: 'full',
+        cells: [
+          { x: 0, y: 0, id: 'ironIngot', count: 2 },
+          { x: 1, y: 0, id: 'handle' },
+          { x: 0, y: 1, id: 'metalFastener' },
+          { x: 2, y: 1, id: 'metalFastener' },
+        ],
+      },
+      {
+        id: 'ironPickaxe', output: 'ironPickaxe', count: 1, width: 3, height: 2,
+        station: 'full',
+        cells: [
+          { x: 0, y: 0, id: 'ironIngot', count: 2 },
+          { x: 1, y: 0, id: 'handle' },
+          { x: 0, y: 1, id: 'metalFastener' },
+          { x: 2, y: 1, id: 'metalFastener' },
+        ],
+      },
     ];
 
     for (const recipe of recipes) {
-      if (recipe.bench && !nearWorkbench()) continue;
+      if (recipe.station && !nearStation(recipe.station)) continue;
+      if (recipe.tools && recipe.tools.some((tool) => !inventory[tool])) continue;
+      if (STATION_OUTPUTS.includes(recipe.output) && (
+        recipe.output === 'woodWorkshop' ? woodWorkshop :
+        recipe.output === 'furnace' ? furnace : fullWorkbench
+      )) continue;
       if (recipe.output === 'fieldWorkplace' && workbench) continue;
       if (TOOL_IDS.includes(recipe.output) && inventory[recipe.output]) continue;
       for (const mirrored of [false, true]) {
@@ -1172,20 +1269,28 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
             for (const part of recipe.cells) {
               const x = mirrored ? recipe.width - 1 - part.x : part.x;
               const index = (offsetY + part.y) * 3 + offsetX + x;
-              expected.set(index, part.id);
+              expected.set(index, part);
             }
             let matches = true;
             for (let index = 0; index < 9; index++) {
               const stack = craftingGrid[index];
-              const expectedId = expected.get(index);
-              if (expectedId) {
-                if (!stack || stack.id !== expectedId || stack.count < 1) { matches = false; break; }
+              const part = expected.get(index);
+              if (part) {
+                if (!stack || stack.id !== part.id || stack.count < (part.count || 1)) {
+                  matches = false;
+                  break;
+                }
               } else if (stack) {
                 matches = false;
                 break;
               }
             }
-            if (matches) return { recipe, cells: [...expected.keys()] };
+            if (matches) {
+              return {
+                recipe,
+                ingredients: [...expected.entries()].map(([index, part]) => ({ index, id: part.id, count: part.count || 1 })),
+              };
+            }
           }
         }
       }
@@ -1289,35 +1394,50 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     }
   }
 
-  function placeWorkbench() {
-    if (workbench) return true;
+  function placeStation(kind) {
+    const existing = kind === 'field' ? workbench :
+      kind === 'woodWorkshop' ? woodWorkshop :
+      kind === 'furnace' ? furnace : fullWorkbench;
+    if (existing) return true;
     if (player.mode === 'fly' || player.swimming || !player.grounded) {
-      toast('Полевое рабочее место можно поставить только на земле.');
+      toast('Станцию можно установить только на земле.');
       return false;
     }
+
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
     forward.y = 0;
     if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
     forward.normalize();
-    const distances = [2.5, 3.2, 4.0];
+
+    const occupiedStations = [workbench, woodWorkshop, furnace, fullWorkbench].filter(Boolean);
+    const distances = [2.6, 3.4, 4.2, 5.0];
     let chosen = null;
     for (const distance of distances) {
       const x = camera.position.x + forward.x * distance;
       const z = camera.position.z + forward.z * distance;
       const y = world.heightAt(x, z);
       if (!Number.isFinite(y) || world.getWaterRegionAt(x, z)) continue;
-      if (world.forests.isNearTree(x, z, 1.65)) continue;
+      if (world.forests.isNearTree(x, z, 1.9)) continue;
+      if (occupiedStations.some((station) => Math.hypot(x - station.x, z - station.z) < 3.8)) continue;
       chosen = { x, y, z, rotation: Math.atan2(forward.x, forward.z) };
       break;
     }
     if (!chosen) {
-      toast('Рядом нет свободного места для полевого рабочего места.');
+      toast('Рядом нет свободного места для установки станции.');
       return false;
     }
-    workbench = chosen;
-    addWorkbenchMesh();
+
+    if (kind === 'field') workbench = chosen;
+    else if (kind === 'woodWorkshop') woodWorkshop = chosen;
+    else if (kind === 'furnace') furnace = chosen;
+    else if (kind === 'fullWorkbench') fullWorkbench = chosen;
+    addStationMesh(kind);
     return true;
+  }
+
+  function placeWorkbench() {
+    return placeStation('field');
   }
 
   function currentTarget() {
