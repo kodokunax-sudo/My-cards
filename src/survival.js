@@ -7,6 +7,8 @@ const TREE_HP = 12;
 const STONE_HP = 12;
 const FIBER_NODE_COUNT = 190;
 const BRANCH_NODE_COUNT = 150;
+const SCRAP_NODE_COUNT = 52;
+const IRON_ORE_NODE_COUNT = 28;
 
 function loadSave() {
   try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); }
@@ -23,13 +25,17 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   const inventory = {
     logs: 0, planks: 0, sticks: 0, stone: 0,
     branch: 0, fiber: 0, sharpShard: 0, rope: 0, handle: 0,
+    stoneWedge: 0, bark: 0, ironScrap: 0, ironOre: 0, ironIngot: 0, metalFastener: 0,
     woodAxe: false, woodPickaxe: false, stoneAxe: false, stonePickaxe: false,
+    ironAxe: false, ironPickaxe: false,
   };
   const RESOURCE_IDS = [
     'logs', 'planks', 'sticks', 'stone',
     'branch', 'fiber', 'sharpShard', 'rope', 'handle',
+    'stoneWedge', 'bark', 'ironScrap', 'ironOre', 'ironIngot', 'metalFastener',
   ];
-  const TOOL_IDS = ['woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe'];
+  const TOOL_IDS = ['woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe', 'ironAxe', 'ironPickaxe'];
+  const STATION_OUTPUTS = ['woodWorkshop', 'furnace', 'fullWorkbench'];
   const ITEM_IDS = [...RESOURCE_IDS, ...TOOL_IDS];
   const STACK_LIMIT = 64;
 
@@ -84,9 +90,17 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
   syncInventoryTotals();
   let workbench = saved && saved.workbench ? saved.workbench : null;
+  let woodWorkshop = saved && saved.woodWorkshop ? saved.woodWorkshop : null;
+  let furnace = saved && saved.furnace ? saved.furnace : null;
+  let fullWorkbench = saved && saved.fullWorkbench ? saved.fullWorkbench : null;
   let workbenchGroup = null;
+  let woodWorkshopGroup = null;
+  let furnaceGroup = null;
+  let fullWorkbenchGroup = null;
   let fiberNodes = [];
   let branchNodes = [];
+  let scrapNodes = [];
+  let ironOreNodes = [];
 
   const savedTreeIds = saved && Array.isArray(saved.depletedTrees) ? saved.depletedTrees : [];
   for (const id of savedTreeIds) {
@@ -124,11 +138,22 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
           active: node.active, hp: node.hp, due: node.due,
         })),
         workbench,
+        woodWorkshop,
+        furnace,
+        fullWorkbench,
         fiberNodes: fiberNodes.map((node) => ({
           x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
           active: node.active, hp: node.hp, due: node.due,
         })),
         branchNodes: branchNodes.map((node) => ({
+          x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
+          active: node.active, hp: node.hp, due: node.due,
+        })),
+        scrapNodes: scrapNodes.map((node) => ({
+          x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
+          type: node.type, active: node.active, hp: node.hp, due: node.due,
+        })),
+        ironOreNodes: ironOreNodes.map((node) => ({
           x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
           active: node.active, hp: node.hp, due: node.due,
         })),
@@ -611,11 +636,16 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     woodPickaxe: 'Деревянная кирка',
     stoneAxe: 'Каменный топор',
     stonePickaxe: 'Каменная кирка',
+    ironAxe: 'Железный топор',
+    ironPickaxe: 'Железная кирка',
   };
   const itemNames = {
     logs: 'Древесина', planks: 'Грубые доски', sticks: 'Палки', stone: 'Крупный камень',
     branch: 'Толстая ветка', fiber: 'Растительные волокна',
     sharpShard: 'Острый каменный осколок', rope: 'Верёвка', handle: 'Деревянная рукоятка',
+    stoneWedge: 'Каменный клин', bark: 'Кора',
+    ironScrap: 'Железный лом', ironOre: 'Железная руда',
+    ironIngot: 'Железный слиток', metalFastener: 'Металлическое крепление',
     ...toolNames,
   };
 
@@ -628,6 +658,22 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
   function nearWorkbench() {
     return !!workbench && Math.hypot(camera.position.x - workbench.x, camera.position.z - workbench.z) <= 4.2;
+  }
+  function nearWoodWorkshop() {
+    return !!woodWorkshop && Math.hypot(camera.position.x - woodWorkshop.x, camera.position.z - woodWorkshop.z) <= 5.0;
+  }
+  function nearFurnace() {
+    return !!furnace && Math.hypot(camera.position.x - furnace.x, camera.position.z - furnace.z) <= 4.5;
+  }
+  function nearFullWorkbench() {
+    return !!fullWorkbench && Math.hypot(camera.position.x - fullWorkbench.x, camera.position.z - fullWorkbench.z) <= 5.0;
+  }
+  function nearStation(kind) {
+    if (kind === 'field') return nearWorkbench();
+    if (kind === 'wood') return nearWoodWorkshop();
+    if (kind === 'furnace') return nearFurnace();
+    if (kind === 'full') return nearFullWorkbench();
+    return true;
   }
 
   const ITEM_MODELS = {
@@ -642,8 +688,16 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     handle: '<g stroke="#604126" stroke-width="2" stroke-linejoin="round"><path d="m25 55 12-46 7 2-12 46Z" fill="#a87745"/><path d="m26 18 14-7 6 4-14 8Z" fill="#d1a16b"/><path d="m22 41 16-5" stroke="#e0b37c" stroke-width="3"/></g>',
     woodAxe: '<g stroke-linejoin="round"><path d="m25 53 13-43 5 2-13 43Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="m39 13 3-5 5 2-3 6Z" fill="#d39b61"/><path d="m34 19 5-11 17 3 2 9-10 8-12-2Z" fill="#a97443" stroke="#644324" stroke-width="2"/><path d="m39 9 17 2 5 8-10 1-14-4Z" fill="#c18b53"/></g>',
     woodPickaxe: '<g stroke-linejoin="round" stroke-linecap="round"><path d="m27 57 12-48 5 1-12 48Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="M12 22 24 13 41 17 55 9 59 14 43 27 24 23 14 29Z" fill="#a97443" stroke="#644324" stroke-width="3"/><path d="m13 22 11-9 17 4-5 5-13-2-7 8Z" fill="#d09a61"/></g>',
+    stoneWedge: '<g stroke="#444b4c" stroke-width="2" stroke-linejoin="round"><path d="m8 45 21-35 26 8-12 38-25-2Z" fill="#858c8a"/><path d="m29 10 26 8-12 38-4-23Z" fill="#c0c4bd"/></g>',
+    bark: '<g stroke="#5d3b24" stroke-width="2" stroke-linejoin="round"><path d="m12 48 8-36 31-3-7 38-18 8Z" fill="#8b5a31"/><path d="m20 12 31-3-12 12-25-4Z" fill="#ba8150"/><path d="m18 30 24-8-4 8-22 8Z" fill="#654326"/></g>',
+    ironScrap: '<g stroke="#493d35" stroke-width="2"><path d="m9 17 22-8 24 14-8 29-28 4-10-18Z" fill="#786f68"/><path d="m9 17 22-8-3 22-9 25-10-18Z" fill="#4e5453"/><path d="m31 9 24 14-8 29-19-21Z" fill="#a06b47"/></g>',
+    ironOre: '<g stroke="#4d4741" stroke-width="2"><path d="m8 40 7-23 20-8 21 14 1 22-21 10-21-5Z" fill="#77736c"/><path d="m15 17 20-8-3 22-24 9Z" fill="#a16b4c"/><path d="m32 31 24-8 1 22-21 10Z" fill="#5d615e"/></g>',
+    ironIngot: '<g stroke="#42484a" stroke-width="2" stroke-linejoin="round"><path d="m9 25 36-11 11 9-36 13Z" fill="#aeb5b4"/><path d="m20 36 36-13v14L20 50Z" fill="#747d80"/><path d="m9 25 11 11v14L9 38Z" fill="#8d9797"/></g>',
+    metalFastener: '<g stroke="#50595a" stroke-width="3" fill="#9aa3a2"><path d="M13 17h38v8H13zM28 9h8v37h-8z"/><circle cx="32" cy="13" r="5" fill="#c7cccc"/></g>',
     stoneAxe: '<g stroke-linejoin="round"><path d="m25 55 13-45 5 2-13 45Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="m38 14 5-12 18 4 1 15-12 8-13-4Z" fill="#7e8585" stroke="#42494b" stroke-width="2"/><path d="m43 4 18 2 1 15-8-4-12-2Z" fill="#b9bfbb"/><path d="m38 14 5-10 4 15-2 8Z" fill="#60696b"/></g>',
     stonePickaxe: '<g stroke-linejoin="round" stroke-linecap="round"><path d="m27 57 12-48 5 1-12 48Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="m10 21 14-13 19 5 12-6 7 7-17 15-22-5-11 6Z" fill="#7e8585" stroke="#42494b" stroke-width="3"/><path d="m24 8 19 5 19-6-7 9-17 6-19-5Z" fill="#b9bfbb"/></g>',
+    ironAxe: '<g stroke="#41494a" stroke-width="2" stroke-linejoin="round"><path d="m25 55 13-45 5 2-13 45Z" fill="#a46e3d"/><path d="m38 14 5-12 18 4 1 15-12 8-13-4Z" fill="#abb4b5"/><path d="m43 4 18 2 1 15-8-4-12-2Z" fill="#e0e5e3"/></g>',
+    ironPickaxe: '<g stroke="#41494a" stroke-width="3" stroke-linejoin="round"><path d="m27 57 12-48 5 1-12 48Z" fill="#a46e3d"/><path d="m10 21 14-13 19 5 12-6 7 7-17 15-22-5-11 6Z" fill="#aeb8b9"/><path d="m24 8 19 5 19-6-7 9-17 6-19-5Z" fill="#e0e5e3"/></g>',
     workbench: '<g stroke-linejoin="round" stroke="#563a25" stroke-width="2"><path d="M10 20 35 8 57 20 31 33Z" fill="#d1a06b"/><path d="m10 20 21 13v23L10 44Z" fill="#94613a"/><path d="m31 33 26-13v24L31 56Z" fill="#754b2e"/><path d="m16 22 19-9 17 8-21 10Z" fill="#e2b77e"/><path d="M17 24 17 43M23 27 23 47M29 30 29 50M36 29 36 49M43 25 43 46" stroke="#563a25" stroke-width="1.5"/></g>',
     hands: '<g stroke-linejoin="round" stroke="#64462d" stroke-width="2"><path d="M18 35 18 26q0-5 4-5t4 5v-9q0-5 4-5t4 5v8-12q0-5 4-5t4 5v14-9q0-5 4-5t4 5v13l4 6-3 14q-2 6-9 6H29q-9 0-11-8l-3-9q-2-5 2-7 3-1 5 3Z" fill="#bd8a63"/><path d="m30 27 0 8m8-10v10m8-7v7" fill="none" stroke="#e1b38b"/></g>'
   };
