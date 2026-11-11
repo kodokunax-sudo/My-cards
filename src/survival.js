@@ -319,21 +319,46 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   panel.hidden = true;
   panel.innerHTML =
     '<div class="inventory-window">' +
-      '<div class="survival-heading"><div><h2>ИНВЕНТАРЬ</h2><p>Предметы и создание вещей</p></div><button type="button" data-close aria-label="Закрыть инвентарь">×</button></div>' +
-      '<div class="inventory-columns">' +
+      '<div class="survival-heading"><div><h2>ИНВЕНТАРЬ</h2><p>Предметы · инструменты · создание</p></div><button type="button" data-close aria-label="Закрыть инвентарь">×</button></div>' +
+      '<div class="inventory-layout">' +
         '<div class="inventory-left">' +
-          '<div class="inventory-label">ПРЕДМЕТЫ</div>' +
-          '<div class="survival-resources" id="survival-resources"></div>' +
-          '<div class="inventory-label">БЫСТРАЯ ПАНЕЛЬ</div>' +
-          '<div class="survival-tool-row" id="survival-tools"></div>' +
-          '<p class="survival-help">E / I — закрыть · 1–9 — выбрать слот · ЛКМ — добывать. Каменные инструменты создаются у верстака.</p>' +
+          '<div class="inventory-character">' +
+            '<div class="inventory-label">ПЕРСОНАЖ</div>' +
+            '<div class="character-preview">' +
+              '<svg viewBox="0 0 112 150" role="img" aria-label="Модель персонажа">' +
+                '<ellipse cx="56" cy="140" rx="34" ry="6" fill="#222" opacity=".45"/>' +
+                '<path d="M36 12 48 5 68 5 80 12 80 43 68 51 48 51 36 43Z" fill="#b88b64" stroke="#654b37" stroke-width="2"/>' +
+                '<path d="M36 12 48 5 68 5 80 12 56 21Z" fill="#d7ad83"/>' +
+                '<path d="M36 12 56 21 56 50 36 43Z" fill="#a97853"/>' +
+                '<path d="M80 12 56 21 56 50 80 43Z" fill="#c9956b"/>' +
+                '<path d="M42 58 56 50 70 58 70 99 56 106 42 99Z" fill="#537a9b" stroke="#253d51" stroke-width="2"/>' +
+                '<path d="M42 58 56 66 56 106 42 99Z" fill="#3f6482"/>' +
+                '<path d="M70 58 56 66 56 106 70 99Z" fill="#6e95b3"/>' +
+                '<path d="M23 61 40 55 45 61 39 103 24 108 17 100Z" fill="#b88b64" stroke="#654b37" stroke-width="2"/>' +
+                '<path d="M89 61 72 55 67 61 73 103 88 108 95 100Z" fill="#c9956b" stroke="#654b37" stroke-width="2"/>' +
+                '<path d="M42 103 56 108 56 139 37 139 36 112Z" fill="#35465d" stroke="#202b39" stroke-width="2"/>' +
+                '<path d="M70 103 56 108 56 139 75 139 76 112Z" fill="#405675" stroke="#202b39" stroke-width="2"/>' +
+                '<path d="M37 139 56 139 56 145 33 145Z" fill="#242424"/><path d="M56 139 75 139 79 145 56 145Z" fill="#303030"/>' +
+                '<path d="M44 32h5v5h-5zM63 32h5v5h-5z" fill="#2a2724"/>' +
+              '</svg>' +
+            '</div>' +
+            '<div class="character-caption">Снаряжение</div>' +
+            '<div class="character-held" id="survival-held-name">Руки</div>' +
+          '</div>' +
+          '<div class="inventory-items">' +
+            '<div class="inventory-label">ПРЕДМЕТЫ</div>' +
+            '<div class="survival-resources" id="survival-resources"></div>' +
+            '<div class="inventory-footnote">Выбери предмет, чтобы назначить его в быстрый слот.</div>' +
+          '</div>' +
         '</div>' +
         '<div class="inventory-right">' +
-          '<div class="inventory-label">СОЗДАНИЕ</div>' +
+          '<div class="inventory-label">СОЗДАНИЕ ПРЕДМЕТОВ</div>' +
+          '<div class="crafting-note" id="survival-bench-status"></div>' +
           '<div class="survival-recipes" id="survival-recipes"></div>' +
-          '<div class="survival-foot"><span>Каменные залежи на карте</span><b id="survival-stone-count"></b></div>' +
+          '<div class="survival-foot"><span>Каменные залежи в мире</span><b id="survival-stone-count"></b></div>' +
         '</div>' +
       '</div>' +
+      '<div class="inventory-bottom-hint">E / I или ESC · Выбор слота: 1–9 · ЛКМ: добыча ресурсов</div>' +
     '</div>';
   ui.appendChild(panel);
 
@@ -354,7 +379,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   ui.appendChild(mobileHit);
 
   const resourceEl = panel.querySelector('#survival-resources');
-  const toolsEl = panel.querySelector('#survival-tools');
+  const heldNameEl = panel.querySelector('#survival-held-name');
+  const benchStatusEl = panel.querySelector('#survival-bench-status');
   const recipesEl = panel.querySelector('#survival-recipes');
   const nodeCountEl = panel.querySelector('#survival-stone-count');
   const toolNames = {
@@ -395,16 +421,34 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     return Object.entries(cost).every(([key, amount]) => inventory[key] >= amount);
   }
 
+  const ITEM_MODELS = {
+    logs: '<g stroke-linejoin="round"><path d="M14 24 42 12 56 20 28 33Z" fill="#bd8750" stroke="#65452a" stroke-width="2"/><path d="M14 24 28 33 28 51 14 42Z" fill="#89572f" stroke="#65452a" stroke-width="2"/><path d="M28 33 56 20 56 38 28 51Z" fill="#a96e3b" stroke="#65452a" stroke-width="2"/><ellipse cx="14" cy="33" rx="7" ry="9" fill="#d7a16a" stroke="#65452a" stroke-width="2"/><ellipse cx="14" cy="33" rx="3.5" ry="5" fill="none" stroke="#8e5b34" stroke-width="2"/></g>',
+    planks: '<g stroke-linejoin="round" stroke="#704827" stroke-width="1.8"><path d="M10 33 40 20 55 28 25 42Z" fill="#d5a36a"/><path d="M10 33 25 42 25 50 10 41Z" fill="#956238"/><path d="M25 42 55 28 55 36 25 50Z" fill="#b77e49"/><path d="M15 22 43 10 54 16 26 29Z" fill="#e1b47d"/><path d="M15 22 26 29 26 36 15 29Z" fill="#a16b3e"/><path d="M26 29 54 16 54 23 26 36Z" fill="#c18b53"/></g>',
+    sticks: '<g stroke-linecap="round" stroke-width="5"><path d="M20 49 43 12" stroke="#704728"/><path d="M20 49 43 12" stroke="#c18a54" stroke-width="2"/><path d="M34 49 51 24" stroke="#704728"/><path d="M34 49 51 24" stroke="#d2a16a" stroke-width="2"/></g>',
+    stone: '<g stroke-linejoin="round" stroke="#484b4c" stroke-width="2"><path d="m9 39 7-17 14-8 17 7 9 15-9 14-22 4-15-6Z" fill="#898d8b"/><path d="m9 39 7-17 14-8-3 21-6 19-12-6Z" fill="#686e70"/><path d="m30 14 17 7 9 15-29-1Z" fill="#aeb1aa"/><path d="m27 35 29 1-9 14-22 4Z" fill="#777d7d"/><path d="m18 24 8-4 5 4-7 6Z" fill="#c3c3b8" opacity=".8"/></g>',
+    woodAxe: '<g stroke-linejoin="round"><path d="m25 53 13-43 5 2-13 43Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="m39 13 3-5 5 2-3 6Z" fill="#d39b61"/><path d="m34 19 5-11 17 3 2 9-10 8-12-2Z" fill="#a97443" stroke="#644324" stroke-width="2"/><path d="m39 9 17 2 5 8-10 1-14-4Z" fill="#c18b53"/></g>',
+    woodPickaxe: '<g stroke-linejoin="round" stroke-linecap="round"><path d="m27 57 12-48 5 1-12 48Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="M12 22 24 13 41 17 55 9 59 14 43 27 24 23 14 29Z" fill="#a97443" stroke="#644324" stroke-width="3"/><path d="m13 22 11-9 17 4-5 5-13-2-7 8Z" fill="#d09a61"/></g>',
+    stoneAxe: '<g stroke-linejoin="round"><path d="m25 55 13-45 5 2-13 45Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="m38 14 5-12 18 4 1 15-12 8-13-4Z" fill="#7e8585" stroke="#42494b" stroke-width="2"/><path d="m43 4 18 2 1 15-8-4-12-2Z" fill="#b9bfbb"/><path d="m38 14 5-10 4 15-2 8Z" fill="#60696b"/></g>',
+    stonePickaxe: '<g stroke-linejoin="round" stroke-linecap="round"><path d="m27 57 12-48 5 1-12 48Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="m10 21 14-13 19 5 12-6 7 7-17 15-22-5-11 6Z" fill="#7e8585" stroke="#42494b" stroke-width="3"/><path d="m24 8 19 5 19-6-7 9-17 6-19-5Z" fill="#b9bfbb"/></g>',
+    workbench: '<g stroke-linejoin="round" stroke="#563a25" stroke-width="2"><path d="M10 20 35 8 57 20 31 33Z" fill="#d1a06b"/><path d="m10 20 21 13v23L10 44Z" fill="#94613a"/><path d="m31 33 26-13v24L31 56Z" fill="#754b2e"/><path d="m16 22 19-9 17 8-21 10Z" fill="#e2b77e"/><path d="M17 24 17 43M23 27 23 47M29 30 29 50M36 29 36 49M43 25 43 46" stroke="#563a25" stroke-width="1.5"/></g>',
+    hands: '<g stroke-linejoin="round" stroke="#64462d" stroke-width="2"><path d="M18 35 18 26q0-5 4-5t4 5v-9q0-5 4-5t4 5v8-12q0-5 4-5t4 5v14-9q0-5 4-5t4 5v13l4 6-3 14q-2 6-9 6H29q-9 0-11-8l-3-9q-2-5 2-7 3-1 5 3Z" fill="#bd8a63"/><path d="m30 27 0 8m8-10v10m8-7v7" fill="none" stroke="#e1b38b"/></g>'
+  };
+
+  function itemModelMarkup(id) {
+    const model = ITEM_MODELS[id] || ITEM_MODELS.stone;
+    return '<svg class="item-model" viewBox="0 0 64 64" aria-hidden="true" focusable="false">' + model + '</svg>';
+  }
+
   const hotbarDefinitions = [
-    { id: 'axe', name: 'Топор', icon: '⚒', kind: 'tool' },
-    { id: 'pickaxe', name: 'Кирка', icon: '⛏', kind: 'tool' },
-    { id: 'hands', name: 'Руки', icon: '✧', kind: 'hands' },
-    { id: 'logs', name: 'Дерево', icon: '▥', kind: 'resource', resource: 'logs' },
-    { id: 'planks', name: 'Доски', icon: '▤', kind: 'resource', resource: 'planks' },
-    { id: 'sticks', name: 'Палки', icon: '╱', kind: 'resource', resource: 'sticks' },
-    { id: 'stone', name: 'Камень', icon: '◆', kind: 'resource', resource: 'stone' },
-    { id: 'empty-8', name: 'Пустой слот', icon: '', kind: 'empty' },
-    { id: 'empty-9', name: 'Пустой слот', icon: '', kind: 'empty' },
+    { id: 'axe', name: 'Топор', modelId: 'woodAxe', kind: 'tool' },
+    { id: 'pickaxe', name: 'Кирка', modelId: 'woodPickaxe', kind: 'tool' },
+    { id: 'hands', name: 'Руки', modelId: 'hands', kind: 'hands' },
+    { id: 'logs', name: 'Дерево', modelId: 'logs', kind: 'resource', resource: 'logs' },
+    { id: 'planks', name: 'Доски', modelId: 'planks', kind: 'resource', resource: 'planks' },
+    { id: 'sticks', name: 'Палки', modelId: 'sticks', kind: 'resource', resource: 'sticks' },
+    { id: 'stone', name: 'Камень', modelId: 'stone', kind: 'resource', resource: 'stone' },
+    { id: 'empty-8', name: 'Пустой слот', modelId: null, kind: 'empty' },
+    { id: 'empty-9', name: 'Пустой слот', modelId: null, kind: 'empty' },
   ];
 
   function slotState(index) {
@@ -414,7 +458,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       const toolId = definition.id === 'axe'
         ? (inventory.stoneAxe ? 'stoneAxe' : inventory.woodAxe ? 'woodAxe' : null)
         : (inventory.stonePickaxe ? 'stonePickaxe' : inventory.woodPickaxe ? 'woodPickaxe' : null);
-      return { ...definition, toolId, hasItem: !!toolId, count: toolId ? 1 : 0 };
+      const modelId = toolId || (definition.id === 'axe' ? 'woodAxe' : 'woodPickaxe');
+      return { ...definition, toolId, modelId, hasItem: !!toolId, count: toolId ? 1 : 0 };
     }
     if (definition.kind === 'hands') return { ...definition, hasItem: true, count: 0 };
     if (definition.kind === 'resource') {
@@ -440,8 +485,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     key.className = 'slot-key';
     key.textContent = String(index + 1);
     const icon = document.createElement('span');
-    icon.className = 'slot-icon slot-icon-' + item.id;
-    icon.textContent = item.hasItem ? item.icon : '';
+    icon.className = 'slot-model-wrap';
+    icon.innerHTML = item.hasItem && item.modelId ? itemModelMarkup(item.modelId) : '';
     const count = document.createElement('span');
     count.className = 'slot-count';
     count.textContent = item.kind === 'resource' && item.count > 0 ? String(item.count) : '';
@@ -451,21 +496,20 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
   function renderHotbar() {
     hotbar.replaceChildren(...hotbarDefinitions.map((item, index) => createHotbarSlot(index)));
-    toolsEl.replaceChildren(...hotbarDefinitions.map((item, index) => createHotbarSlot(index, true)));
   }
 
   function renderInventoryGrid() {
     const items = [
-      { name: 'Дерево', count: inventory.logs, icon: '▥', slot: 3 },
-      { name: 'Доски', count: inventory.planks, icon: '▤', slot: 4 },
-      { name: 'Палки', count: inventory.sticks, icon: '╱', slot: 5 },
-      { name: 'Камень', count: inventory.stone, icon: '◆', slot: 6 },
-      { name: 'Деревянный топор', count: inventory.woodAxe ? 1 : 0, icon: '⚒', slot: 0 },
-      { name: 'Деревянная кирка', count: inventory.woodPickaxe ? 1 : 0, icon: '⛏', slot: 1 },
-      { name: 'Каменный топор', count: inventory.stoneAxe ? 1 : 0, icon: '⚒', slot: 0 },
-      { name: 'Каменная кирка', count: inventory.stonePickaxe ? 1 : 0, icon: '⛏', slot: 1 },
+      { id: 'logs', name: 'Дерево', count: inventory.logs, slot: 3 },
+      { id: 'planks', name: 'Доски', count: inventory.planks, slot: 4 },
+      { id: 'sticks', name: 'Палки', count: inventory.sticks, slot: 5 },
+      { id: 'stone', name: 'Камень', count: inventory.stone, slot: 6 },
+      { id: 'woodAxe', name: 'Деревянный топор', count: inventory.woodAxe ? 1 : 0, slot: 0 },
+      { id: 'woodPickaxe', name: 'Деревянная кирка', count: inventory.woodPickaxe ? 1 : 0, slot: 1 },
+      { id: 'stoneAxe', name: 'Каменный топор', count: inventory.stoneAxe ? 1 : 0, slot: 0 },
+      { id: 'stonePickaxe', name: 'Каменная кирка', count: inventory.stonePickaxe ? 1 : 0, slot: 1 },
     ].filter((item) => item.count > 0);
-    if (workbench) items.push({ name: 'Верстак установлен', count: 1, icon: '▦', slot: null });
+    if (workbench) items.push({ id: 'workbench', name: 'Верстак', count: 1, slot: null });
 
     resourceEl.replaceChildren();
     items.slice(0, 27).forEach((item) => {
@@ -476,15 +520,17 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       button.setAttribute('aria-label', item.name + ', количество ' + item.count);
       if (item.slot === null) button.disabled = true;
       else button.dataset.slot = String(item.slot);
-      const icon = document.createElement('span');
-      icon.className = 'slot-icon';
-      icon.textContent = item.icon;
+
+      const model = document.createElement('span');
+      model.className = 'slot-model-wrap';
+      model.innerHTML = itemModelMarkup(item.id);
       const count = document.createElement('span');
       count.className = 'slot-count';
       count.textContent = String(item.count);
-      button.append(icon, count);
+      button.append(model, count);
       resourceEl.appendChild(button);
     });
+
     while (resourceEl.children.length < 27) {
       const empty = document.createElement('div');
       empty.className = 'inventory-slot empty';
@@ -492,31 +538,50 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       resourceEl.appendChild(empty);
     }
   }
-
   function renderPanel() {
     refreshHeldTool();
     renderInventoryGrid();
     renderHotbar();
+    heldNameEl.textContent = toolNames[selectedTool];
+
+    const atBench = nearWorkbench();
+    benchStatusEl.textContent = workbench
+      ? (atBench ? 'Верстак рядом: каменные инструменты доступны.' : 'Верстак уже установлен. Подойди к нему для каменного крафта.')
+      : 'Для каменных инструментов сначала создай и поставь верстак.';
+
     recipesEl.replaceChildren();
     recipes.forEach((recipe) => {
       const owned = owns(recipe.id);
-      const atBench = !recipe.bench || nearWorkbench();
+      const canCraftHere = !recipe.bench || atBench;
       const row = document.createElement('div');
       row.className = 'survival-recipe';
+
+      const output = document.createElement('div');
+      output.className = 'recipe-output';
+      output.innerHTML = itemModelMarkup(recipe.id === 'planks' || recipe.id === 'sticks' ? recipe.id : recipe.id);
       const info = document.createElement('div');
+      info.className = 'recipe-info';
       const title = document.createElement('b');
       title.textContent = recipe.title;
-      const cost = document.createElement('span');
-      cost.textContent = recipe.text;
-      info.append(title, cost);
+      const needs = document.createElement('div');
+      needs.className = 'recipe-needs';
+      Object.entries(recipe.cost).forEach(([key, amount]) => {
+        const need = document.createElement('span');
+        need.className = 'recipe-need';
+        need.innerHTML = itemModelMarkup(key) + '<b>' + amount + '</b>';
+        needs.appendChild(need);
+      });
+      info.append(title, needs);
+
       const button = document.createElement('button');
       button.type = 'button';
       button.dataset.craft = recipe.id;
-      button.textContent = owned ? 'ГОТОВО' : recipe.bench && !atBench ? 'У ВЕРСТАКА' : 'СОЗДАТЬ';
-      button.disabled = owned || !affordable(recipe.cost) || !atBench;
-      row.append(info, button);
+      button.textContent = owned ? 'ГОТОВО' : recipe.bench && !canCraftHere ? 'ВЕРСТАК' : 'СОЗДАТЬ';
+      button.disabled = owned || !affordable(recipe.cost) || !canCraftHere;
+      row.append(output, info, button);
       recipesEl.appendChild(row);
     });
+
     const active = nodes.filter((node) => node.active).length;
     nodeCountEl.textContent = active + ' / ' + NODE_COUNT;
     status.textContent = 'Слот ' + (selectedSlot + 1) + ' · ' + toolNames[selectedTool] +
