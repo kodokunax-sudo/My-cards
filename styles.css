@@ -1491,3 +1491,64 @@ body.in-game #survival-toggle {display:inline-flex}
   .inventory-right {border-top:1px solid rgba(0,0,0,.2);padding-top:7px}
   .survival-recipes {grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+
+/* Keep every inventory section on screen. Small screens compact the same layout
+   instead of turning the crafting list into a second scroll area. */
+#survival-panel {overflow:hidden}
+.inventory-window {overflow:hidden}
+.survival-recipes {overflow:visible;max-height:none}
+@media(max-width:620px) {
+  #survival-panel {overflow:hidden;align-items:center;padding:5px 5px 60px}
+  .inventory-window {
+    width:98vw;max-height:calc(100dvh - 68px);overflow:hidden;
+    padding:7px;
+  }
+  .inventory-window .survival-heading {margin-bottom:5px;padding-bottom:4px}
+  .inventory-layout {grid-template-columns:1fr;gap:5px}
+  .inventory-left {grid-template-columns:66px minmax(0,1fr);gap:5px}
+  .inventory-character {height:116px;min-height:0;padding:3px}
+  .character-preview {height:72px}
+  .character-preview svg {height:70px;width:54px}
+  .character-caption {margin-top:1px;font-size:7px}
+  .character-held {font-size:8px}
+  .inventory-label {margin-bottom:3px;font-size:8px}
+  .survival-resources {grid-template-columns:repeat(9,minmax(0,1fr));gap:2px}
+  .inventory-slot {min-width:0;border-width:1px}
+  .inventory-footnote {margin-top:3px;font-size:7px}
+  .inventory-right {border-top:1px solid rgba(0,0,0,.18);padding-top:4px}
+  .crafting-note {margin-bottom:3px;padding:3px 5px;font-size:7px}
+  .survival-recipes {grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}
+  .survival-recipe {
+    grid-template-columns:23px minmax(0,1fr);
+    grid-template-rows:auto auto;
+    min-height:46px;padding:2px;gap:1px 3px;
+  }
+  .recipe-output {width:22px;height:22px}
+  .recipe-output .item-model {width:21px;height:21px}
+  .recipe-info {gap:1px}
+  .recipe-info>b {font-size:7px}
+  .recipe-needs {gap:1px}
+  .recipe-need {font-size:6px;padding:0}
+  .recipe-need .item-model {width:11px;height:11px}
+  .survival-recipe button {min-width:42px;min-height:16px;padding:1px 3px;font-size:6px}
+  .survival-foot {margin-top:3px;padding-top:3px;font-size:7px}
+  .inventory-bottom-hint {margin-top:3px;padding-top:3px;font-size:7px}
+}
+@media(max-height:540px) and (min-width:621px) {
+  #survival-panel {padding-bottom:65px}
+  .inventory-window {max-height:calc(100dvh - 72px);padding:6px 9px}
+  .inventory-window .survival-heading {margin-bottom:4px;padding-bottom:3px}
+  .inventory-character {height:112px}
+  .character-preview {height:68px}
+  .character-preview svg {height:66px;width:52px}
+  .survival-recipes {gap:2px}
+  .survival-recipe {min-height:43px;grid-template-columns:23px minmax(0,1fr);padding:2px;gap:1px 3px}
+  .recipe-output {width:22px;height:22px}
+  .recipe-output .item-model {width:21px;height:21px}
+  .recipe-info>b {font-size:7px}
+  .recipe-need .item-model {width:12px;height:12px}
+  .survival-recipe button {min-height:16px;padding:1px 3px;font-size:6px}
+  .crafting-note {margin-bottom:3px;padding:3px;font-size:7px}
+  .inventory-bottom-hint {margin-top:3px;padding-top:3px}
+}
