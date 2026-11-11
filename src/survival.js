@@ -92,17 +92,73 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     return null;
   }
 
+  // Validate saved deposits once, then fill missing slots with one shared
+  // candidate search. The previous implementation could perform up to
+  // 500 × 6,500 expensive world checks during a new game.
   for (const node of nodes) {
     if (node.active && !world.canSpawnResourceAt(node.x, node.z, 4)) {
       node.active = false;
       node.due = Date.now() + 15000;
     }
   }
-  for (const node of nodes) {
-    if (node.active || node.due > Date.now()) continue;
-    const position = findNodePosition(node.id, null);
-    if (position) Object.assign(node, position, { active: true, hp: STONE_HP, due: 0 });
-    else node.due = Date.now() + 15000;
+
+  const occupiedCells = new Map();
+  const NODE_SPACING = 24;
+  const nodeCellKey = (x, z) => `${Math.floor(x / NODE_SPACING)},${Math.floor(z / NODE_SPACING)}`;
+  function markOccupied(node) {
+    const key = nodeCellKey(node.x, node.z);
+    let cell = occupiedCells.get(key);
+    if (!cell) { cell = []; occupiedCells.set(key, cell); }
+    cell.push(node);
+  }
+  for (const node of nodes) if (node.active) markOccupied(node);
+
+  function isCrowded(x, z) {
+    const gx = Math.floor(x / NODE_SPACING);
+    const gz = Math.floor(z / NODE_SPACING);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const cell = occupiedCells.get(`${gx + dx},${gz + dz}`);
+        if (!cell) continue;
+        for (const other of cell) {
+          if (Math.hypot(x - other.x, z - other.z) < NODE_SPACING) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  let placedNodes = nodes.filter((node) => node.active).length;
+  let nextNodeIndex = 0;
+  const searchLimit = 18000;
+  for (let attempt = 0; attempt < searchLimit && placedNodes < NODE_COUNT; attempt++) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.sqrt(340 * 340 + Math.random() * (5300 * 5300 - 340 * 340));
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius;
+    if (!world.canSpawnResourceAt(x, z, 10) || isCrowded(x, z)) continue;
+    const y = world.heightAt(x, z);
+    if (!Number.isFinite(y)) continue;
+
+    while (nextNodeIndex < NODE_COUNT &&
+      (nodes[nextNodeIndex].active || nodes[nextNodeIndex].due > Date.now())) nextNodeIndex++;
+    if (nextNodeIndex >= NODE_COUNT) break;
+    const node = nodes[nextNodeIndex];
+    Object.assign(node, {
+      x, y, z,
+      size: 0.78 + Math.random() * 0.72,
+      angle: Math.random() * Math.PI * 2,
+      active: true,
+      hp: STONE_HP,
+      due: 0,
+    });
+    markOccupied(node);
+    placedNodes++;
+    nextNodeIndex++;
+  }
+
+  if (placedNodes < NODE_COUNT) {
+    console.warn(`[Survival] Created ${placedNodes}/${NODE_COUNT} stone deposits; remaining slots will retry later.`);
   }
 
   const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.98, flatShading: true });
