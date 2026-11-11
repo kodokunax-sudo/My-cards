@@ -59,7 +59,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       localStorage.setItem(SAVE_KEY, JSON.stringify({
         inventory,
         selectedTool,
-        depletedTrees: world.forests.trees.filter((tree) => tree.removed).map((tree) => tree.id),
+        depletedTrees: world.forests.depletedIds || world.forests.trees.filter((tree) => tree.removed).map((tree) => tree.id),
         nodes: nodes.map((node) => ({
           x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
           active: node.active, hp: node.hp, due: node.due,
