@@ -1245,13 +1245,15 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
         ],
       },
       {
-        id: 'ironPickaxe', output: 'ironPickaxe', count: 1, width: 3, height: 2,
+        id: 'ironPickaxe', output: 'ironPickaxe', count: 1, width: 3, height: 3,
         station: 'full',
         cells: [
-          { x: 0, y: 0, id: 'ironIngot', count: 2 },
-          { x: 1, y: 0, id: 'handle' },
-          { x: 0, y: 1, id: 'metalFastener' },
-          { x: 2, y: 1, id: 'metalFastener' },
+          { x: 0, y: 0, id: 'ironIngot' },
+          { x: 1, y: 0, id: 'ironIngot' },
+          { x: 2, y: 0, id: 'ironIngot' },
+          { x: 1, y: 1, id: 'handle' },
+          { x: 0, y: 2, id: 'metalFastener' },
+          { x: 2, y: 2, id: 'metalFastener' },
         ],
       },
     ];
@@ -1259,11 +1261,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     for (const recipe of recipes) {
       if (recipe.station && !nearStation(recipe.station)) continue;
       if (recipe.tools && recipe.tools.some((tool) => !inventory[tool])) continue;
-      if (STATION_OUTPUTS.includes(recipe.output) && (
-        recipe.output === 'woodWorkshop' ? woodWorkshop :
-        recipe.output === 'furnace' ? furnace : fullWorkbench
-      )) continue;
       if (recipe.output === 'fieldWorkplace' && workbench) continue;
+      if (recipe.output === 'woodWorkshop' && woodWorkshop) continue;
+      if (recipe.output === 'furnace' && furnace) continue;
+      if (recipe.output === 'fullWorkbench' && fullWorkbench) continue;
       if (TOOL_IDS.includes(recipe.output) && inventory[recipe.output]) continue;
       for (const mirrored of [false, true]) {
         for (let offsetY = 0; offsetY <= 3 - recipe.height; offsetY++) {
