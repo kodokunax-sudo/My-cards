@@ -715,31 +715,29 @@ function createHeightFunction(baseHeightAt, riverProfiles, bridgeDeckTopY) {
 
 function createWorldChunkStreamer() {
   const jobs = [];
-  const priorities = { terrain: 0, forest: 70, rocks: 120, cover: 160 };
+  const LOAD_RADIUS = 1480;
   let loaded = 0;
-  let total = 0;
-  let lastSortAt = 0;
-  let lastX = -Infinity;
-  let lastZ = -Infinity;
 
   function enqueue(x, z, type, build) {
-    jobs.push({ x, z, type, build, order: total++ });
+    // Keep a lightweight registry only. A distant chunk is not queued until
+    // the player actually approaches it.
+    jobs.push({ x, z, type, build, done: false, order: jobs.length });
   }
 
-  function prioritize(x, z, force = false) {
-    const now = performance.now();
-    if (!force && now - lastSortAt < 450 && Math.hypot(x - lastX, z - lastZ) < 110) return;
-    jobs.sort((a, b) => {
-      const da = Math.hypot(a.x - x, a.z - z) + (priorities[a.type] || 0);
-      const db = Math.hypot(b.x - x, b.z - z) + (priorities[b.type] || 0);
-      return da - db || a.order - b.order;
-    });
-    lastSortAt = now;
-    lastX = x;
-    lastZ = z;
+  function nearbyJobs(x, z) {
+    return jobs
+      .filter((job) => !job.done && Math.hypot(job.x - x, job.z - z) <= LOAD_RADIUS)
+      .sort((a, b) => {
+        const da = Math.hypot(a.x - x, a.z - z);
+        const db = Math.hypot(b.x - x, b.z - z);
+        const priority = { terrain: 0, forest: 1, rocks: 2, cover: 3 };
+        return da - db || (priority[a.type] || 0) - (priority[b.type] || 0) || a.order - b.order;
+      });
   }
 
   function buildOne(job) {
+    if (!job || job.done) return;
+    job.done = true;
     try {
       job.build();
       loaded++;
@@ -750,21 +748,22 @@ function createWorldChunkStreamer() {
 
   return {
     enqueue,
-    prime(x, z, count = 4) {
-      prioritize(x, z, true);
-      for (let i = 0; i < count && jobs.length; i++) buildOne(jobs.shift());
+    prime(x, z, count = 2) {
+      const nearby = nearbyJobs(x, z);
+      for (let i = 0; i < Math.min(count, nearby.length); i++) buildOne(nearby[i]);
     },
     update(x, z) {
-      prioritize(x, z);
-      const startedAt = performance.now();
-      if (jobs.length && performance.now() - startedAt < 7) buildOne(jobs.shift());
-      return this.progress;
+      const nearby = nearbyJobs(x, z);
+      if (nearby.length) buildOne(nearby[0]);
+      const pending = nearby.filter((job) => !job.done).length;
+      return { loaded, pending, percent: pending ? Math.round(loaded / (loaded + pending) * 100) : 100 };
     },
     get progress() {
-      return { loaded, total, pending: jobs.length, percent: total ? Math.round(loaded / total * 100) : 100 };
+      return { loaded, pending: jobs.filter((job) => !job.done).length };
     },
   };
 }
+
 
 function createTerrain(scene, heightAt, renderables, streamer) {
   const chunksPerAxis = 14;
@@ -1027,52 +1026,25 @@ function pointInReservedArea(x, z, routePoints) {
   return false;
 }
 
-async function createForests(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress) {
+function createChunkRandom(cx, cz, salt = 1) {
+  const seed = (
+    Math.imul(cx | 0, 73856093) ^
+    Math.imul(cz | 0, 19349663) ^
+    Math.imul(salt | 0, 83492791)
+  ) >>> 0;
+  return seededRandom(seed || 1);
+}
+
+function createForests(scene, heightAt, routePoints, rnd, renderables) {
   const trees = [];
+  const treeById = new Map();
+  const chunkSize = 640;
   const cell = 16;
   const half = GRASS_RADIUS - 80;
-  let forestRows = 0;
-  for (let x0 = -half; x0 <= half; x0 += cell) {
-    if (forestRows++ % 32 === 0) {
-      onProgress?.(`Расставляем деревья... ${Math.round((x0 + half) / (half * 2) * 100)}%`);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-    for (let z0 = -half; z0 <= half; z0 += cell) {
-      const x = x0 + (rnd() - 0.5) * cell * 0.82;
-      const z = z0 + (rnd() - 0.5) * cell * 0.82;
-      if (Math.hypot(x, z) > half || pointInReservedArea(x, z, routePoints)) continue;
-      const forestMask =
-        valueNoise(x / 1250, z / 1250, 71) * 0.62 +
-        valueNoise(x / 2650, z / 2650, 73) * 0.38;
-      if (forestMask < 0.30 || rnd() > 0.44) continue;
-      const pine = rnd() < 0.34;
-      trees.push({
-        id: trees.length,
-        x, z, y: heightAt(x, z) ?? 0,
-        scale: 0.78 + rnd() * 0.88,
-        rotation: rnd() * TAU,
-        hue: rnd(),
-        pine,
-        variant: pine ? Math.floor(rnd() * 3) : Math.floor(rnd() * 5),
-      });
-    }
-  }
-
-  const chunkSize = 640;
-  const buckets = new Map();
-  for (const tree of trees) {
-    const cx = Math.floor(tree.x / chunkSize);
-    const cz = Math.floor(tree.z / chunkSize);
-    const key = `${cx},${cz}`;
-    let bucket = buckets.get(key);
-    if (!bucket) {
-      bucket = { trees: [], variants: [[], [], [], [], [], [], [], []], interactiveMeshes: [] };
-      buckets.set(key, bucket);
-    }
-    bucket.trees.push(tree);
-    bucket.variants[(tree.pine ? 5 : 0) + tree.variant].push(tree);
-  }
-
+  const collisionCellSize = 16;
+  const collisionGrid = new Map();
+  const chunks = new Map();
+  const generated = new Set();
   const trunkGeometry = new THREE.CylinderGeometry(0.25, 0.48, 8, 7);
   const crownGeometries = [
     new THREE.IcosahedronGeometry(5.3, 0),
@@ -1085,22 +1057,77 @@ async function createForests(scene, heightAt, routePoints, rnd, renderables, str
     new THREE.ConeGeometry(4.4, 13.6, 9, 2),
   ];
   const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x59432f, roughness: 1 });
-  // Eight tree variants are supported above. Use neutral material colour so
-  // per-instance forest-green tints are applied exactly once.
   const crownMaterials = Array.from({ length: 8 }, () =>
     new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.98, flatShading: true })
   );
-
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const position = new THREE.Vector3();
   const scale = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
-  const meshes = [];
 
-  for (const [key, bucket] of buckets) {
-    const [chunkX, chunkZ] = key.split(',').map(Number);
-    streamer.enqueue((chunkX + 0.5) * chunkSize, (chunkZ + 0.5) * chunkSize, 'forest', () => {
+  function addTreeToCollision(tree) {
+    tree.radius = 0.48 * tree.scale;
+    tree.seed = tree.rotation;
+    tree.minY = tree.y;
+    tree.maxY = tree.y + 8 * tree.scale;
+    tree.removed = false;
+    const cx = Math.floor(tree.x / collisionCellSize);
+    const cz = Math.floor(tree.z / collisionCellSize);
+    const key = `${cx},${cz}`;
+    let bucket = collisionGrid.get(key);
+    if (!bucket) { bucket = []; collisionGrid.set(key, bucket); }
+    bucket.push(tree);
+    treeById.set(tree.id, tree);
+    trees.push(tree);
+  }
+
+  function generateChunk(cx, cz) {
+    const key = `${cx},${cz}`;
+    if (generated.has(key)) return false;
+    generated.add(key);
+    const random = createChunkRandom(cx, cz, 71);
+    const left = cx * chunkSize;
+    const top = cz * chunkSize;
+    const minIX = Math.max(0, Math.ceil((left + half) / cell));
+    const maxIX = Math.min(Math.floor((2 * half) / cell), Math.floor((left + chunkSize + half) / cell));
+    const minIZ = Math.max(0, Math.ceil((top + half) / cell));
+    const maxIZ = Math.min(Math.floor((2 * half) / cell), Math.floor((top + chunkSize + half) / cell));
+    const bucket = { trees: [], variants: [[], [], [], [], [], [], [], []], interactiveMeshes: [] };
+
+    for (let ix = minIX; ix <= maxIX; ix++) {
+      const x0 = -half + ix * cell;
+      for (let iz = minIZ; iz <= maxIZ; iz++) {
+        const z0 = -half + iz * cell;
+        const x = x0 + (random() - 0.5) * cell * 0.82;
+        const z = z0 + (random() - 0.5) * cell * 0.82;
+        if (Math.hypot(x, z) > half || pointInReservedArea(x, z, routePoints)) continue;
+        const forestMask =
+          valueNoise(x / 1250, z / 1250, 71) * 0.62 +
+          valueNoise(x / 2650, z / 2650, 73) * 0.38;
+        if (forestMask < 0.30 || random() > 0.44) continue;
+        const pine = random() < 0.34;
+        const tree = {
+          // Stable spatial ID, independent of which chunk loads first.
+          id: 1000000000 + ix * 1000 + iz,
+          x, z, y: heightAt(x, z) ?? 0,
+          scale: 0.78 + random() * 0.88,
+          rotation: random() * TAU,
+          hue: random(),
+          pine,
+          variant: pine ? Math.floor(random() * 3) : Math.floor(random() * 5),
+        };
+        bucket.trees.push(tree);
+        bucket.variants[(pine ? 5 : 0) + tree.variant].push(tree);
+        addTreeToCollision(tree);
+      }
+    }
+
+    if (!bucket.trees.length) {
+      chunks.set(key, bucket);
+      return true;
+    }
+
     const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, bucket.trees.length);
     trunks.userData.noCollider = true;
     trunks.userData.treeInstances = bucket.trees;
@@ -1120,15 +1147,12 @@ async function createForests(scene, heightAt, routePoints, rnd, renderables, str
     trunks.name = `forest-trunks-${key}`;
     registerChunkMesh(trunks, renderables, 2800, true);
     scene.add(trunks);
-    meshes.push(trunks);
     bucket.interactiveMeshes.push(trunks);
 
     for (let variant = 0; variant < bucket.variants.length; variant++) {
       const group = bucket.variants[variant];
       if (!group.length) continue;
-      const crowns = new THREE.InstancedMesh(
-        crownGeometries[variant], crownMaterials[variant], group.length
-      );
+      const crowns = new THREE.InstancedMesh(crownGeometries[variant], crownMaterials[variant], group.length);
       for (let i = 0; i < group.length; i++) {
         const tree = group[i];
         quaternion.setFromAxisAngle(up, tree.rotation);
@@ -1160,26 +1184,11 @@ async function createForests(scene, heightAt, routePoints, rnd, renderables, str
       crowns.userData.treeInstances = group;
       registerChunkMesh(crowns, renderables, 2800, true);
       scene.add(crowns);
-      meshes.push(crowns);
       bucket.interactiveMeshes.push(crowns);
     }
-    });
-  }
 
-  const collisionCellSize = 16;
-  const collisionGrid = new Map();
-  for (const tree of trees) {
-    const cx = Math.floor(tree.x / collisionCellSize);
-    const cz = Math.floor(tree.z / collisionCellSize);
-    const key = `${cx},${cz}`;
-    let bucket = collisionGrid.get(key);
-    if (!bucket) { bucket = []; collisionGrid.set(key, bucket); }
-    tree.radius = 0.48 * tree.scale;
-    tree.seed = tree.rotation;
-    tree.minY = tree.y;
-    tree.maxY = tree.y + 8 * tree.scale;
-    tree.removed = false;
-    bucket.push(tree);
+    chunks.set(key, bucket);
+    return true;
   }
 
   function forestCollision(x, z, feetY, height, radius, resolve = false) {
@@ -1191,9 +1200,9 @@ async function createForests(scene, heightAt, routePoints, rnd, renderables, str
       const maxCellX = Math.floor((px + radius + 1) / collisionCellSize);
       const minCellZ = Math.floor((pz - radius - 1) / collisionCellSize);
       const maxCellZ = Math.floor((pz + radius + 1) / collisionCellSize);
-      for (let cx = minCellX; cx <= maxCellX; cx++) {
-        for (let cz = minCellZ; cz <= maxCellZ; cz++) {
-          const bucket = collisionGrid.get(`${cx},${cz}`);
+      for (let gx = minCellX; gx <= maxCellX; gx++) {
+        for (let gz = minCellZ; gz <= maxCellZ; gz++) {
+          const bucket = collisionGrid.get(`${gx},${gz}`);
           if (!bucket) continue;
           for (const tree of bucket) {
             if (tree.removed || feetY + height <= tree.minY + 0.035 || feetY >= tree.maxY) continue;
@@ -1233,13 +1242,12 @@ async function createForests(scene, heightAt, routePoints, rnd, renderables, str
     const maxCellX = Math.floor((x + clearance) / collisionCellSize);
     const minCellZ = Math.floor((z - clearance) / collisionCellSize);
     const maxCellZ = Math.floor((z + clearance) / collisionCellSize);
-    for (let cx = minCellX; cx <= maxCellX; cx++) {
-      for (let cz = minCellZ; cz <= maxCellZ; cz++) {
-        const bucket = collisionGrid.get(`${cx},${cz}`);
+    for (let gx = minCellX; gx <= maxCellX; gx++) {
+      for (let gz = minCellZ; gz <= maxCellZ; gz++) {
+        const bucket = collisionGrid.get(`${gx},${gz}`);
         if (!bucket) continue;
         for (const tree of bucket) {
-          if (tree.removed) continue;
-          if (Math.hypot(x - tree.x, z - tree.z) < clearance + tree.radius) return true;
+          if (!tree.removed && Math.hypot(x - tree.x, z - tree.z) < clearance + tree.radius) return true;
         }
       }
     }
@@ -1252,20 +1260,43 @@ async function createForests(scene, heightAt, routePoints, rnd, renderables, str
     const nearby = [];
     for (let dx = -1; dx <= 1; dx++) {
       for (let dz = -1; dz <= 1; dz++) {
-        const bucket = buckets.get(`${cx + dx},${cz + dz}`);
+        const bucket = chunks.get(`${cx + dx},${cz + dz}`);
         if (bucket) nearby.push(...bucket.interactiveMeshes);
       }
     }
     return nearby;
   }
 
+  function updateNear(x, z, maxBuilds = 1) {
+    const cx = Math.floor(x / chunkSize);
+    const cz = Math.floor(z / chunkSize);
+    const candidates = [];
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        const gx = cx + dx, gz = cz + dz;
+        const centerX = (gx + 0.5) * chunkSize;
+        const centerZ = (gz + 0.5) * chunkSize;
+        if (Math.hypot(centerX - x, centerZ - z) > 1320) continue;
+        if (!generated.has(`${gx},${gz}`)) candidates.push({ x: centerX, z: centerZ, gx, gz });
+      }
+    }
+    candidates.sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
+    for (let i = 0; i < Math.min(maxBuilds, candidates.length); i++) {
+      generateChunk(candidates[i].gx, candidates[i].gz);
+    }
+    return { pending: candidates.length - Math.min(maxBuilds, candidates.length), generated: generated.size };
+  }
+
+  updateNear(-1600, 900, 1);
   return {
-    count: trees.length, chunks: buckets.size, meshes,
-    interactiveMeshes: meshes,
+    get count() { return trees.length; },
+    get chunks() { return generated.size; },
+    meshes: [],
     getInteractiveMeshes,
     trees,
+    updateNear,
     remove: removeTree,
-    removeById(id) { return removeTree(trees[id]); },
+    removeById(id) { return removeTree(treeById.get(id)); },
     isNearTree,
     isBlocked(x, feetY, z, radius, height) {
       return forestCollision(x, z, feetY, height, radius, false).blocked;
@@ -1277,256 +1308,239 @@ async function createForests(scene, heightAt, routePoints, rnd, renderables, str
 }
 
 
-async function createGroundCover(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress) {
+function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
   const chunkSize = 640;
-  const buckets = new Map();
-  const add = (x, z, type, item) => {
-    const key = `${Math.floor(x / chunkSize)},${Math.floor(z / chunkSize)}`;
-    let bucket = buckets.get(key);
-    if (!bucket) { bucket = { grass: [], shrubs: [] }; buckets.set(key, bucket); }
-    bucket[type].push(item);
-  };
-
-  let attempts = 0;
-  let grassCount = 0;
-  while (grassCount < 7600 && attempts < 26000) {
-    attempts++;
-    if (attempts % 5000 === 0) {
-      onProgress?.('Распределяем траву по карте...');
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-    const angle = rnd() * TAU;
-    const radius = 250 + rnd() * (GRASS_RADIUS - 330);
-    const x = Math.cos(angle) * radius;
-    const z = Math.sin(angle) * radius;
-    if (pointInReservedArea(x, z, routePoints) || rnd() < 0.12) continue;
-    const patch = valueNoise(x / 185, z / 185, 83);
-    if (patch < 0.37) continue;
-    const y = heightAt(x, z);
-    if (y === null || y === undefined) continue;
-    const size = 0.48 + rnd() * 0.82;
-    add(x, z, "grass", { x, z, y, size, angle: rnd() * TAU, hue: rnd() });
-    grassCount++;
-  }
-
-  attempts = 0;
-  let shrubCount = 0;
-  while (shrubCount < 2600 && attempts < 12000) {
-    attempts++;
-    if (attempts % 5000 === 0) {
-      onProgress?.('Расставляем кустарники...');
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-    const angle = rnd() * TAU;
-    const radius = 265 + rnd() * (GRASS_RADIUS - 350);
-    const x = Math.cos(angle) * radius;
-    const z = Math.sin(angle) * radius;
-    if (pointInReservedArea(x, z, routePoints) || rnd() < 0.34) continue;
-    const forestMask = valueNoise(x / 1250, z / 1250, 71) * 0.62 +
-      valueNoise(x / 2650, z / 2650, 73) * 0.38;
-    if (forestMask > 0.56) continue;
-    const y = heightAt(x, z);
-    if (y === null || y === undefined) continue;
-    add(x, z, "shrubs", {
-      x, z, y, sx: 0.8 + rnd() * 1.2, sy: 0.45 + rnd() * 0.8,
-      sz: 0.8 + rnd() * 1.2, angle: rnd() * TAU, hue: rnd(),
-    });
-    shrubCount++;
-  }
-
+  const generated = new Set();
+  const meshes = [];
   const grassGeometry = new THREE.ConeGeometry(0.32, 1.65, 3, 1);
   const shrubGeometry = new THREE.DodecahedronGeometry(1, 0);
-  const grassMaterial = new THREE.MeshStandardMaterial({
-    color: 0x557b3d, roughness: 1, flatShading: true,
-  });
-  const shrubMaterial = new THREE.MeshStandardMaterial({
-    color: 0x426b38, roughness: 1, flatShading: true,
-  });
+  const grassMaterial = new THREE.MeshStandardMaterial({ color: 0x557b3d, roughness: 1, flatShading: true });
+  const shrubMaterial = new THREE.MeshStandardMaterial({ color: 0x426b38, roughness: 1, flatShading: true });
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const position = new THREE.Vector3();
   const scale = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
-  const meshes = [];
 
-  for (const [key, bucket] of buckets) {
-    const [chunkX, chunkZ] = key.split(',').map(Number);
-    streamer.enqueue((chunkX + 0.5) * chunkSize, (chunkZ + 0.5) * chunkSize, 'cover', () => {
-    if (bucket.grass.length) {
-      const grass = new THREE.InstancedMesh(grassGeometry, grassMaterial, bucket.grass.length);
-      for (let i = 0; i < bucket.grass.length; i++) {
-        const item = bucket.grass[i];
+  function generateChunk(cx, cz) {
+    const key = `${cx},${cz}`;
+    if (generated.has(key)) return false;
+    generated.add(key);
+    const random = createChunkRandom(cx, cz, 83);
+    const grass = [];
+    const shrubs = [];
+    const left = cx * chunkSize, top = cz * chunkSize;
+    let tries = 0;
+    while (grass.length < 32 && tries++ < 150) {
+      const x = left + random() * chunkSize;
+      const z = top + random() * chunkSize;
+      if (Math.hypot(x, z) < 250 || Math.hypot(x, z) > GRASS_RADIUS - 330) continue;
+      if (pointInReservedArea(x, z, routePoints) || random() < 0.12) continue;
+      if (valueNoise(x / 185, z / 185, 83) < 0.37) continue;
+      const y = heightAt(x, z);
+      if (!Number.isFinite(y)) continue;
+      grass.push({ x, z, y, size: 0.48 + random() * 0.82, angle: random() * TAU, hue: random() });
+    }
+
+    tries = 0;
+    while (shrubs.length < 11 && tries++ < 80) {
+      const x = left + random() * chunkSize;
+      const z = top + random() * chunkSize;
+      if (Math.hypot(x, z) < 265 || Math.hypot(x, z) > GRASS_RADIUS - 350) continue;
+      if (pointInReservedArea(x, z, routePoints) || random() < 0.34) continue;
+      const forestMask = valueNoise(x / 1250, z / 1250, 71) * 0.62 +
+        valueNoise(x / 2650, z / 2650, 73) * 0.38;
+      if (forestMask > 0.56) continue;
+      const y = heightAt(x, z);
+      if (!Number.isFinite(y)) continue;
+      shrubs.push({
+        x, z, y, sx: 0.8 + random() * 1.2, sy: 0.45 + random() * 0.8,
+        sz: 0.8 + random() * 1.2, angle: random() * TAU, hue: random(),
+      });
+    }
+
+    if (grass.length) {
+      const mesh = new THREE.InstancedMesh(grassGeometry, grassMaterial, grass.length);
+      for (let i = 0; i < grass.length; i++) {
+        const item = grass[i];
         quaternion.setFromAxisAngle(up, item.angle);
         position.set(item.x, item.y + item.size * 0.58, item.z);
         scale.set(item.size * 0.78, item.size, item.size * 0.78);
         matrix.compose(position, quaternion, scale);
-        grass.setMatrixAt(i, matrix);
-        grass.setColorAt(i, new THREE.Color().setHSL(
+        mesh.setMatrixAt(i, matrix);
+        mesh.setColorAt(i, new THREE.Color().setHSL(
           0.24 + item.hue * 0.08, 0.34 + item.hue * 0.22, 0.20 + item.hue * 0.12
         ));
       }
-      grass.instanceMatrix.needsUpdate = true;
-      if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
-      grass.userData.noCollider = true;
-      grass.castShadow = false;
-      grass.receiveShadow = false;
-      grass.name = `wild-grass-${key}`;
-      registerChunkMesh(grass, renderables, 1700, true);
-      scene.add(grass);
-      meshes.push(grass);
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.userData.noCollider = true;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      mesh.name = `wild-grass-${key}`;
+      registerChunkMesh(mesh, renderables, 1700, true);
+      scene.add(mesh);
+      meshes.push(mesh);
     }
 
-    if (bucket.shrubs.length) {
-      const shrubs = new THREE.InstancedMesh(shrubGeometry, shrubMaterial, bucket.shrubs.length);
-      for (let i = 0; i < bucket.shrubs.length; i++) {
-        const item = bucket.shrubs[i];
+    if (shrubs.length) {
+      const mesh = new THREE.InstancedMesh(shrubGeometry, shrubMaterial, shrubs.length);
+      for (let i = 0; i < shrubs.length; i++) {
+        const item = shrubs[i];
         quaternion.setFromAxisAngle(up, item.angle);
         position.set(item.x, item.y + item.sy * 0.72, item.z);
         scale.set(item.sx, item.sy, item.sz);
         matrix.compose(position, quaternion, scale);
-        shrubs.setMatrixAt(i, matrix);
-        shrubs.setColorAt(i, new THREE.Color().setHSL(
+        mesh.setMatrixAt(i, matrix);
+        mesh.setColorAt(i, new THREE.Color().setHSL(
           0.25 + item.hue * 0.07, 0.30 + item.hue * 0.2, 0.17 + item.hue * 0.12
         ));
       }
-      shrubs.instanceMatrix.needsUpdate = true;
-      if (shrubs.instanceColor) shrubs.instanceColor.needsUpdate = true;
-      shrubs.userData.noCollider = true;
-      shrubs.castShadow = true;
-      shrubs.receiveShadow = true;
-      shrubs.name = `wild-shrubs-${key}`;
-      registerChunkMesh(shrubs, renderables, 2200, true);
-      scene.add(shrubs);
-      meshes.push(shrubs);
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.userData.noCollider = true;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.name = `wild-shrubs-${key}`;
+      registerChunkMesh(mesh, renderables, 2200, true);
+      scene.add(mesh);
+      meshes.push(mesh);
     }
-    });
+    return true;
   }
 
-  return { grass: grassCount, shrubs: shrubCount, chunks: buckets.size, meshes };
+  function updateNear(x, z, maxBuilds = 1) {
+    const cx = Math.floor(x / chunkSize), cz = Math.floor(z / chunkSize);
+    const candidates = [];
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+      const gx = cx + dx, gz = cz + dz;
+      const centerX = (gx + 0.5) * chunkSize, centerZ = (gz + 0.5) * chunkSize;
+      if (Math.hypot(centerX - x, centerZ - z) <= 1120 && !generated.has(`${gx},${gz}`)) {
+        candidates.push({ gx, gz, d: Math.hypot(centerX - x, centerZ - z) });
+      }
+    }
+    candidates.sort((a, b) => a.d - b.d);
+    for (let i = 0; i < Math.min(maxBuilds, candidates.length); i++) generateChunk(candidates[i].gx, candidates[i].gz);
+    return { pending: candidates.length - Math.min(maxBuilds, candidates.length), generated: generated.size };
+  }
+
+  updateNear(-1600, 900, 1);
+  return { get grass() { return generated.size * 32; }, get shrubs() { return generated.size * 11; }, get chunks() { return generated.size; }, meshes, updateNear };
 }
 
-async function createRocks(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress) {
-  const boulderData = [];
-  const smallData = [];
-  let attempts = 0;
 
-  while (boulderData.length < 760 && attempts < 12000) {
-    attempts++;
-    if (attempts % 4000 === 0) {
-      onProgress?.('Готовим каменные залежи...');
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-    const angle = rnd() * TAU;
-    const radius = 270 + rnd() * (GRASS_RADIUS - 470);
-    const x = Math.cos(angle) * radius;
-    const z = Math.sin(angle) * radius;
-    if (pointInReservedArea(x, z, routePoints) || rnd() < 0.28) continue;
-    const sy = 1.15 + rnd() * 3.4;
-    const sx = 1.8 + rnd() * 4.4;
-    const sz = 1.8 + rnd() * 4.4;
-    boulderData.push({ x, z, y: heightAt(x, z) ?? 0, sx, sy, sz, angle: rnd() * TAU });
-  }
-
-  attempts = 0;
-  while (smallData.length < 3200 && attempts < 30000) {
-    attempts++;
-    if (attempts % 6000 === 0) {
-      onProgress?.('Расставляем мелкие камни...');
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-    const angle = rnd() * TAU;
-    const radius = 255 + rnd() * (GRASS_RADIUS - 330);
-    const x = Math.cos(angle) * radius;
-    const z = Math.sin(angle) * radius;
-    if (pointInReservedArea(x, z, routePoints)) continue;
-    smallData.push({
-      x, z, y: heightAt(x, z) ?? 0,
-      sx: 0.6 + rnd() * 1.4, sy: 0.35 + rnd() * 0.85, sz: 0.6 + rnd() * 1.4,
-      angle: rnd() * TAU,
-    });
-  }
-
+function createRocks(scene, heightAt, routePoints, rnd, renderables) {
   const chunkSize = 640;
-  const buckets = new Map();
-  const addToBucket = (rock, type) => {
-    const cx = Math.floor(rock.x / chunkSize);
-    const cz = Math.floor(rock.z / chunkSize);
-    const key = `${cx},${cz}`;
-    let bucket = buckets.get(key);
-    if (!bucket) {
-      bucket = { large: [], small: [] };
-      buckets.set(key, bucket);
-    }
-    bucket[type].push(rock);
-  };
-  for (const rock of boulderData) addToBucket(rock, 'large');
-  for (const rock of smallData) addToBucket(rock, 'small');
-
-  const rockGeometry = new THREE.IcosahedronGeometry(1, 0);
-  const largeMaterial = new THREE.MeshStandardMaterial({
-    color: 0x777568, roughness: 1, flatShading: true,
-  });
-  const smallMaterial = new THREE.MeshStandardMaterial({
-    color: 0x827d6b, roughness: 1, flatShading: true,
-  });
+  const generated = new Set();
+  const meshes = [];
+  const geometry = new THREE.IcosahedronGeometry(1, 0);
+  const largeMaterial = new THREE.MeshStandardMaterial({ color: 0x777568, roughness: 1, flatShading: true });
+  const smallMaterial = new THREE.MeshStandardMaterial({ color: 0x827d6b, roughness: 1, flatShading: true });
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const position = new THREE.Vector3();
   const scale = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
-  const meshes = [];
 
-  for (const [key, bucket] of buckets) {
-    const [chunkX, chunkZ] = key.split(',').map(Number);
-    streamer.enqueue((chunkX + 0.5) * chunkSize, (chunkZ + 0.5) * chunkSize, 'rocks', () => {
-    if (bucket.large.length) {
-      const largeRocks = new THREE.InstancedMesh(rockGeometry, largeMaterial, bucket.large.length);
-      for (let i = 0; i < bucket.large.length; i++) {
-        const rock = bucket.large[i];
+  function generateChunk(cx, cz) {
+    const key = `${cx},${cz}`;
+    if (generated.has(key)) return false;
+    generated.add(key);
+    const random = createChunkRandom(cx, cz, 109);
+    const left = cx * chunkSize, top = cz * chunkSize;
+    const large = [];
+    const small = [];
+
+    let tries = 0;
+    while (large.length < 3 && tries++ < 50) {
+      const x = left + random() * chunkSize, z = top + random() * chunkSize;
+      if (Math.hypot(x, z) < 270 || Math.hypot(x, z) > GRASS_RADIUS - 470) continue;
+      if (pointInReservedArea(x, z, routePoints) || random() < 0.28) continue;
+      large.push({
+        x, z, y: heightAt(x, z) ?? 0,
+        sx: 1.8 + random() * 4.4, sy: 1.15 + random() * 3.4,
+        sz: 1.8 + random() * 4.4, angle: random() * TAU,
+      });
+    }
+
+    tries = 0;
+    while (small.length < 13 && tries++ < 36) {
+      const x = left + random() * chunkSize, z = top + random() * chunkSize;
+      if (Math.hypot(x, z) < 255 || Math.hypot(x, z) > GRASS_RADIUS - 330) continue;
+      if (pointInReservedArea(x, z, routePoints)) continue;
+      small.push({
+        x, z, y: heightAt(x, z) ?? 0,
+        sx: 0.6 + random() * 1.4, sy: 0.35 + random() * 0.85,
+        sz: 0.6 + random() * 1.4, angle: random() * TAU,
+      });
+    }
+
+    if (large.length) {
+      const mesh = new THREE.InstancedMesh(geometry, largeMaterial, large.length);
+      for (let i = 0; i < large.length; i++) {
+        const rock = large[i];
         quaternion.setFromAxisAngle(up, rock.angle);
         position.set(rock.x, rock.y + rock.sy * 0.48, rock.z);
         scale.set(rock.sx, rock.sy, rock.sz);
         matrix.compose(position, quaternion, scale);
-        largeRocks.setMatrixAt(i, matrix);
+        mesh.setMatrixAt(i, matrix);
       }
-      largeRocks.instanceMatrix.needsUpdate = true;
-      largeRocks.castShadow = true;
-      largeRocks.receiveShadow = true;
-      largeRocks.name = `boulders-${key}`;
-      registerChunkMesh(largeRocks, renderables, 2500, true);
-      scene.add(largeRocks);
-      meshes.push(largeRocks);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.name = `boulders-${key}`;
+      registerChunkMesh(mesh, renderables, 2500, true);
+      scene.add(mesh);
+      meshes.push(mesh);
     }
 
-    if (bucket.small.length) {
-      const smallRocks = new THREE.InstancedMesh(rockGeometry, smallMaterial, bucket.small.length);
-      for (let i = 0; i < bucket.small.length; i++) {
-        const rock = bucket.small[i];
+    if (small.length) {
+      const mesh = new THREE.InstancedMesh(geometry, smallMaterial, small.length);
+      for (let i = 0; i < small.length; i++) {
+        const rock = small[i];
         quaternion.setFromAxisAngle(up, rock.angle);
         position.set(rock.x, rock.y + rock.sy * 0.38, rock.z);
         scale.set(rock.sx, rock.sy, rock.sz);
         matrix.compose(position, quaternion, scale);
-        smallRocks.setMatrixAt(i, matrix);
+        mesh.setMatrixAt(i, matrix);
       }
-      smallRocks.instanceMatrix.needsUpdate = true;
-      smallRocks.userData.noCollider = true;
-      smallRocks.castShadow = false;
-      smallRocks.receiveShadow = false;
-      smallRocks.name = `stones-${key}`;
-      registerChunkMesh(smallRocks, renderables, 1500, true);
-      scene.add(smallRocks);
-      meshes.push(smallRocks);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.userData.noCollider = true;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      mesh.name = `stones-${key}`;
+      registerChunkMesh(mesh, renderables, 1500, true);
+      scene.add(mesh);
+      meshes.push(mesh);
     }
-    });
+    return true;
   }
 
+  function updateNear(x, z, maxBuilds = 1) {
+    const cx = Math.floor(x / chunkSize), cz = Math.floor(z / chunkSize);
+    const candidates = [];
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+      const gx = cx + dx, gz = cz + dz;
+      const centerX = (gx + 0.5) * chunkSize, centerZ = (gz + 0.5) * chunkSize;
+      if (Math.hypot(centerX - x, centerZ - z) <= 1160 && !generated.has(`${gx},${gz}`)) {
+        candidates.push({ gx, gz, d: Math.hypot(centerX - x, centerZ - z) });
+      }
+    }
+    candidates.sort((a, b) => a.d - b.d);
+    for (let i = 0; i < Math.min(maxBuilds, candidates.length); i++) generateChunk(candidates[i].gx, candidates[i].gz);
+    return { pending: candidates.length - Math.min(maxBuilds, candidates.length), generated: generated.size };
+  }
+
+  updateNear(-1600, 900, 1);
   return {
-    boulders: boulderData.length,
-    stones: smallData.length,
-    chunks: buckets.size,
+    get boulders() { return generated.size * 3; },
+    get stones() { return generated.size * 13; },
+    get chunks() { return generated.size; },
     meshes,
+    updateNear,
   };
 }
+
 
 function createHouse(scene, materials, baseY = 0) {
   const house = new THREE.Group();
@@ -1880,13 +1894,10 @@ export async function createWorld(scene, onProgress = () => {}) {
 
   const river = createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles);
   const tributary = createTributary(scene, heightAt, analyticHeightAt, riverProfiles);
-  onProgress('Генерируем лес и позиции деревьев...');
-  const forests = await createForests(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress);
-  onProgress('Генерируем траву и кустарники...');
-  const groundCover = await createGroundCover(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress);
-  onProgress('Генерируем камни и скалы...');
-  const rocks = await createRocks(scene, heightAt, routePoints, rnd, renderables, streamer, onProgress);
-  onProgress('Готовим ближайшие участки мира...');
+  onProgress('Готовим только ближайшие участки...');
+  const forests = createForests(scene, heightAt, routePoints, rnd, renderables);
+  const groundCover = createGroundCover(scene, heightAt, routePoints, rnd, renderables);
+  const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables);
   const canSpawnResourceAt = (x, z, clearance = 9) => {
     if (Math.hypot(x, z) < 285 || Math.hypot(x + 1600, z - 900) < 92) return false;
     if (pointInReservedArea(x, z, routePoints)) return false;
@@ -1919,7 +1930,11 @@ export async function createWorld(scene, onProgress = () => {}) {
     update(time, playerPosition = { x: -1600, z: 900 }) {
       river.waterMaterial.userData.setTime(time);
       tributary.waterMaterial.userData.setTime(time);
-      return streamer.update(playerPosition.x, playerPosition.z);
+      const terrainProgress = streamer.update(playerPosition.x, playerPosition.z);
+      forests.updateNear(playerPosition.x, playerPosition.z, 1);
+      groundCover.updateNear(playerPosition.x, playerPosition.z, 1);
+      rocks.updateNear(playerPosition.x, playerPosition.z, 1);
+      return terrainProgress;
     },
     get streamingProgress() { return streamer.progress; },
     getWaterRegionAt(x, z) {
