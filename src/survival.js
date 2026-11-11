@@ -396,7 +396,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
           '<div class="inventory-items">' +
             '<div class="inventory-label">ИНВЕНТАРЬ · 27 ЯЧЕЕК</div>' +
             '<div class="survival-resources" id="survival-resources"></div>' +
-            '<div class="inventory-footnote">Выбери ячейку, затем место назначения. Одинаковые предметы складываются.</div>' +
+            '<div class="inventory-footnote">Выбери ячейку → место назначения · ПКМ: отделить 1 предмет.</div>' +
           '</div>' +
         '</div>' +
         '<div class="inventory-right">' +
@@ -413,7 +413,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
           '<div class="survival-foot"><span>Каменные залежи в мире</span><b id="survival-stone-count"></b></div>' +
         '</div>' +
       '</div>' +
-      '<div class="inventory-bottom-hint">Выбери предмет → выбери слот · Перетаскивание работает мышью · E / I / ESC</div>' +
+      '<div class="inventory-bottom-hint">Выбери предмет → место назначения · ПКМ / долгое нажатие: разделить стопку · E / I / ESC</div>' +
     '</div>';
   ui.appendChild(panel);
 
@@ -645,6 +645,40 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     const source = selectedCell;
     selectedCell = null;
     if (!transferCell(source, target)) renderPanel();
+  }
+
+  function splitOneFromCell(kind, index) {
+    const source = getCell(kind, index);
+    if (!source || source.count <= 1 || TOOL_IDS.includes(source.id)) return false;
+
+    const preferredKinds = [kind, 'inventory', 'hotbar', 'craft'];
+    const visited = new Set();
+    let destination = null;
+    for (const candidateKind of preferredKinds) {
+      if (visited.has(candidateKind)) continue;
+      visited.add(candidateKind);
+      const area = getCellArray(candidateKind);
+      if (!area) continue;
+      const emptyIndex = area.findIndex((stack, slotIndex) =>
+        !stack && !(candidateKind === kind && slotIndex === index)
+      );
+      if (emptyIndex >= 0) {
+        destination = { kind: candidateKind, index: emptyIndex };
+        break;
+      }
+    }
+    if (!destination) {
+      toast('Нет свободной ячейки, чтобы разделить стопку.');
+      return false;
+    }
+
+    source.count -= 1;
+    setCell(destination.kind, destination.index, { id: source.id, count: 1 });
+    selectedCell = null;
+    syncInventoryTotals();
+    save();
+    renderPanel();
+    return true;
   }
 
   function findCraftRecipe() {
@@ -992,7 +1026,18 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       showPanel(false);
     }
   });
-  panel.addEventListener('contextmenu', (event) => event.preventDefault());
+  panel.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    if (!panelOpen) return;
+    const cell = readCellElement(event.target);
+    if (cell) splitOneFromCell(cell.kind, cell.index);
+  });
+  hotbar.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    if (!panelOpen) return;
+    const cell = readCellElement(event.target);
+    if (cell) splitOneFromCell(cell.kind, cell.index);
+  });
   canvas.addEventListener('mousedown', (event) => {
     if (event.button !== 0 || panelOpen) return;
     mouseHeld = true;
