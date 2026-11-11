@@ -598,7 +598,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     renderHotbar();
     if (panelOpen) {
       renderInventoryGrid();
-      toolsEl.replaceChildren(...hotbarDefinitions.map((slot, slotIndex) => createHotbarSlot(slotIndex, true)));
+      heldNameEl.textContent = toolNames[selectedTool];
     }
   }
 
