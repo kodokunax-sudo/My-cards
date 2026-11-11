@@ -1950,8 +1950,15 @@ export async function createWorld(scene, onProgress = () => {}) {
       else if (streamTick % 4 === 1) forests.updateNear(playerPosition.x, playerPosition.z, 1);
       else if (streamTick % 4 === 2) groundCover.updateNear(playerPosition.x, playerPosition.z, 1);
       else rocks.updateNear(playerPosition.x, playerPosition.z, 1);
-      const progress = streamer.updateProgress(playerPosition.x, playerPosition.z);
-      return { ...progress, pending: progress.pending + 1 };
+      const terrainProgress = streamer.updateProgress(playerPosition.x, playerPosition.z);
+      const forestProgress = forests.updateNear(playerPosition.x, playerPosition.z, 0);
+      const coverProgress = groundCover.updateNear(playerPosition.x, playerPosition.z, 0);
+      const rockProgress = rocks.updateNear(playerPosition.x, playerPosition.z, 0);
+      return {
+        pending: terrainProgress.pending + forestProgress.pending +
+          coverProgress.pending + rockProgress.pending,
+        percent: terrainProgress.percent,
+      };
     },
     get streamingProgress() { return streamer.progress; },
     getWaterRegionAt(x, z) {
