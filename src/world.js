@@ -730,8 +730,8 @@ function createWorldChunkStreamer() {
       .sort((a, b) => {
         const da = Math.hypot(a.x - x, a.z - z);
         const db = Math.hypot(b.x - x, b.z - z);
-        const priority = { terrain: 0, forest: 1, rocks: 2, cover: 3 };
-        return da - db || (priority[a.type] || 0) - (priority[b.type] || 0) || a.order - b.order;
+        const priority = { terrain: 0, river: 1, forest: 2, rocks: 3, cover: 4 };
+        return (priority[a.type] || 0) - (priority[b.type] || 0) || da - db || a.order - b.order;
       });
   }
 
