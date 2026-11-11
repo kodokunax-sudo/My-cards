@@ -30,10 +30,13 @@ const canvas = document.getElementById('scene');
 const overlay = document.getElementById('overlay');
 const startBtn = document.getElementById('start-btn');
 
+const isCoarseDevice = (navigator.maxTouchPoints || 0) > 0 ||
+  ('ontouchstart' in window) ||
+  (window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
 const renderer = new THREE.WebGLRenderer({
   canvas, antialias: false, powerPreference: 'high-performance', stencil: false,
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 0.9));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isCoarseDevice ? 0.55 : 0.9));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -440,7 +443,7 @@ function animate() {
   const worldLoading = document.getElementById('world-loading');
   if (worldLoading && streamProgress) {
     if (streamProgress.pending > 0) {
-      worldLoading.textContent = `Подгружаем мир · ${streamProgress.percent}%`;
+      worldLoading.textContent = 'Подгружаем ближайшую область…';
       worldLoading.classList.add('active');
     } else {
       worldLoading.classList.remove('active');
