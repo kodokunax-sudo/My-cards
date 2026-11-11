@@ -360,6 +360,7 @@ function enterScene() {
   if (started) return;
   started = true;
   document.body.classList.remove('menu');
+  document.body.classList.add('in-game');
   overlay.classList.add('hidden');
   audio.start();
   if (touch) {
