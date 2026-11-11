@@ -1385,3 +1385,19 @@ body.in-game #survival-status {display:none}
   .survival-recipe {grid-template-columns:30px minmax(0,1fr) auto}
   .survival-recipe button {grid-column:auto}
 }
+
+
+/* Keep the inventory reachable on touch devices, but only during play. */
+body:not(.in-game) #survival-hotbar,
+body:not(.in-game) #survival-toggle { display:none !important; }
+body.touch.in-game #survival-toggle {
+  display:inline-flex;
+  position:fixed;
+  top:151px;
+  right:10px;
+  left:auto;
+  z-index:25;
+  min-height:34px;
+  padding:4px 8px;
+  font-size:9px;
+}
