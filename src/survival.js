@@ -492,23 +492,27 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     const wood = new THREE.MeshStandardMaterial({ color: 0x765335, roughness: 0.96 });
     const top = new THREE.MeshStandardMaterial({ color: 0x9a7045, roughness: 0.94 });
     const stone = new THREE.MeshStandardMaterial({ color: 0x66645d, roughness: 1, flatShading: true });
-    const part = (geometry, material, x, y, z) => {
+    const part = (geometry, material, x, y, z, rotationZ = 0) => {
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(x, y, z);
+      mesh.rotation.z = rotationZ;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData.noCollider = true;
       group.add(mesh);
     };
-    for (const x of [-0.58, 0.58]) {
-      for (const z of [-0.34, 0.34]) {
-        part(new THREE.BoxGeometry(0.14, 0.76, 0.14), wood, x, 0.38, z);
-        part(new THREE.BoxGeometry(0.19, 0.13, 0.19), stone, x, 0.13, z);
+    // A low field-made surface: rough stones support two split logs.
+    for (const x of [-0.62, 0.62]) {
+      for (const z of [-0.23, 0.23]) {
+        part(new THREE.DodecahedronGeometry(0.30, 0), stone, x, 0.22, z);
       }
     }
-    for (let i = 0; i < 3; i++) {
-      part(new THREE.BoxGeometry(1.45, 0.14, 0.28), top, 0, 0.84, -0.28 + i * 0.28);
+    for (const z of [-0.19, 0.19]) {
+      part(new THREE.CylinderGeometry(0.11, 0.15, 1.72, 7), wood, 0, 0.49, z, Math.PI / 2);
     }
+    part(new THREE.BoxGeometry(1.78, 0.12, 0.58), top, 0, 0.63, 0);
+    part(new THREE.DodecahedronGeometry(0.17, 0), stone, -0.48, 0.79, -0.06);
+    part(new THREE.BoxGeometry(0.38, 0.06, 0.13), wood, 0.43, 0.75, 0.12, -0.08);
     workbenchGroup = group;
     scene.add(group);
   }
