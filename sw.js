@@ -70,13 +70,17 @@ self.addEventListener('fetch', (event) => {
   if (isCodeRequest(url)) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);
-      try {
-        const response = await fetch(request);
+      const cached = await cache.match(request);
+      const refresh = fetch(request).then(async (response) => {
         await saveResponse(cache, request, response);
         return response;
-      } catch (error) {
-        return (await cache.match(request)) || Response.error();
+      });
+      if (cached) {
+        event.waitUntil(refresh.catch(() => {}));
+        return cached;
       }
+      try { return await refresh; }
+      catch (error) { return Response.error(); }
     })());
     return;
   }
