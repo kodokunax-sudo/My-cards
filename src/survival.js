@@ -1780,6 +1780,46 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     respawnGatherNodes(fiberNodes, fiberMesh, false);
     respawnGatherNodes(branchNodes, branchMesh, true);
 
+    let scrapChanged = false;
+    for (const node of scrapNodes) {
+      if (node.active || !node.due || now < node.due) continue;
+      const nextPosition = findGatherPosition({ x: node.x, z: node.z }, 9);
+      if (!nextPosition) {
+        node.due = now + 15000;
+        continue;
+      }
+      Object.assign(node, nextPosition, { active: true, hp: 6, due: 0 });
+      markResourcePosition(node);
+      writeScrapNode(node);
+      scrapChanged = true;
+    }
+    if (scrapChanged) {
+      for (const mesh of scrapMeshes) {
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.computeBoundingSphere();
+      }
+      changed = true;
+    }
+
+    let oreChanged = false;
+    for (const node of ironOreNodes) {
+      if (node.active || !node.due || now < node.due) continue;
+      const nextPosition = findGatherPosition({ x: node.x, z: node.z }, 11);
+      if (!nextPosition) {
+        node.due = now + 15000;
+        continue;
+      }
+      Object.assign(node, nextPosition, { active: true, hp: 18, due: 0 });
+      markResourcePosition(node);
+      writeIronOreNode(node);
+      oreChanged = true;
+    }
+    if (oreChanged) {
+      ironOreMesh.instanceMatrix.needsUpdate = true;
+      ironOreMesh.computeBoundingSphere();
+      changed = true;
+    }
+
     if (changed) {
       stoneMesh.instanceMatrix.needsUpdate = true;
       // Respawned resources may move, so refresh aggregate bounds used by frustum culling.
