@@ -19,28 +19,64 @@ function numberOrZero(value) {
 export function createSurvival(scene, camera, canvas, world, player, hud) {
   const saved = loadSave();
   const inventory = {
-    logs: numberOrZero(saved && saved.inventory && saved.inventory.logs),
-    planks: numberOrZero(saved && saved.inventory && saved.inventory.planks),
-    sticks: numberOrZero(saved && saved.inventory && saved.inventory.sticks),
-    stone: numberOrZero(saved && saved.inventory && saved.inventory.stone),
-    woodAxe: !!(saved && saved.inventory && saved.inventory.woodAxe),
-    woodPickaxe: !!(saved && saved.inventory && saved.inventory.woodPickaxe),
-    stoneAxe: !!(saved && saved.inventory && saved.inventory.stoneAxe),
-    stonePickaxe: !!(saved && saved.inventory && saved.inventory.stonePickaxe),
+    logs: 0, planks: 0, sticks: 0, stone: 0,
+    woodAxe: false, woodPickaxe: false, stoneAxe: false, stonePickaxe: false,
   };
-  let selectedTool = saved && (
-    saved.selectedTool === null ||
-    ['hands', 'woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe'].includes(saved.selectedTool)
-  ) ? saved.selectedTool : 'hands';
-  const previousSlot = Number.isInteger(saved && saved.selectedSlot) && saved.selectedSlot >= 0 && saved.selectedSlot < 9
-    ? saved.selectedSlot : null;
-  let selectedSlot = selectedTool === 'woodAxe' ? 0
-    : selectedTool === 'woodPickaxe' ? 1
-    : selectedTool === 'stoneAxe' ? 2
-    : selectedTool === 'stonePickaxe' ? 3
-    : selectedTool === null ? (previousSlot ?? 8)
-    : previousSlot !== null && previousSlot >= 3 && previousSlot <= 6 ? previousSlot + 1
-    : 8;
+  const RESOURCE_IDS = ['logs', 'planks', 'sticks', 'stone'];
+  const TOOL_IDS = ['woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe'];
+  const ITEM_IDS = [...RESOURCE_IDS, ...TOOL_IDS];
+  const STACK_LIMIT = 64;
+
+  function cleanStack(value) {
+    if (!value || !ITEM_IDS.includes(value.id)) return null;
+    const count = TOOL_IDS.includes(value.id) ? 1 : Math.max(0, Math.min(STACK_LIMIT, Math.floor(Number(value.count) || 0)));
+    return count > 0 ? { id: value.id, count } : null;
+  }
+
+  function normalizeSlotArray(value, length) {
+    return Array.from({ length }, (_, index) => cleanStack(Array.isArray(value) ? value[index] : null));
+  }
+
+  function makeLegacyInventorySlots() {
+    const slots = Array(27).fill(null);
+    let cursor = 0;
+    const put = (id, rawCount) => {
+      let remaining = TOOL_IDS.includes(id) ? (rawCount ? 1 : 0) : Math.max(0, Math.floor(Number(rawCount) || 0));
+      while (remaining > 0 && cursor < slots.length) {
+        const amount = TOOL_IDS.includes(id) ? 1 : Math.min(STACK_LIMIT, remaining);
+        slots[cursor++] = { id, count: amount };
+        remaining -= amount;
+      }
+    };
+    const old = saved && saved.inventory ? saved.inventory : {};
+    for (const id of RESOURCE_IDS) put(id, old[id]);
+    for (const id of TOOL_IDS) put(id, old[id] ? 1 : 0);
+    return slots;
+  }
+
+  let inventorySlots = Array.isArray(saved && saved.inventorySlots)
+    ? normalizeSlotArray(saved.inventorySlots, 27)
+    : makeLegacyInventorySlots();
+  let hotbarSlots = normalizeSlotArray(saved && saved.hotbarSlots, 9);
+  let craftingGrid = normalizeSlotArray(saved && saved.craftingGrid, 9);
+  let selectedSlot = Number.isInteger(saved && saved.selectedSlot) && saved.selectedSlot >= 0 && saved.selectedSlot < 9
+    ? saved.selectedSlot : 0;
+  let selectedTool = 'hands';
+  let selectedCell = null;
+
+  function syncInventoryTotals() {
+    for (const id of RESOURCE_IDS) inventory[id] = 0;
+    for (const id of TOOL_IDS) inventory[id] = false;
+    for (const stack of [...inventorySlots, ...hotbarSlots, ...craftingGrid]) {
+      if (!stack) continue;
+      if (RESOURCE_IDS.includes(stack.id)) inventory[stack.id] += stack.count;
+      else if (TOOL_IDS.includes(stack.id)) inventory[stack.id] = true;
+    }
+    const active = hotbarSlots[selectedSlot];
+    selectedTool = active && TOOL_IDS.includes(active.id) ? active.id : 'hands';
+  }
+
+  syncInventoryTotals();
   let workbench = saved && saved.workbench ? saved.workbench : null;
   let workbenchGroup = null;
 
@@ -69,6 +105,9 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify({
         inventory,
+        inventorySlots,
+        hotbarSlots,
+        craftingGrid,
         selectedTool,
         selectedSlot,
         depletedTrees: world.forests.depletedIds || world.forests.trees.filter((tree) => tree.removed).map((tree) => tree.id),
@@ -268,11 +307,12 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   let toolSwing = 0;
 
   function refreshHeldTool() {
+    const activeStack = hotbarSlots[selectedSlot];
+    selectedTool = activeStack && TOOL_IDS.includes(activeStack.id) ? activeStack.id : 'hands';
     for (const [id, group] of Object.entries(heldTools)) group.visible = selectedTool === id;
     const resourceIds = ['logs', 'planks', 'sticks', 'stone'];
-    for (let index = 0; index < resourceIds.length; index++) {
-      const id = resourceIds[index];
-      heldResources[id].visible = selectedSlot === index + 4 && inventory[id] > 0;
+    for (const id of resourceIds) {
+      heldResources[id].visible = !!activeStack && activeStack.id === id && activeStack.count > 0;
     }
     const holdingResource = resourceIds.some((id) => heldResources[id].visible);
     viewModel.visible = (selectedTool !== 'hands' || holdingResource) &&
@@ -327,7 +367,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   panel.hidden = true;
   panel.innerHTML =
     '<div class="inventory-window">' +
-      '<div class="survival-heading"><div><h2>ИНВЕНТАРЬ</h2><p>Предметы · инструменты · создание</p></div><button type="button" data-close aria-label="Закрыть инвентарь">×</button></div>' +
+      '<div class="survival-heading"><div><h2>ИНВЕНТАРЬ</h2><p>Перетаскивай или выбирай предметы по очереди</p></div><button type="button" data-close aria-label="Закрыть инвентарь">×</button></div>' +
       '<div class="inventory-layout">' +
         '<div class="inventory-left">' +
           '<div class="inventory-character">' +
@@ -350,23 +390,30 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
                 '<path d="M44 32h5v5h-5zM63 32h5v5h-5z" fill="#2a2724"/>' +
               '</svg>' +
             '</div>' +
-            '<div class="character-caption">Снаряжение</div>' +
+            '<div class="character-caption">В РУКАХ</div>' +
             '<div class="character-held" id="survival-held-name">Руки</div>' +
           '</div>' +
           '<div class="inventory-items">' +
-            '<div class="inventory-label">ПРЕДМЕТЫ</div>' +
+            '<div class="inventory-label">ИНВЕНТАРЬ · 27 ЯЧЕЕК</div>' +
             '<div class="survival-resources" id="survival-resources"></div>' +
-            '<div class="inventory-footnote">Выбери предмет, чтобы назначить его в быстрый слот.</div>' +
+            '<div class="inventory-footnote">Выбери ячейку, затем место назначения. Одинаковые предметы складываются.</div>' +
           '</div>' +
         '</div>' +
         '<div class="inventory-right">' +
-          '<div class="inventory-label">СОЗДАНИЕ ПРЕДМЕТОВ</div>' +
+          '<div class="inventory-label">РУЧНОЙ КРАФТ · 3 × 3</div>' +
+          '<div class="crafting-workspace">' +
+            '<div class="crafting-grid" id="survival-crafting-grid" aria-label="Сетка крафта 3 на 3"></div>' +
+            '<div class="crafting-arrow" aria-hidden="true">➜</div>' +
+            '<div class="crafting-result-wrap">' +
+              '<div class="inventory-label">РЕЗУЛЬТАТ</div>' +
+              '<button type="button" class="crafting-result" id="survival-craft-output" disabled aria-label="Результат крафта"></button>' +
+            '</div>' +
+          '</div>' +
           '<div class="crafting-note" id="survival-bench-status"></div>' +
-          '<div class="survival-recipes" id="survival-recipes"></div>' +
           '<div class="survival-foot"><span>Каменные залежи в мире</span><b id="survival-stone-count"></b></div>' +
         '</div>' +
       '</div>' +
-      '<div class="inventory-bottom-hint">E / I или ESC · Выбор слота: 1–9 · ЛКМ: добыча ресурсов</div>' +
+      '<div class="inventory-bottom-hint">Выбери предмет → выбери слот · Перетаскивание работает мышью · E / I / ESC</div>' +
     '</div>';
   ui.appendChild(panel);
 
@@ -389,7 +436,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   const resourceEl = panel.querySelector('#survival-resources');
   const heldNameEl = panel.querySelector('#survival-held-name');
   const benchStatusEl = panel.querySelector('#survival-bench-status');
-  const recipesEl = panel.querySelector('#survival-recipes');
+  const craftingGridEl = panel.querySelector('#survival-crafting-grid');
+  const craftOutputEl = panel.querySelector('#survival-craft-output');
   const nodeCountEl = panel.querySelector('#survival-stone-count');
   const toolNames = {
     hands: 'Руки',
@@ -398,15 +446,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     stoneAxe: 'Каменный топор',
     stonePickaxe: 'Каменная кирка',
   };
-  const recipes = [
-    { id: 'planks', title: 'Доски ×4', cost: { logs: 1 }, text: '1 дерево' },
-    { id: 'sticks', title: 'Палки ×4', cost: { planks: 2 }, text: '2 доски' },
-    { id: 'woodAxe', title: 'Деревянный топор', cost: { planks: 3, sticks: 2 }, text: '3 доски · 2 палки' },
-    { id: 'woodPickaxe', title: 'Деревянная кирка', cost: { planks: 3, sticks: 2 }, text: '3 доски · 2 палки' },
-    { id: 'workbench', title: 'Верстак', cost: { planks: 6, stone: 6 }, text: '6 досок · 6 камней' },
-    { id: 'stoneAxe', title: 'Каменный топор', cost: { stone: 3, sticks: 2 }, text: '3 камня · 2 палки', bench: true },
-    { id: 'stonePickaxe', title: 'Каменная кирка', cost: { stone: 3, sticks: 2 }, text: '3 камня · 2 палки', bench: true },
-  ];
+  const itemNames = {
+    logs: 'Дерево', planks: 'Доски', sticks: 'Палки', stone: 'Камень',
+    ...toolNames,
+  };
 
   let panelOpen = false;
   let mouseHeld = false;
@@ -417,16 +460,6 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
   function nearWorkbench() {
     return !!workbench && Math.hypot(camera.position.x - workbench.x, camera.position.z - workbench.z) <= 4.2;
-  }
-
-  function owns(id) {
-    if (['woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe'].includes(id)) return !!inventory[id];
-    if (id === 'workbench') return !!workbench;
-    return false;
-  }
-
-  function affordable(cost) {
-    return Object.entries(cost).every(([key, amount]) => inventory[key] >= amount);
   }
 
   const ITEM_MODELS = {
@@ -442,183 +475,310 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     hands: '<g stroke-linejoin="round" stroke="#64462d" stroke-width="2"><path d="M18 35 18 26q0-5 4-5t4 5v-9q0-5 4-5t4 5v8-12q0-5 4-5t4 5v14-9q0-5 4-5t4 5v13l4 6-3 14q-2 6-9 6H29q-9 0-11-8l-3-9q-2-5 2-7 3-1 5 3Z" fill="#bd8a63"/><path d="m30 27 0 8m8-10v10m8-7v7" fill="none" stroke="#e1b38b"/></g>'
   };
 
+
   function itemModelMarkup(id) {
     const model = ITEM_MODELS[id] || ITEM_MODELS.stone;
     return '<svg class="item-model" viewBox="0 0 64 64" aria-hidden="true" focusable="false">' + model + '</svg>';
   }
 
-  const HOTBAR_SLOT_BY_ITEM = {
-    woodAxe: 0,
-    woodPickaxe: 1,
-    stoneAxe: 2,
-    stonePickaxe: 3,
-    logs: 4,
-    planks: 5,
-    sticks: 6,
-    stone: 7,
-    hands: 8,
-  };
-  const hotbarDefinitions = [
-    { id: 'woodAxe', name: 'Деревянный топор', modelId: 'woodAxe', kind: 'tool' },
-    { id: 'woodPickaxe', name: 'Деревянная кирка', modelId: 'woodPickaxe', kind: 'tool' },
-    { id: 'stoneAxe', name: 'Каменный топор', modelId: 'stoneAxe', kind: 'tool' },
-    { id: 'stonePickaxe', name: 'Каменная кирка', modelId: 'stonePickaxe', kind: 'tool' },
-    { id: 'logs', name: 'Дерево', modelId: 'logs', kind: 'resource', resource: 'logs' },
-    { id: 'planks', name: 'Доски', modelId: 'planks', kind: 'resource', resource: 'planks' },
-    { id: 'sticks', name: 'Палки', modelId: 'sticks', kind: 'resource', resource: 'sticks' },
-    { id: 'stone', name: 'Камень', modelId: 'stone', kind: 'resource', resource: 'stone' },
-    { id: 'hands', name: 'Руки', modelId: 'hands', kind: 'hands' },
-  ];
-
-  function slotState(index) {
-    const definition = hotbarDefinitions[index];
-    if (!definition) return { id: 'empty', name: 'Пустой слот', kind: 'empty', hasItem: false, count: 0 };
-    if (definition.kind === 'tool') {
-      const hasItem = !!inventory[definition.id];
-      return { ...definition, toolId: hasItem ? definition.id : null, hasItem, count: hasItem ? 1 : 0 };
-    }
-    if (definition.kind === 'hands') return { ...definition, hasItem: true, count: 0 };
-    if (definition.kind === 'resource') {
-      const count = inventory[definition.resource] || 0;
-      return { ...definition, hasItem: count > 0, count };
-    }
-    return { ...definition, hasItem: false, count: 0 };
+  function getCellArray(kind) {
+    if (kind === 'inventory') return inventorySlots;
+    if (kind === 'hotbar') return hotbarSlots;
+    if (kind === 'craft') return craftingGrid;
+    return null;
   }
 
-  function createHotbarSlot(index, compact = false) {
-    const item = slotState(index);
+  function getCell(kind, index) {
+    const array = getCellArray(kind);
+    return array && Number.isInteger(index) && index >= 0 && index < array.length ? array[index] : null;
+  }
+
+  function setCell(kind, index, value) {
+    const array = getCellArray(kind);
+    if (!array || index < 0 || index >= array.length) return false;
+    array[index] = cleanStack(value);
+    return true;
+  }
+
+  function cellIsSelected(kind, index) {
+    return !!selectedCell && selectedCell.kind === kind && selectedCell.index === index;
+  }
+
+  function createItemCell(kind, index, stack) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'hotbar-slot' + (compact ? ' compact' : '') +
-      (selectedSlot === index ? ' selected' : '') + (!item.hasItem ? ' empty' : '');
-    button.dataset.slot = String(index);
-    button.disabled = false;
-    button.setAttribute('aria-pressed', selectedSlot === index ? 'true' : 'false');
-    button.setAttribute('aria-label', (index + 1) + ': ' + item.name +
-      (item.count > 0 ? ', количество ' + item.count : ''));
-
-    const key = document.createElement('span');
-    key.className = 'slot-key';
-    key.textContent = String(index + 1);
-    const icon = document.createElement('span');
-    icon.className = 'slot-model-wrap';
-    icon.innerHTML = item.hasItem && item.modelId ? itemModelMarkup(item.modelId) : '';
+    button.draggable = !!stack;
+    button.dataset.cellKind = kind;
+    button.dataset.cellIndex = String(index);
+    const className = kind === 'hotbar' ? 'hotbar-slot' : kind === 'craft' ? 'craft-slot' : 'inventory-slot';
+    button.className = className +
+      (kind === 'hotbar' && selectedSlot === index ? ' selected' : '') +
+      (cellIsSelected(kind, index) ? ' moving' : '') +
+      (!stack ? ' empty' : '');
+    if (kind === 'hotbar') {
+      const key = document.createElement('span');
+      key.className = 'slot-key';
+      key.textContent = String(index + 1);
+      button.appendChild(key);
+    }
+    const model = document.createElement('span');
+    model.className = 'slot-model-wrap';
+    model.innerHTML = stack ? itemModelMarkup(stack.id) : '';
     const count = document.createElement('span');
     count.className = 'slot-count';
-    count.textContent = item.kind === 'resource' && item.count > 0 ? String(item.count) : '';
-    button.append(key, icon, count);
+    count.textContent = stack && stack.count > 1 ? String(stack.count) : '';
+    button.append(model, count);
+    button.setAttribute('aria-label',
+      (kind === 'hotbar' ? 'Быстрый слот ' + (index + 1) : kind === 'craft' ? 'Ячейка крафта ' + (index + 1) : 'Ячейка инвентаря ' + (index + 1)) +
+      (stack ? ': ' + (itemNames[stack.id] || stack.id) + ', ' + stack.count : ': пусто'));
     return button;
   }
 
   function renderHotbar() {
-    hotbar.replaceChildren(...hotbarDefinitions.map((item, index) => createHotbarSlot(index)));
+    hotbar.replaceChildren(...hotbarSlots.map((stack, index) => createItemCell('hotbar', index, stack)));
   }
 
   function renderInventoryGrid() {
-    const items = [
-      { id: 'logs', name: 'Дерево', count: inventory.logs, slot: HOTBAR_SLOT_BY_ITEM.logs },
-      { id: 'planks', name: 'Доски', count: inventory.planks, slot: HOTBAR_SLOT_BY_ITEM.planks },
-      { id: 'sticks', name: 'Палки', count: inventory.sticks, slot: HOTBAR_SLOT_BY_ITEM.sticks },
-      { id: 'stone', name: 'Камень', count: inventory.stone, slot: HOTBAR_SLOT_BY_ITEM.stone },
-      { id: 'woodAxe', name: 'Деревянный топор', count: inventory.woodAxe ? 1 : 0, slot: HOTBAR_SLOT_BY_ITEM.woodAxe },
-      { id: 'woodPickaxe', name: 'Деревянная кирка', count: inventory.woodPickaxe ? 1 : 0, slot: HOTBAR_SLOT_BY_ITEM.woodPickaxe },
-      { id: 'stoneAxe', name: 'Каменный топор', count: inventory.stoneAxe ? 1 : 0, slot: HOTBAR_SLOT_BY_ITEM.stoneAxe },
-      { id: 'stonePickaxe', name: 'Каменная кирка', count: inventory.stonePickaxe ? 1 : 0, slot: HOTBAR_SLOT_BY_ITEM.stonePickaxe },
-    ].filter((item) => item.count > 0);
-    if (workbench) items.push({ id: 'workbench', name: 'Верстак', count: 1, slot: null });
+    resourceEl.replaceChildren(...inventorySlots.map((stack, index) => createItemCell('inventory', index, stack)));
+  }
 
-    resourceEl.replaceChildren();
-    items.slice(0, 27).forEach((item) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'inventory-slot';
-      button.title = item.name;
-      button.setAttribute('aria-label', item.name + ', количество ' + item.count);
-      if (item.slot === null) button.disabled = true;
-      else button.dataset.slot = String(item.slot);
+  function renderCraftingGrid() {
+    craftingGridEl.replaceChildren(...craftingGrid.map((stack, index) => createItemCell('craft', index, stack)));
+  }
 
+  function addToInventory(id, amount) {
+    let remaining = Math.max(0, Math.floor(Number(amount) || 0));
+    if (!ITEM_IDS.includes(id) || remaining <= 0) return remaining;
+    const isTool = TOOL_IDS.includes(id);
+    if (isTool && [...inventorySlots, ...hotbarSlots, ...craftingGrid].some((stack) => stack && stack.id === id)) {
+      return remaining;
+    }
+
+    const storageAreas = [inventorySlots, hotbarSlots];
+    if (!isTool) {
+      for (const area of storageAreas) {
+        for (const stack of area) {
+          if (!stack || stack.id !== id || stack.count >= STACK_LIMIT) continue;
+          const moved = Math.min(remaining, STACK_LIMIT - stack.count);
+          stack.count += moved;
+          remaining -= moved;
+          if (!remaining) break;
+        }
+        if (!remaining) break;
+      }
+    }
+
+    for (const area of storageAreas) {
+      for (let index = 0; index < area.length && remaining > 0; index++) {
+        if (area[index]) continue;
+        const moved = isTool ? 1 : Math.min(STACK_LIMIT, remaining);
+        area[index] = { id, count: moved };
+        remaining -= moved;
+        if (isTool) break;
+      }
+      if (!remaining) break;
+    }
+    syncInventoryTotals();
+    return remaining;
+  }
+
+  function canStoreItem(id, amount) {
+    const isTool = TOOL_IDS.includes(id);
+    if (isTool) {
+      if ([...inventorySlots, ...hotbarSlots, ...craftingGrid].some((stack) => stack && stack.id === id)) return false;
+      return inventorySlots.some((stack) => !stack) || hotbarSlots.some((stack) => !stack);
+    }
+    let remaining = amount;
+    for (const area of [inventorySlots, hotbarSlots]) {
+      for (const stack of area) {
+        if (!stack || stack.id !== id || stack.count >= STACK_LIMIT) continue;
+        remaining -= Math.min(remaining, STACK_LIMIT - stack.count);
+        if (remaining <= 0) return true;
+      }
+    }
+    const emptySlots = inventorySlots.filter((stack) => !stack).length + hotbarSlots.filter((stack) => !stack).length;
+    return remaining <= emptySlots * STACK_LIMIT;
+  }
+
+  function transferCell(source, destination) {
+    if (!source || !destination || source.kind === destination.kind && source.index === destination.index) return false;
+    const sourceStack = getCell(source.kind, source.index);
+    if (!sourceStack) return false;
+    const destinationStack = getCell(destination.kind, destination.index);
+
+    if (destinationStack && destinationStack.id === sourceStack.id && !TOOL_IDS.includes(sourceStack.id)) {
+      const moved = Math.min(sourceStack.count, STACK_LIMIT - destinationStack.count);
+      if (moved <= 0) return false;
+      destinationStack.count += moved;
+      sourceStack.count -= moved;
+      if (sourceStack.count <= 0) setCell(source.kind, source.index, null);
+    } else {
+      setCell(destination.kind, destination.index, sourceStack);
+      setCell(source.kind, source.index, destinationStack);
+    }
+
+    if (destination.kind === 'hotbar') selectedSlot = destination.index;
+    syncInventoryTotals();
+    save();
+    renderPanel();
+    return true;
+  }
+
+  function handleCellClick(kind, index) {
+    const target = { kind, index };
+    const stack = getCell(kind, index);
+    if (!selectedCell) {
+      if (stack) {
+        selectedCell = target;
+        renderPanel();
+      } else if (kind === 'hotbar' && !panelOpen) {
+        selectHotbarSlot(index);
+      }
+      return;
+    }
+
+    if (cellIsSelected(kind, index)) {
+      selectedCell = null;
+      renderPanel();
+      return;
+    }
+    const source = selectedCell;
+    selectedCell = null;
+    if (!transferCell(source, target)) renderPanel();
+  }
+
+  function findCraftRecipe() {
+    const recipes = [
+      { id: 'planks', output: 'planks', count: 4, width: 1, height: 1, cells: [{ x: 0, y: 0, id: 'logs' }] },
+      { id: 'sticks', output: 'sticks', count: 4, width: 1, height: 2, cells: [{ x: 0, y: 0, id: 'planks' }, { x: 0, y: 1, id: 'planks' }] },
+      { id: 'woodAxe', output: 'woodAxe', count: 1, width: 2, height: 3, cells: [
+        { x: 0, y: 0, id: 'planks' }, { x: 1, y: 0, id: 'planks' },
+        { x: 0, y: 1, id: 'planks' }, { x: 1, y: 1, id: 'sticks' },
+        { x: 1, y: 2, id: 'sticks' },
+      ] },
+      { id: 'woodPickaxe', output: 'woodPickaxe', count: 1, width: 3, height: 3, cells: [
+        { x: 0, y: 0, id: 'planks' }, { x: 1, y: 0, id: 'planks' }, { x: 2, y: 0, id: 'planks' },
+        { x: 1, y: 1, id: 'sticks' }, { x: 1, y: 2, id: 'sticks' },
+      ] },
+      { id: 'workbench', output: 'workbench', count: 1, width: 2, height: 2, cells: [
+        { x: 0, y: 0, id: 'planks' }, { x: 1, y: 0, id: 'planks' },
+        { x: 0, y: 1, id: 'planks' }, { x: 1, y: 1, id: 'planks' },
+      ] },
+      { id: 'stoneAxe', output: 'stoneAxe', count: 1, width: 2, height: 3, bench: true, cells: [
+        { x: 0, y: 0, id: 'stone' }, { x: 1, y: 0, id: 'stone' },
+        { x: 0, y: 1, id: 'stone' }, { x: 1, y: 1, id: 'sticks' },
+        { x: 1, y: 2, id: 'sticks' },
+      ] },
+      { id: 'stonePickaxe', output: 'stonePickaxe', count: 1, width: 3, height: 3, bench: true, cells: [
+        { x: 0, y: 0, id: 'stone' }, { x: 1, y: 0, id: 'stone' }, { x: 2, y: 0, id: 'stone' },
+        { x: 1, y: 1, id: 'sticks' }, { x: 1, y: 2, id: 'sticks' },
+      ] },
+    ];
+
+    for (const recipe of recipes) {
+      if (recipe.bench && !nearWorkbench()) continue;
+      if (recipe.output === 'workbench' && workbench) continue;
+      if (TOOL_IDS.includes(recipe.output) && inventory[recipe.output]) continue;
+      for (const mirrored of [false, true]) {
+        for (let offsetY = 0; offsetY <= 3 - recipe.height; offsetY++) {
+          for (let offsetX = 0; offsetX <= 3 - recipe.width; offsetX++) {
+            const expected = new Map();
+            for (const part of recipe.cells) {
+              const x = mirrored ? recipe.width - 1 - part.x : part.x;
+              const index = (offsetY + part.y) * 3 + offsetX + x;
+              expected.set(index, part.id);
+            }
+            let matches = true;
+            for (let index = 0; index < 9; index++) {
+              const stack = craftingGrid[index];
+              const expectedId = expected.get(index);
+              if (expectedId) {
+                if (!stack || stack.id !== expectedId || stack.count < 1) { matches = false; break; }
+              } else if (stack) {
+                matches = false;
+                break;
+              }
+            }
+            if (matches) return { recipe, cells: [...expected.keys()] };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function renderCraftingOutput() {
+    const match = findCraftRecipe();
+    craftOutputEl.replaceChildren();
+    craftOutputEl.disabled = !match;
+    craftOutputEl.classList.toggle('available', !!match);
+    craftOutputEl.setAttribute('aria-label', match ? 'Забрать изготовленный предмет' : 'Результат крафта пока пуст');
+    if (match) {
       const model = document.createElement('span');
       model.className = 'slot-model-wrap';
-      model.innerHTML = itemModelMarkup(item.id);
+      model.innerHTML = itemModelMarkup(match.recipe.output);
       const count = document.createElement('span');
       count.className = 'slot-count';
-      count.textContent = String(item.count);
-      button.append(model, count);
-      resourceEl.appendChild(button);
-    });
-
-    while (resourceEl.children.length < 27) {
-      const empty = document.createElement('div');
-      empty.className = 'inventory-slot empty';
-      empty.setAttribute('aria-hidden', 'true');
-      resourceEl.appendChild(empty);
+      count.textContent = match.recipe.count > 1 ? String(match.recipe.count) : '';
+      craftOutputEl.append(model, count);
     }
   }
+
+  function takeCraftResult() {
+    const match = findCraftRecipe();
+    if (!match) return;
+    const { recipe, cells } = match;
+    if (recipe.output === 'workbench') {
+      if (!placeWorkbench()) return;
+    } else if (!canStoreItem(recipe.output, recipe.count)) {
+      toast('В инвентаре нет места для результата.');
+      return;
+    }
+
+    for (const index of cells) {
+      const stack = craftingGrid[index];
+      if (!stack) continue;
+      stack.count -= 1;
+      if (stack.count <= 0) craftingGrid[index] = null;
+    }
+    if (recipe.output !== 'workbench') {
+      addToInventory(recipe.output, recipe.count);
+    }
+    selectedCell = null;
+    syncInventoryTotals();
+    save();
+    renderPanel();
+    toast(recipe.output === 'workbench' ? 'Верстак установлен.' : 'Предмет изготовлен.');
+  }
+
   function renderPanel() {
-    refreshHeldTool();
+    syncInventoryTotals();
     renderInventoryGrid();
     renderHotbar();
-    const activeSlot = slotState(selectedSlot);
-    heldNameEl.textContent = activeSlot.hasItem ? activeSlot.name : 'Пустой слот';
+    renderCraftingGrid();
+    refreshHeldTool();
+    const activeStack = hotbarSlots[selectedSlot];
+    heldNameEl.textContent = activeStack ? (itemNames[activeStack.id] || activeStack.id) : 'Руки';
 
-    const atBench = nearWorkbench();
     benchStatusEl.textContent = workbench
-      ? (atBench ? 'Верстак рядом: каменные инструменты доступны.' : 'Верстак уже установлен. Подойди к нему для каменного крафта.')
-      : 'Для каменных инструментов сначала создай и поставь верстак.';
+      ? (nearWorkbench() ? 'Верстак: рядом' : 'Верстак: установлен в мире')
+      : 'Верстак: ещё не установлен';
 
-    recipesEl.replaceChildren();
-    recipes.forEach((recipe) => {
-      const owned = owns(recipe.id);
-      const canCraftHere = !recipe.bench || atBench;
-      const row = document.createElement('div');
-      row.className = 'survival-recipe';
-
-      const output = document.createElement('div');
-      output.className = 'recipe-output';
-      output.innerHTML = itemModelMarkup(recipe.id === 'planks' || recipe.id === 'sticks' ? recipe.id : recipe.id);
-      const info = document.createElement('div');
-      info.className = 'recipe-info';
-      const title = document.createElement('b');
-      title.textContent = recipe.title;
-      const needs = document.createElement('div');
-      needs.className = 'recipe-needs';
-      Object.entries(recipe.cost).forEach(([key, amount]) => {
-        const need = document.createElement('span');
-        need.className = 'recipe-need';
-        need.innerHTML = itemModelMarkup(key) + '<b>' + amount + '</b>';
-        needs.appendChild(need);
-      });
-      info.append(title, needs);
-
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.dataset.craft = recipe.id;
-      button.textContent = owned ? 'ГОТОВО' : recipe.bench && !canCraftHere ? 'ВЕРСТАК' : 'СОЗДАТЬ';
-      button.disabled = owned || !affordable(recipe.cost) || !canCraftHere;
-      row.append(output, info, button);
-      recipesEl.appendChild(row);
-    });
-
+    renderCraftingOutput();
     const active = nodes.filter((node) => node.active).length;
     nodeCountEl.textContent = active + ' / ' + NODE_COUNT;
-    status.textContent = 'Слот ' + (selectedSlot + 1) + ' · ' + (activeSlot.hasItem ? activeSlot.name : 'Пусто') +
+    status.textContent = 'Слот ' + (selectedSlot + 1) + ' · ' +
+      (activeStack ? (itemNames[activeStack.id] || activeStack.id) : 'Пусто') +
       ' · Камни на карте: ' + active + '/' + NODE_COUNT;
   }
 
   function selectHotbarSlot(index) {
-    if (!Number.isInteger(index) || index < 0 || index >= hotbarDefinitions.length) return;
-    const item = slotState(index);
+    if (!Number.isInteger(index) || index < 0 || index >= hotbarSlots.length) return;
     selectedSlot = index;
-    if (item.kind === 'hands') selectedTool = 'hands';
-    else if (item.kind === 'tool') selectedTool = item.hasItem ? item.toolId : null;
-    else if (item.kind === 'resource') selectedTool = item.hasItem ? 'hands' : null;
-    else selectedTool = null;
+    syncInventoryTotals();
     save();
     renderHotbar();
-    if (panelOpen) {
-      renderInventoryGrid();
-      heldNameEl.textContent = item.hasItem ? item.name : 'Пустой слот';
-    }
+    refreshHeldTool();
   }
 
   function toast(message) {
@@ -669,39 +829,6 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     return true;
   }
 
-  function craft(id) {
-    const recipe = recipes.find((item) => item.id === id);
-    if (!recipe || owns(id)) return;
-    if (recipe.bench && !nearWorkbench()) {
-      toast('Для каменных инструментов подойди к верстаку.');
-      return;
-    }
-    if (!affordable(recipe.cost)) {
-      toast('Не хватает ресурсов.');
-      return;
-    }
-    if (id === 'workbench' && !placeWorkbench()) return;
-    Object.entries(recipe.cost).forEach(([key, amount]) => { inventory[key] -= amount; });
-    if (id === 'planks') inventory.planks += 4;
-    else if (id === 'sticks') inventory.sticks += 4;
-    else if (['woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe'].includes(id)) {
-      inventory[id] = true;
-      selectedTool = id;
-      selectedSlot = HOTBAR_SLOT_BY_ITEM[id];
-    }
-    save();
-    renderPanel();
-    toast('Создано: ' + recipe.title);
-  }
-
-  function equip(id) {
-    if (id !== 'hands' && !inventory[id]) return;
-    selectedTool = id;
-    selectedSlot = HOTBAR_SLOT_BY_ITEM[id];
-    save();
-    renderPanel();
-  }
-
   function currentTarget() {
     raycaster.setFromCamera(center, camera);
     const localTrees = world.forests.getInteractiveMeshes(camera.position.x, camera.position.z);
@@ -738,11 +865,12 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       if (target.tree.health <= 0) {
         world.forests.remove(target.tree);
         const woodYield = 2 + Math.floor(Math.random() * 6);
-        inventory.logs += woodYield;
-        inventory.sticks += 1;
+        const missingLogs = addToInventory('logs', woodYield);
+        const missingSticks = addToInventory('sticks', 1);
         save();
         renderPanel();
-        toast('Дерево срублено: +' + woodYield + ' древесины, +1 палка.');
+        toast('Дерево срублено: +' + (woodYield - missingLogs) + ' древесины, +' + (1 - missingSticks) + ' палка.' +
+          (missingLogs || missingSticks ? ' Инвентарь заполнен.' : ''));
       } else {
         toast('Удар по дереву: осталось ' + target.tree.health + '/' + TREE_HP + '.');
       }
@@ -761,10 +889,11 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       writeNode(target.node);
       stoneMesh.instanceMatrix.needsUpdate = true;
       const stoneYield = 2 + Math.floor(Math.random() * 3);
-      inventory.stone += stoneYield;
+      const missingStone = addToInventory('stone', stoneYield);
       save();
       renderPanel();
-      toast('Каменная глыба разрушена: +' + stoneYield + ' камня. Через 5 минут она появится в другом месте.');
+      toast('Каменная глыба разрушена: +' + (stoneYield - missingStone) + ' камня.' +
+        (missingStone ? ' Инвентарь заполнен.' : ' Через 5 минут она появится в другом месте.'));
     } else {
       toast('Камень раскалывается: осталось ' + target.node.hp + '/' + STONE_HP + '.');
     }
@@ -781,20 +910,69 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     stoneMesh.setMatrixAt(node.id, matrix);
   }
 
+  function readCellElement(target) {
+    const cell = target && target.closest && target.closest('[data-cell-kind][data-cell-index]');
+    if (!cell) return null;
+    return { kind: cell.dataset.cellKind, index: Number(cell.dataset.cellIndex) };
+  }
+
+  function handleCellDrop(source, destination) {
+    if (!source || !destination) return;
+    selectedCell = null;
+    if (!transferCell(source, destination)) renderPanel();
+  }
+
+  function bindCellInteractions(container) {
+    container.addEventListener('click', (event) => {
+      const cell = readCellElement(event.target);
+      if (!cell) return;
+      if (panelOpen) handleCellClick(cell.kind, cell.index);
+      else if (cell.kind === 'hotbar') selectHotbarSlot(cell.index);
+    });
+    container.addEventListener('dragstart', (event) => {
+      const cell = readCellElement(event.target);
+      if (!cell || !getCell(cell.kind, cell.index)) {
+        event.preventDefault();
+        return;
+      }
+      selectedCell = cell;
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', cell.kind + ':' + cell.index);
+      }
+      event.target.classList.add('moving');
+    });
+    container.addEventListener('dragover', (event) => {
+      if (readCellElement(event.target)) event.preventDefault();
+    });
+    container.addEventListener('drop', (event) => {
+      const destination = readCellElement(event.target);
+      if (!destination) return;
+      event.preventDefault();
+      const encoded = event.dataTransfer && event.dataTransfer.getData('text/plain');
+      let source = selectedCell;
+      if (encoded) {
+        const parts = encoded.split(':');
+        if (parts.length === 2) source = { kind: parts[0], index: Number(parts[1]) };
+      }
+      handleCellDrop(source, destination);
+    });
+    container.addEventListener('dragend', () => {
+      selectedCell = null;
+      if (panelOpen) renderPanel();
+    });
+  }
+
+  bindCellInteractions(resourceEl);
+  bindCellInteractions(craftingGridEl);
+  bindCellInteractions(hotbar);
+
   toggle.addEventListener('click', () => showPanel(!panelOpen));
-  hotbar.addEventListener('click', (event) => {
-    const slot = event.target.closest('[data-slot]');
-    if (slot) selectHotbarSlot(Number(slot.dataset.slot));
-  });
   panel.addEventListener('click', (event) => {
-    const target = event.target;
-    const close = target.closest('[data-close]');
-    const craftButton = target.closest('[data-craft]');
-    const slot = target.closest('[data-slot]');
+    const close = event.target.closest('[data-close]');
     if (close) showPanel(false);
-    else if (craftButton) craft(craftButton.dataset.craft);
-    else if (slot) selectHotbarSlot(Number(slot.dataset.slot));
   });
+  craftOutputEl.addEventListener('click', () => takeCraftResult());
   mobileHit.addEventListener('click', () => hitTarget());
 
   window.addEventListener('keydown', (event) => {
@@ -802,13 +980,14 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       event.preventDefault();
       showPanel(!panelOpen);
     } else if (/^Digit[1-9]$/.test(event.code) && !event.repeat) {
-      selectHotbarSlot(Number(event.code.slice(-1)) - 1);
-    } else if (event.code === 'Digit0' && !event.repeat) {
-      selectHotbarSlot(2);
+      const index = Number(event.code.slice(-1)) - 1;
+      if (panelOpen && selectedCell) handleCellClick('hotbar', index);
+      else selectHotbarSlot(index);
     } else if (event.code === 'Escape' && panelOpen) {
       showPanel(false);
     }
   });
+  panel.addEventListener('contextmenu', (event) => event.preventDefault());
   canvas.addEventListener('mousedown', (event) => {
     if (event.button !== 0 || panelOpen) return;
     mouseHeld = true;
