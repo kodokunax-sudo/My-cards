@@ -1099,9 +1099,9 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     const left = cx * chunkSize;
     const top = cz * chunkSize;
     const minIX = Math.max(0, Math.ceil((left + half) / cell));
-    const maxIX = Math.min(Math.floor((2 * half) / cell), Math.floor((left + chunkSize + half) / cell));
+    const maxIX = Math.min(Math.floor((2 * half) / cell), Math.ceil((left + chunkSize + half) / cell) - 1);
     const minIZ = Math.max(0, Math.ceil((top + half) / cell));
-    const maxIZ = Math.min(Math.floor((2 * half) / cell), Math.floor((top + chunkSize + half) / cell));
+    const maxIZ = Math.min(Math.floor((2 * half) / cell), Math.ceil((top + chunkSize + half) / cell) - 1);
     const bucket = { trees: [], variants: [[], [], [], [], [], [], [], []], interactiveMeshes: [] };
 
     for (let ix = minIX; ix <= maxIX; ix++) {
