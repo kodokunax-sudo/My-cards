@@ -774,11 +774,15 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
   function selectHotbarSlot(index) {
     if (!Number.isInteger(index) || index < 0 || index >= hotbarSlots.length) return;
+    selectedCell = null;
     selectedSlot = index;
     syncInventoryTotals();
     save();
-    renderHotbar();
-    refreshHeldTool();
+    if (panelOpen) renderPanel();
+    else {
+      renderHotbar();
+      refreshHeldTool();
+    }
   }
 
   function toast(message) {
@@ -791,6 +795,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     panel.hidden = !panelOpen;
     toggle.setAttribute('aria-expanded', panelOpen ? 'true' : 'false');
     document.body.classList.toggle('inventory-open', panelOpen);
+    if (!panelOpen) selectedCell = null;
     if (panelOpen) {
       mouseHeld = false;
       if (player.unlock) player.unlock();
