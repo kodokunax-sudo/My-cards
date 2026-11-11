@@ -1951,9 +1951,9 @@ export async function createWorld(scene, onProgress = () => {}) {
   // plus a 3x3 neighborhood of forest, ground cover and rocks. Nothing else
   // is generated until the player moves toward the edge of this bubble.
   await streamer.preloadNearby(-1600, 900, onProgress);
-  forests.updateNear(-1600, 900, 9);
-  groundCover.updateNear(-1600, 900, 9);
-  rocks.updateNear(-1600, 900, 9);
+  forests.updateNear(-1600, 900, 13);
+  groundCover.updateNear(-1600, 900, 13);
+  rocks.updateNear(-1600, 900, 13);
   onProgress('Ближайшая область готова.');
 
   return {
