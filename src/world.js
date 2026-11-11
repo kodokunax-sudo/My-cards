@@ -752,6 +752,21 @@ function createWorldChunkStreamer() {
       const nearby = nearbyJobs(x, z);
       for (let i = 0; i < Math.min(count, nearby.length); i++) buildOne(nearby[i]);
     },
+    async preloadNearby(x, z, onProgress = () => {}) {
+      // Finish the complete starting bubble before the player enters the world.
+      // Chunks outside LOAD_RADIUS remain untouched until the player approaches.
+      const nearby = nearbyJobs(x, z);
+      for (let i = 0; i < nearby.length; i++) {
+        const job = nearby[i];
+        if (job.done) continue;
+        buildOne(job);
+        if (i % 2 === 1 || i === nearby.length - 1) {
+          onProgress(`Подготавливаем ближайший мир... ${Math.round((i + 1) / nearby.length * 100)}%`);
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        }
+      }
+      return nearby.length;
+    },
     update(x, z) {
       const nearby = nearbyJobs(x, z);
       if (nearby.length) buildOne(nearby[0]);
@@ -1932,7 +1947,14 @@ export async function createWorld(scene, onProgress = () => {}) {
     return Number.isFinite(heightAt(x, z));
   };
 
-  streamer.prime(-1600, 900, 4);
+  // Prebuild every terrain/river chunk inside the initial 1.48km bubble,
+  // plus a 3x3 neighborhood of forest, ground cover and rocks. Nothing else
+  // is generated until the player moves toward the edge of this bubble.
+  await streamer.preloadNearby(-1600, 900, onProgress);
+  forests.updateNear(-1600, 900, 9);
+  groundCover.updateNear(-1600, 900, 9);
+  rocks.updateNear(-1600, 900, 9);
+  onProgress('Ближайшая область готова.');
 
   return {
     house: house.house,
