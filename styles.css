@@ -1122,3 +1122,266 @@ body.touch #survival-hit{bottom:max(224px,calc(env(safe-area-inset-bottom) + 220
   .survival-recipe{padding:7px}
   .survival-recipe button{min-width:64px;padding:4px 6px}
 }
+
+
+/* Inventory v2: proper item thumbnails, centered game-style panel, one persistent hotbar. */
+#survival-toggle { display:none; }
+#survival-panel {
+  padding: 14px 14px 88px;
+  background: rgba(0,0,0,.58);
+}
+.inventory-window {
+  width: min(960px, 96vw);
+  max-height: min(82vh, 680px);
+  padding: 15px 17px 12px;
+  background: linear-gradient(180deg, #c6c6c6 0%, #a6a6a6 100%);
+  border: 3px solid #f2f2f2;
+  border-right-color: #565656;
+  border-bottom-color: #565656;
+  box-shadow: inset 0 0 0 2px #777, 7px 7px 0 rgba(0,0,0,.45);
+  color: #242424;
+}
+.inventory-window .survival-heading {
+  margin-bottom: 12px;
+  padding: 0 2px 8px;
+  border-bottom: 2px solid rgba(70,70,70,.45);
+}
+.inventory-window .survival-heading h2 {
+  color: #262626;
+  font: 700 15px/1.2 system-ui,sans-serif;
+  text-shadow: 1px 1px rgba(255,255,255,.55);
+}
+.inventory-window .survival-heading p { display:none; }
+.inventory-window .survival-heading button {
+  width: 29px;height:29px;
+  color:#292929;background:#aaa;
+  border-color:#eee;border-right-color:#555;border-bottom-color:#555;
+}
+.inventory-layout {
+  display:grid;
+  grid-template-columns:minmax(0, 1.45fr) minmax(270px, .9fr);
+  gap:17px;
+}
+.inventory-left {
+  display:grid;
+  grid-template-columns:126px minmax(0,1fr);
+  gap:10px;
+  align-content:start;
+}
+.inventory-character {
+  min-height:228px;
+  padding:8px 6px;
+  background:rgba(75,75,75,.16);
+  border:2px solid rgba(245,245,245,.65);
+  border-right-color:rgba(55,55,55,.65);
+  border-bottom-color:rgba(55,55,55,.65);
+  text-align:center;
+}
+.inventory-character .inventory-label {text-align:center;color:#303030}
+.character-preview {
+  height:150px;
+  display:grid;
+  place-items:center;
+  background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(0,0,0,.05));
+}
+.character-preview svg {height:145px;width:108px;filter:drop-shadow(2px 3px 0 rgba(0,0,0,.2))}
+.character-caption {margin-top:5px;color:#4d4d4d;font:700 9px system-ui,sans-serif;text-transform:uppercase}
+.character-held {margin-top:3px;color:#242424;font:700 10px system-ui,sans-serif}
+.inventory-items {min-width:0}
+.inventory-label {
+  margin:0 0 7px;
+  color:#303030;
+  font:700 10px/1.3 system-ui,sans-serif;
+  letter-spacing:.04em;
+  text-shadow:0 1px rgba(255,255,255,.45);
+}
+.survival-resources {
+  display:grid;
+  grid-template-columns:repeat(9,minmax(0,1fr));
+  gap:3px;
+  margin:0;
+}
+.inventory-slot {
+  width:100%;
+  height:auto;
+  aspect-ratio:1;
+  border:2px solid #eee;
+  border-right-color:#666;
+  border-bottom-color:#666;
+  background:linear-gradient(145deg,#777,#858585);
+  box-shadow:inset 1px 1px 0 rgba(255,255,255,.2);
+}
+.inventory-slot:hover:not(:disabled),
+.hotbar-slot:hover:not(:disabled) {background:linear-gradient(145deg,#919191,#747474)}
+.inventory-slot:focus-visible,.hotbar-slot:focus-visible {outline:2px solid #fff;outline-offset:2px}
+.inventory-slot.empty {
+  background:rgba(62,62,62,.28);
+  border-color:#bdbdbd;
+  border-right-color:#777;
+  border-bottom-color:#777;
+}
+.slot-model-wrap {
+  display:grid;
+  width:100%;
+  height:100%;
+  place-items:center;
+  pointer-events:none;
+}
+.item-model {
+  display:block;
+  width:84%;
+  height:84%;
+  overflow:visible;
+  filter:drop-shadow(1.5px 2px 0 rgba(0,0,0,.28));
+  shape-rendering:geometricPrecision;
+}
+.inventory-slot .slot-model-wrap {width:100%;height:100%}
+.inventory-slot .item-model {width:92%;height:92%}
+.inventory-footnote {
+  margin-top:7px;
+  color:#4f4f4f;
+  font:9px/1.35 system-ui,sans-serif;
+}
+.inventory-right {min-width:0}
+.crafting-note {
+  margin:0 0 8px;
+  min-height:30px;
+  padding:6px 8px;
+  color:#3c3c3c;
+  background:rgba(255,255,255,.24);
+  border:1px solid rgba(55,55,55,.2);
+  font:9px/1.4 system-ui,sans-serif;
+}
+.survival-recipes {
+  display:grid;
+  gap:4px;
+  max-height: min(49vh,430px);
+  overflow:auto;
+  padding:0 3px 3px 0;
+}
+.survival-recipe {
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) auto;
+  align-items:center;
+  gap:8px;
+  min-height:55px;
+  padding:5px 6px;
+  background:rgba(75,75,75,.2);
+  border:2px solid rgba(245,245,245,.65);
+  border-right-color:#6b6b6b;
+  border-bottom-color:#6b6b6b;
+}
+.recipe-output {
+  display:grid;
+  place-items:center;
+  width:39px;height:39px;
+  background:rgba(50,50,50,.24);
+  border:2px solid rgba(245,245,245,.58);
+  border-right-color:#777;
+  border-bottom-color:#777;
+}
+.recipe-output .item-model {width:34px;height:34px}
+.recipe-info {min-width:0;display:grid;gap:4px}
+.recipe-info>b {color:#2d2d2d;font:700 10px/1.2 system-ui,sans-serif}
+.recipe-needs {display:flex;flex-wrap:wrap;gap:4px}
+.recipe-need {
+  display:inline-flex;
+  align-items:center;
+  gap:2px;
+  padding:1px 3px;
+  color:#343434;
+  background:rgba(255,255,255,.28);
+  border:1px solid rgba(0,0,0,.14);
+  font:700 9px system-ui,sans-serif;
+}
+.recipe-need .item-model {width:19px;height:19px}
+.recipe-need b {font-size:9px}
+.survival-recipe button {
+  min-width:59px;
+  min-height:27px;
+  padding:4px 5px;
+  color:#292929;
+  background:linear-gradient(#dedede,#999);
+  border:2px solid #f3f3f3;
+  border-right-color:#585858;
+  border-bottom-color:#585858;
+  font:700 8px system-ui,sans-serif;
+}
+.survival-recipe button:disabled {opacity:.56}
+.survival-foot {
+  margin-top:8px;padding-top:7px;
+  border-top:1px solid rgba(0,0,0,.2);
+  color:#444;font:9px system-ui,sans-serif;
+}
+.survival-foot b {color:#222}
+.inventory-bottom-hint {
+  margin-top:9px;
+  padding-top:7px;
+  border-top:1px solid rgba(0,0,0,.2);
+  color:#555;
+  text-align:center;
+  font:9px system-ui,sans-serif;
+}
+#survival-hotbar {
+  z-index:50;
+  bottom:max(12px,env(safe-area-inset-bottom));
+  grid-template-columns:repeat(9,48px);
+  gap:3px;
+  padding:4px;
+  background:rgba(28,28,28,.92);
+  border:2px solid #aaa;
+  border-right-color:#262626;
+  border-bottom-color:#262626;
+  box-shadow:0 2px 9px rgba(0,0,0,.45);
+}
+#survival-hotbar .hotbar-slot {width:48px;height:48px;background:linear-gradient(145deg,#666,#858585)}
+#survival-hotbar .hotbar-slot.selected {
+  border:3px solid #fff;
+  background:linear-gradient(145deg,#929292,#777);
+  transform:translateY(-3px);
+}
+#survival-hotbar .hotbar-slot .slot-model-wrap {width:100%;height:100%}
+#survival-hotbar .hotbar-slot .item-model {width:89%;height:89%}
+#survival-hotbar .hotbar-slot.empty {background:rgba(75,75,75,.75)}
+#survival-hotbar .slot-key {top:1px;left:3px;font-size:8px}
+#survival-hotbar .slot-count {font-size:10px}
+body.in-game #survival-status {display:none}
+@media(max-width:780px) {
+  #survival-panel {padding:8px 7px 72px;align-items:center}
+  .inventory-window {width:min(620px,97vw);max-height:86vh;padding:10px}
+  .inventory-layout {grid-template-columns:1fr;gap:12px}
+  .inventory-left {grid-template-columns:92px minmax(0,1fr);gap:8px}
+  .inventory-character {min-height:178px;padding:6px 4px}
+  .character-preview {height:112px}
+  .character-preview svg {height:108px;width:80px}
+  .survival-resources {gap:2px}
+  .inventory-slot {border-width:1.5px}
+  .inventory-right {border-top:2px solid rgba(0,0,0,.17);padding-top:9px}
+  .survival-recipes {max-height:25vh;grid-template-columns:1fr 1fr;gap:4px}
+  .survival-recipe {grid-template-columns:30px minmax(0,1fr);gap:4px;padding:4px;min-height:49px}
+  .recipe-output {width:29px;height:29px}
+  .recipe-output .item-model {width:27px;height:27px}
+  .recipe-info>b {font-size:9px}
+  .recipe-need .item-model {width:15px;height:15px}
+  .recipe-need {font-size:8px}
+  .survival-recipe button {grid-column:2;justify-self:start;min-height:22px}
+  #survival-hotbar {
+    bottom:max(7px,env(safe-area-inset-bottom));
+    width:min(97vw,450px);
+    grid-template-columns:repeat(9,minmax(0,1fr));
+    gap:2px;padding:3px;
+  }
+  #survival-hotbar .hotbar-slot {width:100%;height:clamp(35px,8vw,44px)}
+  #survival-hotbar .slot-icon {font-size:0}
+  #survival-hotbar .slot-model-wrap {width:100%;height:100%}
+}
+@media(max-width:390px) {
+  .inventory-window {padding:8px}
+  .inventory-left {grid-template-columns:76px minmax(0,1fr);gap:6px}
+  .inventory-character {min-height:160px}
+  .character-preview {height:100px}
+  .character-preview svg {height:96px;width:70px}
+  .survival-recipes {grid-template-columns:1fr;max-height:29vh}
+  .survival-recipe {grid-template-columns:30px minmax(0,1fr) auto}
+  .survival-recipe button {grid-column:auto}
+}
