@@ -378,6 +378,49 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   fiberNodes = initializeGatherNodes(saved && saved.fiberNodes, FIBER_NODE_COUNT, 7);
   branchNodes = initializeGatherNodes(saved && saved.branchNodes, BRANCH_NODE_COUNT, 5);
 
+  function initializeMetalNodes(rawNodes, count, isOre) {
+    const source = Array.isArray(rawNodes) && rawNodes.length === count ? rawNodes : null;
+    const list = Array.from({ length: count }, (_, id) => {
+      const raw = source && source[id] ? source[id] : {};
+      return {
+        id,
+        x: Number(raw.x) || 0,
+        y: Number(raw.y) || 0,
+        z: Number(raw.z) || 0,
+        size: THREE.MathUtils.clamp(Number(raw.size) || 1, 0.7, 1.45),
+        angle: Number(raw.angle) || 0,
+        type: isOre ? 0 : (Number.isInteger(raw.type) ? THREE.MathUtils.clamp(raw.type, 0, 3) : Math.min(3, Math.floor(id / (count / 4)))),
+        active: raw.active === true,
+        hp: numberOrZero(raw.hp) || (isOre ? 18 : 6),
+        due: numberOrZero(raw.due),
+      };
+    });
+    const now = Date.now();
+    for (const node of list) {
+      if (!node.active) continue;
+      if (!world.canSpawnResourceAt(node.x, node.z, isOre ? 11 : 9) || resourcePositionCrowded(node.x, node.z)) {
+        node.active = false;
+        node.due = now + 15000;
+      } else {
+        markResourcePosition(node);
+      }
+    }
+    for (const node of list) {
+      if (node.active || (node.due && node.due > now)) continue;
+      const position = findGatherPosition(null, isOre ? 11 : 9);
+      if (!position) {
+        node.due = now + 15000;
+        continue;
+      }
+      Object.assign(node, position, { active: true, hp: isOre ? 18 : 6, due: 0 });
+      markResourcePosition(node);
+    }
+    return list;
+  }
+
+  scrapNodes = initializeMetalNodes(saved && saved.scrapNodes, SCRAP_NODE_COUNT, false);
+  ironOreNodes = initializeMetalNodes(saved && saved.ironOreNodes, IRON_ORE_NODE_COUNT, true);
+
   const fiberMaterial = new THREE.MeshStandardMaterial({
     color: 0x527b3f, roughness: 1, flatShading: true,
   });
@@ -419,6 +462,69 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   fiberMesh.computeBoundingSphere();
   branchMesh.computeBoundingSphere();
   scene.add(fiberMesh, branchMesh);
+
+  const scrapTypeNames = ['barrel', 'crate', 'equipment', 'fence'];
+  const scrapGeometries = [
+    new THREE.CylinderGeometry(0.42, 0.48, 1.12, 10),
+    new THREE.BoxGeometry(0.92, 0.82, 0.82),
+    new THREE.BoxGeometry(0.92, 0.58, 0.66),
+    new THREE.BoxGeometry(1.82, 0.10, 0.13),
+  ];
+  const scrapMaterials = [
+    new THREE.MeshStandardMaterial({ color: 0x84533a, roughness: 0.98, metalness: 0.18 }),
+    new THREE.MeshStandardMaterial({ color: 0x6d6258, roughness: 0.96, metalness: 0.24 }),
+    new THREE.MeshStandardMaterial({ color: 0x74736c, roughness: 0.94, metalness: 0.32 }),
+    new THREE.MeshStandardMaterial({ color: 0x69533f, roughness: 0.97, metalness: 0.16 }),
+  ];
+  const scrapMeshes = scrapGeometries.map((geometry, type) => {
+    const mesh = new THREE.InstancedMesh(geometry, scrapMaterials[type], SCRAP_NODE_COUNT);
+    mesh.name = 'survival-scrap-' + scrapTypeNames[type];
+    mesh.userData.noCollider = true;
+    return mesh;
+  });
+  function writeScrapNode(node) {
+    for (let type = 0; type < scrapMeshes.length; type++) {
+      if (!node.active || node.type !== type) {
+        matrix.makeScale(0, 0, 0);
+      } else {
+        rotation.setFromAxisAngle(up, node.angle);
+        position.set(node.x, node.y + (type === 0 ? 0.58 : type === 3 ? 0.28 : 0.42), node.z);
+        const heightScale = type === 0 ? 1 : type === 3 ? 1 : 0.85;
+        scale.set(node.size, node.size * heightScale, node.size);
+        matrix.compose(position, rotation, scale);
+      }
+      scrapMeshes[type].setMatrixAt(node.id, matrix);
+    }
+  }
+  for (const node of scrapNodes) writeScrapNode(node);
+  for (const mesh of scrapMeshes) {
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+    scene.add(mesh);
+  }
+
+  const ironOreMaterial = new THREE.MeshStandardMaterial({
+    color: 0x8a6250, roughness: 1, flatShading: true,
+  });
+  const ironOreMesh = new THREE.InstancedMesh(
+    new THREE.DodecahedronGeometry(1.08, 1), ironOreMaterial, IRON_ORE_NODE_COUNT
+  );
+  ironOreMesh.name = 'survival-iron-ore-deposits';
+  ironOreMesh.userData.noCollider = true;
+  function writeIronOreNode(node) {
+    if (!node.active) matrix.makeScale(0, 0, 0);
+    else {
+      rotation.setFromAxisAngle(up, node.angle);
+      position.set(node.x, node.y + node.size * 0.62, node.z);
+      scale.set(node.size * 1.12, node.size * 0.86, node.size);
+      matrix.compose(position, rotation, scale);
+    }
+    ironOreMesh.setMatrixAt(node.id, matrix);
+  }
+  for (const node of ironOreNodes) writeIronOreNode(node);
+  ironOreMesh.instanceMatrix.needsUpdate = true;
+  ironOreMesh.computeBoundingSphere();
+  scene.add(ironOreMesh);
 
   // First-person tool models: crafted tools appear in the lower-right camera view.
   const viewModel = new THREE.Group();
