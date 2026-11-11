@@ -28,11 +28,19 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     stoneAxe: !!(saved && saved.inventory && saved.inventory.stoneAxe),
     stonePickaxe: !!(saved && saved.inventory && saved.inventory.stonePickaxe),
   };
-  let selectedTool = saved && ['hands', 'woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe'].includes(saved.selectedTool)
-    ? saved.selectedTool : 'hands';
-  let selectedSlot = Number.isInteger(saved && saved.selectedSlot) && saved.selectedSlot >= 0 && saved.selectedSlot < 9
-    ? saved.selectedSlot
-    : selectedTool === 'hands' ? 2 : selectedTool.includes('Pickaxe') ? 1 : 0;
+  let selectedTool = saved && (
+    saved.selectedTool === null ||
+    ['hands', 'woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe'].includes(saved.selectedTool)
+  ) ? saved.selectedTool : 'hands';
+  const previousSlot = Number.isInteger(saved && saved.selectedSlot) && saved.selectedSlot >= 0 && saved.selectedSlot < 9
+    ? saved.selectedSlot : null;
+  let selectedSlot = selectedTool === 'woodAxe' ? 0
+    : selectedTool === 'woodPickaxe' ? 1
+    : selectedTool === 'stoneAxe' ? 2
+    : selectedTool === 'stonePickaxe' ? 3
+    : selectedTool === null ? (previousSlot ?? 8)
+    : previousSlot !== null && previousSlot >= 3 && previousSlot <= 6 ? previousSlot + 1
+    : 8;
   let workbench = saved && saved.workbench ? saved.workbench : null;
   let workbenchGroup = null;
 
@@ -439,27 +447,35 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     return '<svg class="item-model" viewBox="0 0 64 64" aria-hidden="true" focusable="false">' + model + '</svg>';
   }
 
+  const HOTBAR_SLOT_BY_ITEM = {
+    woodAxe: 0,
+    woodPickaxe: 1,
+    stoneAxe: 2,
+    stonePickaxe: 3,
+    logs: 4,
+    planks: 5,
+    sticks: 6,
+    stone: 7,
+    hands: 8,
+  };
   const hotbarDefinitions = [
-    { id: 'axe', name: 'Топор', modelId: 'woodAxe', kind: 'tool' },
-    { id: 'pickaxe', name: 'Кирка', modelId: 'woodPickaxe', kind: 'tool' },
-    { id: 'hands', name: 'Руки', modelId: 'hands', kind: 'hands' },
+    { id: 'woodAxe', name: 'Деревянный топор', modelId: 'woodAxe', kind: 'tool' },
+    { id: 'woodPickaxe', name: 'Деревянная кирка', modelId: 'woodPickaxe', kind: 'tool' },
+    { id: 'stoneAxe', name: 'Каменный топор', modelId: 'stoneAxe', kind: 'tool' },
+    { id: 'stonePickaxe', name: 'Каменная кирка', modelId: 'stonePickaxe', kind: 'tool' },
     { id: 'logs', name: 'Дерево', modelId: 'logs', kind: 'resource', resource: 'logs' },
     { id: 'planks', name: 'Доски', modelId: 'planks', kind: 'resource', resource: 'planks' },
     { id: 'sticks', name: 'Палки', modelId: 'sticks', kind: 'resource', resource: 'sticks' },
     { id: 'stone', name: 'Камень', modelId: 'stone', kind: 'resource', resource: 'stone' },
-    { id: 'empty-8', name: 'Пустой слот', modelId: null, kind: 'empty' },
-    { id: 'empty-9', name: 'Пустой слот', modelId: null, kind: 'empty' },
+    { id: 'hands', name: 'Руки', modelId: 'hands', kind: 'hands' },
   ];
 
   function slotState(index) {
     const definition = hotbarDefinitions[index];
-    if (!definition) return { ...hotbarDefinitions[8], hasItem: false, count: 0 };
+    if (!definition) return { id: 'empty', name: 'Пустой слот', kind: 'empty', hasItem: false, count: 0 };
     if (definition.kind === 'tool') {
-      const toolId = definition.id === 'axe'
-        ? (inventory.stoneAxe ? 'stoneAxe' : inventory.woodAxe ? 'woodAxe' : null)
-        : (inventory.stonePickaxe ? 'stonePickaxe' : inventory.woodPickaxe ? 'woodPickaxe' : null);
-      const modelId = toolId || (definition.id === 'axe' ? 'woodAxe' : 'woodPickaxe');
-      return { ...definition, toolId, modelId, hasItem: !!toolId, count: toolId ? 1 : 0 };
+      const hasItem = !!inventory[definition.id];
+      return { ...definition, toolId: hasItem ? definition.id : null, hasItem, count: hasItem ? 1 : 0 };
     }
     if (definition.kind === 'hands') return { ...definition, hasItem: true, count: 0 };
     if (definition.kind === 'resource') {
@@ -476,7 +492,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     button.className = 'hotbar-slot' + (compact ? ' compact' : '') +
       (selectedSlot === index ? ' selected' : '') + (!item.hasItem ? ' empty' : '');
     button.dataset.slot = String(index);
-    button.disabled = !item.hasItem;
+    button.disabled = false;
     button.setAttribute('aria-pressed', selectedSlot === index ? 'true' : 'false');
     button.setAttribute('aria-label', (index + 1) + ': ' + item.name +
       (item.count > 0 ? ', количество ' + item.count : ''));
@@ -500,14 +516,14 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
   function renderInventoryGrid() {
     const items = [
-      { id: 'logs', name: 'Дерево', count: inventory.logs, slot: 3 },
-      { id: 'planks', name: 'Доски', count: inventory.planks, slot: 4 },
-      { id: 'sticks', name: 'Палки', count: inventory.sticks, slot: 5 },
-      { id: 'stone', name: 'Камень', count: inventory.stone, slot: 6 },
-      { id: 'woodAxe', name: 'Деревянный топор', count: inventory.woodAxe ? 1 : 0, slot: 0 },
-      { id: 'woodPickaxe', name: 'Деревянная кирка', count: inventory.woodPickaxe ? 1 : 0, slot: 1 },
-      { id: 'stoneAxe', name: 'Каменный топор', count: inventory.stoneAxe ? 1 : 0, slot: 0 },
-      { id: 'stonePickaxe', name: 'Каменная кирка', count: inventory.stonePickaxe ? 1 : 0, slot: 1 },
+      { id: 'logs', name: 'Дерево', count: inventory.logs, slot: HOTBAR_SLOT_BY_ITEM.logs },
+      { id: 'planks', name: 'Доски', count: inventory.planks, slot: HOTBAR_SLOT_BY_ITEM.planks },
+      { id: 'sticks', name: 'Палки', count: inventory.sticks, slot: HOTBAR_SLOT_BY_ITEM.sticks },
+      { id: 'stone', name: 'Камень', count: inventory.stone, slot: HOTBAR_SLOT_BY_ITEM.stone },
+      { id: 'woodAxe', name: 'Деревянный топор', count: inventory.woodAxe ? 1 : 0, slot: HOTBAR_SLOT_BY_ITEM.woodAxe },
+      { id: 'woodPickaxe', name: 'Деревянная кирка', count: inventory.woodPickaxe ? 1 : 0, slot: HOTBAR_SLOT_BY_ITEM.woodPickaxe },
+      { id: 'stoneAxe', name: 'Каменный топор', count: inventory.stoneAxe ? 1 : 0, slot: HOTBAR_SLOT_BY_ITEM.stoneAxe },
+      { id: 'stonePickaxe', name: 'Каменная кирка', count: inventory.stonePickaxe ? 1 : 0, slot: HOTBAR_SLOT_BY_ITEM.stonePickaxe },
     ].filter((item) => item.count > 0);
     if (workbench) items.push({ id: 'workbench', name: 'Верстак', count: 1, slot: null });
 
@@ -542,7 +558,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     refreshHeldTool();
     renderInventoryGrid();
     renderHotbar();
-    heldNameEl.textContent = toolNames[selectedTool];
+    const activeSlot = slotState(selectedSlot);
+    heldNameEl.textContent = activeSlot.hasItem ? activeSlot.name : 'Пустой слот';
 
     const atBench = nearWorkbench();
     benchStatusEl.textContent = workbench
@@ -584,21 +601,23 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
     const active = nodes.filter((node) => node.active).length;
     nodeCountEl.textContent = active + ' / ' + NODE_COUNT;
-    status.textContent = 'Слот ' + (selectedSlot + 1) + ' · ' + toolNames[selectedTool] +
+    status.textContent = 'Слот ' + (selectedSlot + 1) + ' · ' + (activeSlot.hasItem ? activeSlot.name : 'Пусто') +
       ' · Камни на карте: ' + active + '/' + NODE_COUNT;
   }
 
   function selectHotbarSlot(index) {
     if (!Number.isInteger(index) || index < 0 || index >= hotbarDefinitions.length) return;
     const item = slotState(index);
-    if (!item.hasItem) return;
     selectedSlot = index;
-    selectedTool = item.toolId || 'hands';
+    if (item.kind === 'hands') selectedTool = 'hands';
+    else if (item.kind === 'tool') selectedTool = item.hasItem ? item.toolId : null;
+    else if (item.kind === 'resource') selectedTool = item.hasItem ? 'hands' : null;
+    else selectedTool = null;
     save();
     renderHotbar();
     if (panelOpen) {
       renderInventoryGrid();
-      heldNameEl.textContent = toolNames[selectedTool];
+      heldNameEl.textContent = item.hasItem ? item.name : 'Пустой слот';
     }
   }
 
@@ -668,7 +687,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     else if (['woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe'].includes(id)) {
       inventory[id] = true;
       selectedTool = id;
-      selectedSlot = id.includes('Pickaxe') ? 1 : 0;
+      selectedSlot = HOTBAR_SLOT_BY_ITEM[id];
     }
     save();
     renderPanel();
@@ -678,7 +697,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   function equip(id) {
     if (id !== 'hands' && !inventory[id]) return;
     selectedTool = id;
-    selectedSlot = id === 'hands' ? 2 : id.includes('Pickaxe') ? 1 : 0;
+    selectedSlot = HOTBAR_SLOT_BY_ITEM[id];
     save();
     renderPanel();
   }
