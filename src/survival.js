@@ -35,7 +35,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     'stoneWedge', 'bark', 'ironScrap', 'ironOre', 'ironIngot', 'metalFastener',
   ];
   const TOOL_IDS = ['woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe', 'ironAxe', 'ironPickaxe'];
-  const STATION_OUTPUTS = ['woodWorkshop', 'furnace', 'fullWorkbench'];
+  const STATION_OUTPUTS = ['fieldWorkplace', 'woodWorkshop', 'furnace', 'fullWorkbench'];
   const ITEM_IDS = [...RESOURCE_IDS, ...TOOL_IDS];
   const STACK_LIMIT = 64;
 
@@ -820,7 +820,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
             '</div>' +
           '</div>' +
           '<div class="crafting-note" id="survival-bench-status"></div>' +
-          '<div class="survival-foot"><span>Каменные залежи в мире</span><b id="survival-stone-count"></b></div>' +
+          '<div class="survival-foot"><span>Ресурсы на карте</span><b id="survival-stone-count"></b></div>' +
         '</div>' +
       '</div>' +
       '<div class="inventory-bottom-hint">Выбери предмет → место назначения · ПКМ / долгое нажатие: разделить стопку · E / I / ESC</div>' +
@@ -918,6 +918,9 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     ironAxe: '<g stroke="#41494a" stroke-width="2" stroke-linejoin="round"><path d="m25 55 13-45 5 2-13 45Z" fill="#a46e3d"/><path d="m38 14 5-12 18 4 1 15-12 8-13-4Z" fill="#abb4b5"/><path d="m43 4 18 2 1 15-8-4-12-2Z" fill="#e0e5e3"/></g>',
     ironPickaxe: '<g stroke="#41494a" stroke-width="3" stroke-linejoin="round"><path d="m27 57 12-48 5 1-12 48Z" fill="#a46e3d"/><path d="m10 21 14-13 19 5 12-6 7 7-17 15-22-5-11 6Z" fill="#aeb8b9"/><path d="m24 8 19 5 19-6-7 9-17 6-19-5Z" fill="#e0e5e3"/></g>',
     workbench: '<g stroke-linejoin="round" stroke="#563a25" stroke-width="2"><path d="M10 20 35 8 57 20 31 33Z" fill="#d1a06b"/><path d="m10 20 21 13v23L10 44Z" fill="#94613a"/><path d="m31 33 26-13v24L31 56Z" fill="#754b2e"/><path d="m16 22 19-9 17 8-21 10Z" fill="#e2b77e"/><path d="M17 24 17 43M23 27 23 47M29 30 29 50M36 29 36 49M43 25 43 46" stroke="#563a25" stroke-width="1.5"/></g>',
+    woodWorkshop: '<g stroke="#573a24" stroke-width="2"><path d="M8 22 34 9 57 20 31 34Z" fill="#c18b54"/><path d="m8 22 23 12v24L8 45Z" fill="#80532f"/><path d="m31 34 26-14v24L31 58Z" fill="#684329"/><path d="M15 20 15 45M22 18 22 49M29 15 29 52M37 15 37 48M45 17 45 44" fill="none" stroke="#e0b47c"/></g>',
+    furnace: '<g stroke="#4c4942" stroke-width="2"><path d="m8 23 8-12h33l8 12v32H8Z" fill="#858078"/><path d="m19 37 7-7h14l7 7v18H19Z" fill="#272522"/><path d="m25 49 7-10 9 10Z" fill="#d35e20" stroke="#f2a04d"/><path d="M13 17h39M13 25h39" stroke="#aaa59a"/></g>',
+    fullWorkbench: '<g stroke="#454b4b" stroke-width="2"><path d="M7 18 36 7 58 19 29 31Z" fill="#aab1b0"/><path d="m7 18 22 13v27L7 46Z" fill="#70513a"/><path d="m29 31 29-12v27L29 58Z" fill="#4e3c2d"/><path d="m13 20 23-9 15 8-23 10Z" fill="#e0e5e3"/><path d="M16 21v24m8-21v28m8-25v25m8-28v25m8-27v23" stroke="#778183"/></g>',
     hands: '<g stroke-linejoin="round" stroke="#64462d" stroke-width="2"><path d="M18 35 18 26q0-5 4-5t4 5v-9q0-5 4-5t4 5v8-12q0-5 4-5t4 5v14-9q0-5 4-5t4 5v13l4 6-3 14q-2 6-9 6H29q-9 0-11-8l-3-9q-2-5 2-7 3-1 5 3Z" fill="#bd8a63"/><path d="m30 27 0 8m8-10v10m8-7v7" fill="none" stroke="#e1b38b"/></g>'
   };
 
@@ -1307,7 +1310,13 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     if (match) {
       const model = document.createElement('span');
       model.className = 'slot-model-wrap';
-      model.innerHTML = itemModelMarkup(match.recipe.output === 'fieldWorkplace' ? 'workbench' : match.recipe.output);
+      const stationModel = {
+        fieldWorkplace: 'workbench',
+        woodWorkshop: 'woodWorkshop',
+        furnace: 'furnace',
+        fullWorkbench: 'fullWorkbench',
+      }[match.recipe.output] || match.recipe.output;
+      model.innerHTML = itemModelMarkup(stationModel);
       const count = document.createElement('span');
       count.className = 'slot-count';
       count.textContent = match.recipe.count > 1 ? String(match.recipe.count) : '';
@@ -1318,28 +1327,35 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   function takeCraftResult() {
     const match = findCraftRecipe();
     if (!match) return;
-    const { recipe, cells } = match;
+    const { recipe, ingredients } = match;
+    const isStation = STATION_OUTPUTS.includes(recipe.output);
     if (recipe.output === 'fieldWorkplace') {
       if (!placeWorkbench()) return;
+    } else if (isStation) {
+      if (!placeStation(recipe.output)) return;
     } else if (!canStoreItem(recipe.output, recipe.count)) {
       toast('В инвентаре нет места для результата.');
       return;
     }
 
-    for (const index of cells) {
-      const stack = craftingGrid[index];
-      if (!stack) continue;
-      stack.count -= 1;
-      if (stack.count <= 0) craftingGrid[index] = null;
+    for (const ingredient of ingredients) {
+      const stack = craftingGrid[ingredient.index];
+      if (!stack || stack.count < ingredient.count) return;
+      stack.count -= ingredient.count;
+      if (stack.count <= 0) craftingGrid[ingredient.index] = null;
     }
-    if (recipe.output !== 'fieldWorkplace') {
-      addToInventory(recipe.output, recipe.count);
-    }
+    if (!isStation) addToInventory(recipe.output, recipe.count);
     selectedCell = null;
     syncInventoryTotals();
     save();
     renderPanel();
-    toast(recipe.output === 'fieldWorkplace' ? 'Полевое рабочее место установлено.' : 'Предмет изготовлен.');
+    const stationMessages = {
+      fieldWorkplace: 'Полевое рабочее место установлено.',
+      woodWorkshop: 'Деревянная мастерская установлена.',
+      furnace: 'Печь установлена.',
+      fullWorkbench: 'Полноценный верстак установлен.',
+    };
+    toast(stationMessages[recipe.output] || 'Предмет изготовлен.');
   }
 
   function renderPanel() {
@@ -1351,13 +1367,19 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     const activeStack = hotbarSlots[selectedSlot];
     heldNameEl.textContent = activeStack ? (itemNames[activeStack.id] || activeStack.id) : 'Руки';
 
-    benchStatusEl.textContent = workbench
-      ? (nearWorkbench() ? 'Полевое рабочее место: рядом' : 'Полевое рабочее место: установлено в мире')
-      : 'Полевое рабочее место: ещё не создано';
+    const stationLines = [
+      'Полевое место: ' + (workbench ? (nearWorkbench() ? 'рядом' : 'установлено') : 'нет'),
+      'Деревянная мастерская: ' + (woodWorkshop ? (nearWoodWorkshop() ? 'рядом' : 'установлена') : 'нет'),
+      'Печь: ' + (furnace ? (nearFurnace() ? 'рядом' : 'установлена') : 'нет'),
+      'Полноценный верстак: ' + (fullWorkbench ? (nearFullWorkbench() ? 'рядом' : 'установлен') : 'нет'),
+    ];
+    benchStatusEl.textContent = stationLines.join(' · ');
 
     renderCraftingOutput();
     const active = nodes.filter((node) => node.active).length;
-    nodeCountEl.textContent = active + ' / ' + NODE_COUNT;
+    const activeScrap = scrapNodes.filter((node) => node.active).length;
+    const activeOre = ironOreNodes.filter((node) => node.active).length;
+    nodeCountEl.textContent = active + ' камней · ' + activeOre + ' жил · ' + activeScrap + ' объектов';
     status.textContent = 'Слот ' + (selectedSlot + 1) + ' · ' +
       (activeStack ? (itemNames[activeStack.id] || activeStack.id) : 'Пусто') +
       ' · Камни на карте: ' + active + '/' + NODE_COUNT;
