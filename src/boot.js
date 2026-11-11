@@ -73,8 +73,6 @@
       await new Promise((resolve) => requestAnimationFrame(() =>
         requestAnimationFrame(resolve)
       ));
-      setStatus('Подготавливаем локальный кэш...');
-      await offlineCacheReady;
       setStatus('Загружаем 3D-движок и ближайшую область...');
       await import('./main.js');
 
