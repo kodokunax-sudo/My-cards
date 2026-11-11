@@ -537,79 +537,187 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   const shrubFiberMaterial = new THREE.MeshStandardMaterial({ color: 0xb3a16d, roughness: 1 });
   const metalEdgeMaterial = new THREE.MeshStandardMaterial({ color: 0x92989a, roughness: 0.78, metalness: 0.18 });
 
-  function toolPart(group, geometry, material, x, y, z, rotationZ = 0) {
+  const heldMotion = new THREE.Group();
+  heldMotion.name = 'held-item-motion';
+  viewModel.add(heldMotion);
+
+  function toolPart(group, geometry, material, x, y, z, rotationZ = 0, scaleX = 1, scaleY = 1, scaleZ = 1, rotationX = 0, rotationY = 0) {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(x, y, z);
-    mesh.rotation.z = rotationZ;
+    mesh.rotation.set(rotationX, rotationY, rotationZ);
+    mesh.scale.set(scaleX, scaleY, scaleZ);
     mesh.castShadow = false;
+    mesh.receiveShadow = false;
     mesh.userData.noCollider = true;
     group.add(mesh);
+    return mesh;
   }
 
-  function makeHeldTool(type, materialKind) {
+  function makeHeldTool(id) {
     const group = new THREE.Group();
+    group.name = 'held-' + id;
     group.visible = false;
-    toolPart(group, new THREE.CylinderGeometry(0.032, 0.045, 0.68, 9), handleMaterial, 0, -0.20, 0);
-    const headMaterial = materialKind === 'stone' ? stoneHeadMaterial :
-      materialKind === 'iron' ? metalEdgeMaterial : woodHeadMaterial;
-    if (type === 'axe') {
-      toolPart(group, new THREE.BoxGeometry(0.32, 0.17, 0.13), headMaterial, -0.05, 0.17, 0);
-      if (materialKind === 'stone') toolPart(group, new THREE.BoxGeometry(0.075, 0.20, 0.145), metalEdgeMaterial, -0.205, 0.17, 0);
-      if (materialKind === 'iron') toolPart(group, new THREE.BoxGeometry(0.20, 0.22, 0.15), headMaterial, -0.19, 0.17, 0);
+    const isIron = id.startsWith('iron');
+    const isStone = id.startsWith('stone');
+    const isAxe = id.endsWith('Axe');
+    const headMaterial = isIron ? metalEdgeMaterial : isStone ? stoneHeadMaterial : woodHeadMaterial;
+    const shaftLength = 0.78;
+
+    toolPart(group, new THREE.CylinderGeometry(0.032, 0.052, shaftLength, 9), handleMaterial, 0, -0.18, 0);
+    toolPart(group, new THREE.TorusGeometry(0.049, 0.012, 5, 12), isIron ? metalEdgeMaterial : handleMaterial, 0, -0.48, 0, Math.PI / 2);
+    toolPart(group, new THREE.TorusGeometry(0.047, 0.009, 5, 12), isIron ? metalEdgeMaterial : woodHeadMaterial, 0, 0.12, 0, Math.PI / 2);
+    toolPart(group, new THREE.BoxGeometry(0.075, 0.12, 0.075), handleMaterial, 0, -0.31, 0);
+
+    if (isAxe) {
+      if (isIron) {
+        toolPart(group, new THREE.BoxGeometry(0.20, 0.25, 0.18), metalEdgeMaterial, -0.105, 0.20, 0);
+        toolPart(group, new THREE.CylinderGeometry(0.018, 0.22, 0.36, 8), metalEdgeMaterial, -0.245, 0.20, 0, Math.PI / 2);
+        toolPart(group, new THREE.BoxGeometry(0.13, 0.17, 0.17), metalEdgeMaterial, 0.105, 0.20, 0);
+        toolPart(group, new THREE.TorusGeometry(0.055, 0.012, 5, 12), handleMaterial, 0, 0.075, 0, Math.PI / 2);
+      } else if (isStone) {
+        toolPart(group, new THREE.DodecahedronGeometry(0.22, 1), stoneHeadMaterial, -0.16, 0.19, 0, 0, 0.92, 1.18, 0.78);
+        toolPart(group, new THREE.ConeGeometry(0.11, 0.20, 5), stoneHeadMaterial, -0.32, 0.19, 0, -Math.PI / 2, 1, 1, 0.8);
+        toolPart(group, new THREE.BoxGeometry(0.09, 0.18, 0.12), handleMaterial, -0.015, 0.18, 0);
+        toolPart(group, new THREE.TorusGeometry(0.063, 0.018, 5, 10), handleMaterial, 0.015, 0.08, 0, Math.PI / 2);
+        toolPart(group, new THREE.TorusGeometry(0.061, 0.018, 5, 10), handleMaterial, 0.015, 0.29, 0, Math.PI / 2);
+      } else {
+        toolPart(group, new THREE.BoxGeometry(0.18, 0.20, 0.15), woodHeadMaterial, -0.12, 0.19, 0);
+        toolPart(group, new THREE.CylinderGeometry(0.02, 0.15, 0.30, 6), woodHeadMaterial, -0.245, 0.19, 0, Math.PI / 2);
+        toolPart(group, new THREE.BoxGeometry(0.08, 0.15, 0.13), woodHeadMaterial, 0.04, 0.19, 0);
+        toolPart(group, new THREE.TorusGeometry(0.055, 0.014, 5, 10), handleMaterial, 0, 0.08, 0, Math.PI / 2);
+      }
     } else {
-      toolPart(group, new THREE.BoxGeometry(0.44, 0.10, 0.12), headMaterial, 0, 0.17, 0);
-      toolPart(group, new THREE.ConeGeometry(0.075, 0.20, 6), headMaterial, -0.24, 0.17, 0, -Math.PI / 2);
-      toolPart(group, new THREE.ConeGeometry(0.075, 0.20, 6), headMaterial, 0.24, 0.17, 0, Math.PI / 2);
+      if (isIron) {
+        toolPart(group, new THREE.BoxGeometry(0.58, 0.115, 0.15), metalEdgeMaterial, 0, 0.20, 0);
+        toolPart(group, new THREE.ConeGeometry(0.085, 0.32, 7), metalEdgeMaterial, -0.31, 0.20, 0, 0, 1, 1, 1, 0, 0);
+        toolPart(group, new THREE.ConeGeometry(0.085, 0.32, 7), metalEdgeMaterial, 0.31, 0.20, 0, Math.PI, 1, 1, 1, 0, 0);
+        toolPart(group, new THREE.BoxGeometry(0.10, 0.18, 0.18), metalEdgeMaterial, 0, 0.20, 0);
+      } else if (isStone) {
+        toolPart(group, new THREE.BoxGeometry(0.50, 0.12, 0.15), stoneHeadMaterial, 0, 0.20, 0);
+        toolPart(group, new THREE.DodecahedronGeometry(0.17, 0), stoneHeadMaterial, -0.29, 0.20, 0, 0, 1.1, 0.82, 0.8);
+        toolPart(group, new THREE.DodecahedronGeometry(0.17, 0), stoneHeadMaterial, 0.29, 0.20, 0, 0, 1.1, 0.82, 0.8);
+        toolPart(group, new THREE.TorusGeometry(0.064, 0.018, 5, 10), handleMaterial, 0, 0.08, 0, Math.PI / 2);
+        toolPart(group, new THREE.TorusGeometry(0.064, 0.018, 5, 10), handleMaterial, 0, 0.30, 0, Math.PI / 2);
+      } else {
+        toolPart(group, new THREE.BoxGeometry(0.50, 0.12, 0.13), woodHeadMaterial, 0, 0.20, 0);
+        toolPart(group, new THREE.ConeGeometry(0.07, 0.26, 5), woodHeadMaterial, -0.29, 0.20, 0, -Math.PI / 2);
+        toolPart(group, new THREE.ConeGeometry(0.07, 0.26, 5), woodHeadMaterial, 0.29, 0.20, 0, Math.PI / 2);
+        toolPart(group, new THREE.TorusGeometry(0.059, 0.014, 5, 10), handleMaterial, 0, 0.08, 0, Math.PI / 2);
+      }
     }
-    viewModel.add(group);
+    group.userData.swingType = isAxe ? 'axe' : 'pickaxe';
+    heldMotion.add(group);
     return group;
   }
 
   const heldTools = {
-    woodAxe: makeHeldTool('axe', 'wood'),
-    woodPickaxe: makeHeldTool('pickaxe', 'wood'),
-    stoneAxe: makeHeldTool('axe', 'stone'),
-    stonePickaxe: makeHeldTool('pickaxe', 'stone'),
-    ironAxe: makeHeldTool('axe', 'iron'),
-    ironPickaxe: makeHeldTool('pickaxe', 'iron'),
+    woodAxe: makeHeldTool('woodAxe'),
+    woodPickaxe: makeHeldTool('woodPickaxe'),
+    stoneAxe: makeHeldTool('stoneAxe'),
+    stonePickaxe: makeHeldTool('stonePickaxe'),
+    ironAxe: makeHeldTool('ironAxe'),
+    ironPickaxe: makeHeldTool('ironPickaxe'),
   };
+
   const heldResources = {};
   function makeHeldResource(id) {
     const group = new THREE.Group();
+    group.name = 'held-' + id;
     group.visible = false;
+
     if (id === 'logs') {
-      toolPart(group, new THREE.CylinderGeometry(0.105, 0.105, 0.34, 8), woodHeadMaterial, 0, -0.08, 0, Math.PI / 2);
-      toolPart(group, new THREE.CircleGeometry(0.105, 8), handleMaterial, 0, -0.08, 0.17);
+      toolPart(group, new THREE.CylinderGeometry(0.12, 0.13, 0.58, 9), woodHeadMaterial, 0, -0.06, 0, Math.PI / 2);
+      toolPart(group, new THREE.CircleGeometry(0.12, 9), handleMaterial, 0, -0.06, 0.292, 0, 1, 1, 1, Math.PI / 2);
+      toolPart(group, new THREE.CircleGeometry(0.12, 9), handleMaterial, 0, -0.06, -0.292, 0, 1, 1, 1, -Math.PI / 2);
+      toolPart(group, new THREE.TorusGeometry(0.07, 0.007, 4, 9), woodHeadMaterial, 0, -0.06, 0.30, 0, 1, 1, 1, Math.PI / 2);
     } else if (id === 'planks') {
-      toolPart(group, new THREE.BoxGeometry(0.30, 0.19, 0.15), handleMaterial, 0, -0.08, 0);
-    } else if (id === 'sticks' || id === 'branch') {
-      toolPart(group, new THREE.CylinderGeometry(0.035, 0.055, 0.42, 6), handleMaterial, 0, -0.08, 0, Math.PI / 2);
+      toolPart(group, new THREE.BoxGeometry(0.52, 0.085, 0.25), handleMaterial, 0, -0.14, 0);
+      toolPart(group, new THREE.BoxGeometry(0.52, 0.085, 0.25), woodHeadMaterial, 0.025, -0.045, -0.018, 0.035);
+      toolPart(group, new THREE.BoxGeometry(0.52, 0.085, 0.25), handleMaterial, -0.018, 0.05, 0.02, -0.025);
+      toolPart(group, new THREE.BoxGeometry(0.28, 0.012, 0.012), woodHeadMaterial, 0, -0.14, 0.128);
+    } else if (id === 'sticks') {
+      for (let i = 0; i < 4; i++) {
+        toolPart(group, new THREE.CylinderGeometry(0.025, 0.033, 0.48, 6), i % 2 ? woodHeadMaterial : handleMaterial,
+          -0.09 + i * 0.06, -0.08 + (i % 2) * 0.035, 0, (i - 1.5) * 0.075);
+      }
+      toolPart(group, new THREE.TorusGeometry(0.075, 0.014, 4, 10), shrubFiberMaterial, 0, -0.08, 0.08, 0, 1, 1, 1, Math.PI / 2);
+    } else if (id === 'stone') {
+      toolPart(group, new THREE.DodecahedronGeometry(0.19, 1), stoneHeadMaterial, -0.10, -0.08, 0, 0.18, 1, 0.88, 0.92);
+      toolPart(group, new THREE.DodecahedronGeometry(0.15, 0), stoneHeadMaterial, 0.09, -0.11, 0.07, -0.25, 0.94, 0.85, 1);
+      toolPart(group, new THREE.DodecahedronGeometry(0.10, 0), metalEdgeMaterial, 0.04, 0.12, -0.02, 0.12, 1, 0.8, 0.75);
+    } else if (id === 'branch') {
+      toolPart(group, new THREE.CylinderGeometry(0.047, 0.065, 0.62, 7), handleMaterial, 0, -0.08, 0, Math.PI / 2);
+      toolPart(group, new THREE.CylinderGeometry(0.022, 0.035, 0.24, 6), woodHeadMaterial, -0.06, 0.015, 0, -0.82);
+      toolPart(group, new THREE.CylinderGeometry(0.022, 0.032, 0.20, 6), handleMaterial, 0.11, -0.03, 0, 0.8);
+      toolPart(group, new THREE.CylinderGeometry(0.018, 0.025, 0.15, 5), woodHeadMaterial, -0.18, -0.10, 0, 0.7);
     } else if (id === 'fiber') {
-      toolPart(group, new THREE.CylinderGeometry(0.018, 0.018, 0.32, 5), shrubFiberMaterial, -0.06, -0.08, 0, -0.22);
-      toolPart(group, new THREE.CylinderGeometry(0.018, 0.018, 0.32, 5), shrubFiberMaterial, 0.02, -0.08, 0, 0.18);
-      toolPart(group, new THREE.CylinderGeometry(0.018, 0.018, 0.32, 5), shrubFiberMaterial, 0.08, -0.08, 0, 0.42);
+      for (let i = 0; i < 5; i++) {
+        const x = -0.12 + i * 0.06;
+        toolPart(group, new THREE.CylinderGeometry(0.012, 0.016, 0.42, 5),
+          i % 2 ? shrubFiberMaterial : handleMaterial, x, -0.08, 0, (i - 2) * 0.16);
+      }
+      toolPart(group, new THREE.TorusGeometry(0.12, 0.018, 5, 12), handleMaterial, 0, -0.13, 0.035, 0.22, 1, 1, 0.62);
+      toolPart(group, new THREE.TorusGeometry(0.12, 0.018, 5, 12), shrubFiberMaterial, 0, -0.01, -0.025, -0.18, 1, 1, 0.62);
     } else if (id === 'sharpShard') {
-      toolPart(group, new THREE.TetrahedronGeometry(0.19, 0), stoneHeadMaterial, 0, -0.08, 0);
+      toolPart(group, new THREE.TetrahedronGeometry(0.25, 0), stoneHeadMaterial, 0, -0.08, 0, 0.14, 0.75, 1.25, 0.7);
+      toolPart(group, new THREE.TetrahedronGeometry(0.12, 0), metalEdgeMaterial, 0.13, -0.16, 0.08, -0.3, 0.8, 1.15, 0.8);
+      toolPart(group, new THREE.DodecahedronGeometry(0.07, 0), stoneHeadMaterial, -0.14, -0.18, -0.04);
     } else if (id === 'rope') {
-      toolPart(group, new THREE.TorusGeometry(0.13, 0.035, 5, 12), handleMaterial, 0, -0.08, 0);
+      toolPart(group, new THREE.TorusGeometry(0.17, 0.035, 6, 16), handleMaterial, -0.045, -0.08, 0, 0.45, 1.2, 1, 0.65);
+      toolPart(group, new THREE.TorusGeometry(0.14, 0.025, 5, 14), shrubFiberMaterial, 0.055, -0.06, 0.02, -0.42, 1, 1, 0.65);
+      toolPart(group, new THREE.CylinderGeometry(0.024, 0.024, 0.35, 5), handleMaterial, 0, -0.08, 0, Math.PI / 2);
     } else if (id === 'handle') {
-      toolPart(group, new THREE.CylinderGeometry(0.035, 0.045, 0.46, 7), handleMaterial, 0, -0.08, 0);
+      toolPart(group, new THREE.CylinderGeometry(0.04, 0.052, 0.68, 8), handleMaterial, 0, -0.08, 0, 0, 1, 1, 1, 0, 0);
+      toolPart(group, new THREE.BoxGeometry(0.13, 0.11, 0.10), woodHeadMaterial, -0.01, 0.25, 0);
+      toolPart(group, new THREE.BoxGeometry(0.08, 0.10, 0.13), woodHeadMaterial, 0, 0.20, 0);
+      toolPart(group, new THREE.TorusGeometry(0.048, 0.012, 5, 12), shrubFiberMaterial, 0, 0.08, 0, Math.PI / 2);
     } else if (id === 'stoneWedge') {
-      toolPart(group, new THREE.ConeGeometry(0.16, 0.32, 5), stoneHeadMaterial, 0, -0.08, 0, Math.PI);
+      toolPart(group, new THREE.ConeGeometry(0.18, 0.42, 5), stoneHeadMaterial, 0, -0.08, 0, 0, 1, 1, 0.78);
+      toolPart(group, new THREE.BoxGeometry(0.09, 0.09, 0.12), stoneHeadMaterial, 0, -0.28, 0);
     } else if (id === 'bark') {
-      toolPart(group, new THREE.BoxGeometry(0.28, 0.10, 0.16), woodHeadMaterial, 0, -0.08, 0);
-    } else if (id === 'ironScrap' || id === 'metalFastener') {
-      toolPart(group, new THREE.BoxGeometry(0.28, 0.12, 0.18), metalEdgeMaterial, 0, -0.08, 0);
-    } else if (id === 'ironOre' || id === 'ironIngot') {
-      toolPart(group, new THREE.DodecahedronGeometry(0.15, 0), id === 'ironOre' ? stoneHeadMaterial : metalEdgeMaterial, 0, -0.08, 0);
+      toolPart(group, new THREE.BoxGeometry(0.38, 0.045, 0.22), woodHeadMaterial, -0.04, -0.10, 0, 0.12);
+      toolPart(group, new THREE.BoxGeometry(0.32, 0.04, 0.19), handleMaterial, 0.025, -0.035, -0.025, -0.10);
+      toolPart(group, new THREE.BoxGeometry(0.24, 0.035, 0.16), woodHeadMaterial, -0.02, 0.03, 0.015, 0.06);
+    } else if (id === 'ironScrap') {
+      toolPart(group, new THREE.BoxGeometry(0.38, 0.08, 0.23), metalEdgeMaterial, 0, -0.13, 0, 0.18, 1, 1, 1, 0.14);
+      toolPart(group, new THREE.BoxGeometry(0.26, 0.07, 0.18), woodHeadMaterial, -0.04, -0.035, 0.02, -0.32, 1, 1, 1, -0.18);
+      toolPart(group, new THREE.BoxGeometry(0.18, 0.055, 0.14), metalEdgeMaterial, 0.10, 0.035, -0.02, 0.28, 1, 1, 1, 0.26);
+    } else if (id === 'ironOre') {
+      toolPart(group, new THREE.DodecahedronGeometry(0.18, 1), stoneHeadMaterial, -0.08, -0.08, 0, 0.2, 1.1, 0.92, 0.9);
+      toolPart(group, new THREE.DodecahedronGeometry(0.12, 0), metalEdgeMaterial, 0.09, -0.10, 0.06, -0.2, 1, 1, 0.7);
+      toolPart(group, new THREE.DodecahedronGeometry(0.09, 0), woodHeadMaterial, 0.02, 0.09, -0.04, 0.12, 0.8, 1.2, 0.7);
+    } else if (id === 'ironIngot') {
+      toolPart(group, new THREE.BoxGeometry(0.42, 0.17, 0.25), metalEdgeMaterial, 0, -0.10, 0, 0, 1, 1, 1, 0.12);
+      toolPart(group, new THREE.BoxGeometry(0.33, 0.055, 0.18), stoneHeadMaterial, 0, 0.005, 0, 0, 1, 1, 1, 0.12);
+    } else if (id === 'metalFastener') {
+      toolPart(group, new THREE.CylinderGeometry(0.025, 0.025, 0.45, 7), metalEdgeMaterial, -0.10, -0.08, 0, 0, 1, 1, 1, 0, 0);
+      toolPart(group, new THREE.CylinderGeometry(0.025, 0.025, 0.38, 7), metalEdgeMaterial, 0.10, -0.08, 0, 0.12);
+      toolPart(group, new THREE.CylinderGeometry(0.065, 0.065, 0.065, 7), metalEdgeMaterial, -0.10, 0.16, 0);
+      toolPart(group, new THREE.CylinderGeometry(0.065, 0.065, 0.065, 7), metalEdgeMaterial, 0.10, 0.12, 0, 0.12);
     } else {
-      toolPart(group, new THREE.DodecahedronGeometry(0.15, 0), stoneHeadMaterial, 0, -0.08, 0);
+      throw new Error('Missing held 3D model: ' + id);
     }
-    viewModel.add(group);
+
+    group.userData.swingType = 'resource';
+    heldMotion.add(group);
     return group;
   }
+
   for (const id of RESOURCE_IDS) heldResources[id] = makeHeldResource(id);
+  const heldHands = new THREE.Group();
+  heldHands.name = 'held-hands';
+  toolPart(heldHands, new THREE.SphereGeometry(0.13, 8, 6), handleMaterial, 0, -0.14, 0, 0, 1.2, 1.15, 0.72);
+  for (let i = 0; i < 4; i++) {
+    toolPart(heldHands, new THREE.CylinderGeometry(0.027, 0.035, 0.19, 6), handleMaterial,
+      -0.09 + i * 0.06, 0.015, 0.015, 0, 1, 1, 1, 0, 0);
+  }
+  toolPart(heldHands, new THREE.CylinderGeometry(0.03, 0.04, 0.15, 6), handleMaterial, 0.13, -0.12, 0.02, 0.85);
+  heldHands.userData.swingType = 'hands';
+  heldMotion.add(heldHands);
+  let activeHeldModel = heldHands;
+  let activeHeldId = 'hands';
   let toolSwing = 0;
+  let heldIdleTime = 0;
 
   function refreshHeldTool() {
     const activeStack = hotbarSlots[selectedSlot];
