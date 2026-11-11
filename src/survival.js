@@ -238,11 +238,37 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     stoneAxe: makeHeldTool('axe', true),
     stonePickaxe: makeHeldTool('pickaxe', true),
   };
+  const heldResources = {};
+  function makeHeldResource(id) {
+    const group = new THREE.Group();
+    group.visible = false;
+    if (id === 'logs') {
+      toolPart(group, new THREE.CylinderGeometry(0.105, 0.105, 0.34, 8), woodHeadMaterial, 0, -0.08, 0, Math.PI / 2);
+      toolPart(group, new THREE.CircleGeometry(0.105, 8), handleMaterial, 0, -0.08, 0.17);
+    } else if (id === 'planks') {
+      toolPart(group, new THREE.BoxGeometry(0.30, 0.19, 0.15), handleMaterial, 0, -0.08, 0);
+    } else if (id === 'sticks') {
+      toolPart(group, new THREE.CylinderGeometry(0.025, 0.025, 0.38, 6), handleMaterial, -0.045, -0.08, 0, -0.16);
+      toolPart(group, new THREE.CylinderGeometry(0.025, 0.025, 0.38, 6), handleMaterial, 0.045, -0.08, 0, 0.16);
+    } else {
+      toolPart(group, new THREE.DodecahedronGeometry(0.15, 0), stoneHeadMaterial, 0, -0.08, 0);
+    }
+    viewModel.add(group);
+    return group;
+  }
+  for (const id of ['logs', 'planks', 'sticks', 'stone']) heldResources[id] = makeHeldResource(id);
   let toolSwing = 0;
 
   function refreshHeldTool() {
     for (const [id, group] of Object.entries(heldTools)) group.visible = selectedTool === id;
-    viewModel.visible = selectedTool !== 'hands' && player.mode !== 'cinematic' && !player.swimming;
+    const resourceIds = ['logs', 'planks', 'sticks', 'stone'];
+    for (let index = 0; index < resourceIds.length; index++) {
+      const id = resourceIds[index];
+      heldResources[id].visible = selectedSlot === index + 3 && inventory[id] > 0;
+    }
+    const holdingResource = resourceIds.some((id) => heldResources[id].visible);
+    viewModel.visible = (selectedTool !== 'hands' || holdingResource) &&
+      player.mode !== 'cinematic' && !player.swimming;
   }
 
   refreshHeldTool();
