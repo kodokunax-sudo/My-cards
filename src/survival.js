@@ -5,6 +5,8 @@ const NODE_COUNT = 500;
 const RESPAWN_MS = 5 * 60 * 1000;
 const TREE_HP = 12;
 const STONE_HP = 12;
+const FIBER_NODE_COUNT = 190;
+const BRANCH_NODE_COUNT = 150;
 
 function loadSave() {
   try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); }
@@ -20,9 +22,13 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   const saved = loadSave();
   const inventory = {
     logs: 0, planks: 0, sticks: 0, stone: 0,
+    branch: 0, fiber: 0, sharpShard: 0, rope: 0, handle: 0,
     woodAxe: false, woodPickaxe: false, stoneAxe: false, stonePickaxe: false,
   };
-  const RESOURCE_IDS = ['logs', 'planks', 'sticks', 'stone'];
+  const RESOURCE_IDS = [
+    'logs', 'planks', 'sticks', 'stone',
+    'branch', 'fiber', 'sharpShard', 'rope', 'handle',
+  ];
   const TOOL_IDS = ['woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe'];
   const ITEM_IDS = [...RESOURCE_IDS, ...TOOL_IDS];
   const STACK_LIMIT = 64;
@@ -79,6 +85,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   syncInventoryTotals();
   let workbench = saved && saved.workbench ? saved.workbench : null;
   let workbenchGroup = null;
+  let fiberNodes = [];
+  let branchNodes = [];
 
   const savedTreeIds = saved && Array.isArray(saved.depletedTrees) ? saved.depletedTrees : [];
   for (const id of savedTreeIds) {
@@ -116,6 +124,14 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
           active: node.active, hp: node.hp, due: node.due,
         })),
         workbench,
+        fiberNodes: fiberNodes.map((node) => ({
+          x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
+          active: node.active, hp: node.hp, due: node.due,
+        })),
+        branchNodes: branchNodes.map((node) => ({
+          x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
+          active: node.active, hp: node.hp, due: node.due,
+        })),
       }));
     } catch (error) {
       // Storage is optional; the current session remains playable without it.
@@ -243,6 +259,142 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   stoneMesh.computeBoundingSphere();
   scene.add(stoneMesh);
 
+  // Loose branches and fiber-bearing shrubs are separate, collectible world resources.
+  // Their positions and cooldowns are saved, just like stone deposits.
+  const RESOURCE_CELL_SIZE = 22;
+  const resourceCells = new Map();
+  const resourceCellKey = (x, z) => `${Math.floor(x / RESOURCE_CELL_SIZE)},${Math.floor(z / RESOURCE_CELL_SIZE)}`;
+  function markResourcePosition(node) {
+    const key = resourceCellKey(node.x, node.z);
+    let cell = resourceCells.get(key);
+    if (!cell) { cell = []; resourceCells.set(key, cell); }
+    if (!cell.includes(node)) cell.push(node);
+  }
+  function unmarkResourcePosition(node) {
+    const key = resourceCellKey(node.x, node.z);
+    const cell = resourceCells.get(key);
+    if (!cell) return;
+    const index = cell.indexOf(node);
+    if (index >= 0) cell.splice(index, 1);
+    if (!cell.length) resourceCells.delete(key);
+  }
+  function resourcePositionCrowded(x, z) {
+    const gx = Math.floor(x / RESOURCE_CELL_SIZE);
+    const gz = Math.floor(z / RESOURCE_CELL_SIZE);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const cell = resourceCells.get(`${gx + dx},${gz + dz}`);
+        if (!cell) continue;
+        for (const other of cell) {
+          if (Math.hypot(x - other.x, z - other.z) < 17) return true;
+        }
+      }
+    }
+    return false;
+  }
+  for (const node of nodes) if (node.active) markResourcePosition(node);
+
+  const resourceOrigin = { x: camera.position.x, z: camera.position.z };
+  function findGatherPosition(oldPosition, clearance) {
+    for (let attempt = 0; attempt < 9000; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = Math.sqrt(220 * 220 + Math.random() * (2800 * 2800 - 220 * 220));
+      const x = resourceOrigin.x + Math.cos(angle) * radius;
+      const z = resourceOrigin.z + Math.sin(angle) * radius;
+      if (!world.canSpawnResourceAt(x, z, clearance) || resourcePositionCrowded(x, z)) continue;
+      if (oldPosition && Math.hypot(x - oldPosition.x, z - oldPosition.z) < 55) continue;
+      const y = world.heightAt(x, z);
+      if (!Number.isFinite(y)) continue;
+      return { x, y, z, size: 0.82 + Math.random() * 0.42, angle: Math.random() * Math.PI * 2 };
+    }
+    return null;
+  }
+
+  function initializeGatherNodes(rawNodes, count, clearance) {
+    const source = Array.isArray(rawNodes) && rawNodes.length === count ? rawNodes : null;
+    const list = Array.from({ length: count }, (_, id) => {
+      const raw = source && source[id] ? source[id] : {};
+      return {
+        id,
+        x: Number(raw.x) || 0,
+        y: Number(raw.y) || 0,
+        z: Number(raw.z) || 0,
+        size: THREE.MathUtils.clamp(Number(raw.size) || 1, 0.65, 1.5),
+        angle: Number(raw.angle) || 0,
+        active: raw.active === true,
+        hp: 1,
+        due: numberOrZero(raw.due),
+      };
+    });
+
+    const now = Date.now();
+    for (const node of list) {
+      if (!node.active) continue;
+      if (!world.canSpawnResourceAt(node.x, node.z, clearance) || resourcePositionCrowded(node.x, node.z)) {
+        node.active = false;
+        node.due = now + 15000;
+      } else {
+        markResourcePosition(node);
+      }
+    }
+    for (const node of list) {
+      if (node.active || (node.due && node.due > now)) continue;
+      const position = findGatherPosition(null, clearance);
+      if (!position) {
+        node.due = now + 15000;
+        continue;
+      }
+      Object.assign(node, position, { active: true, hp: 1, due: 0 });
+      markResourcePosition(node);
+    }
+    return list;
+  }
+
+  fiberNodes = initializeGatherNodes(saved && saved.fiberNodes, FIBER_NODE_COUNT, 7);
+  branchNodes = initializeGatherNodes(saved && saved.branchNodes, BRANCH_NODE_COUNT, 5);
+
+  const fiberMaterial = new THREE.MeshStandardMaterial({
+    color: 0x527b3f, roughness: 1, flatShading: true,
+  });
+  const branchMaterial = new THREE.MeshStandardMaterial({
+    color: 0x805534, roughness: 1, flatShading: true,
+  });
+  const fiberMesh = new THREE.InstancedMesh(
+    new THREE.IcosahedronGeometry(0.75, 0), fiberMaterial, FIBER_NODE_COUNT
+  );
+  fiberMesh.name = 'survival-gatherable-fiber-shrubs';
+  fiberMesh.userData.noCollider = true;
+  const branchMesh = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(0.075, 0.12, 1.45, 5), branchMaterial, BRANCH_NODE_COUNT
+  );
+  branchMesh.name = 'survival-gatherable-branches';
+  branchMesh.userData.noCollider = true;
+  const branchTilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, Math.PI / 2));
+
+  function writeGatherNode(node, mesh, isBranch) {
+    if (!node.active) {
+      matrix.makeScale(0, 0, 0);
+    } else {
+      rotation.setFromAxisAngle(up, node.angle);
+      if (isBranch) rotation.multiply(branchTilt);
+      position.set(node.x, node.y + (isBranch ? 0.12 : 0.52), node.z);
+      scale.set(
+        node.size * (isBranch ? 1 : 1.28),
+        node.size * (isBranch ? 1 : 0.84),
+        node.size * (isBranch ? 1 : 1.08)
+      );
+      matrix.compose(position, rotation, scale);
+    }
+    mesh.setMatrixAt(node.id, matrix);
+  }
+  for (const node of fiberNodes) writeGatherNode(node, fiberMesh, false);
+  for (const node of branchNodes) writeGatherNode(node, branchMesh, true);
+  fiberMesh.instanceMatrix.needsUpdate = true;
+  branchMesh.instanceMatrix.needsUpdate = true;
+  fiberMesh.computeBoundingSphere();
+  branchMesh.computeBoundingSphere();
+  scene.add(fiberMesh, branchMesh);
+
   // First-person tool models: crafted tools appear in the lower-right camera view.
   const viewModel = new THREE.Group();
   viewModel.name = 'survival-held-tool';
@@ -251,6 +403,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   const handleMaterial = new THREE.MeshStandardMaterial({ color: 0x805a38, roughness: 0.96 });
   const woodHeadMaterial = new THREE.MeshStandardMaterial({ color: 0x513a27, roughness: 1 });
   const stoneHeadMaterial = new THREE.MeshStandardMaterial({ color: 0x77776f, roughness: 1, flatShading: true });
+  const shrubFiberMaterial = new THREE.MeshStandardMaterial({ color: 0xb3a16d, roughness: 1 });
   const metalEdgeMaterial = new THREE.MeshStandardMaterial({ color: 0x92989a, roughness: 0.78, metalness: 0.18 });
 
   function toolPart(group, geometry, material, x, y, z, rotationZ = 0) {
@@ -294,23 +447,32 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       toolPart(group, new THREE.CircleGeometry(0.105, 8), handleMaterial, 0, -0.08, 0.17);
     } else if (id === 'planks') {
       toolPart(group, new THREE.BoxGeometry(0.30, 0.19, 0.15), handleMaterial, 0, -0.08, 0);
-    } else if (id === 'sticks') {
-      toolPart(group, new THREE.CylinderGeometry(0.025, 0.025, 0.38, 6), handleMaterial, -0.045, -0.08, 0, -0.16);
-      toolPart(group, new THREE.CylinderGeometry(0.025, 0.025, 0.38, 6), handleMaterial, 0.045, -0.08, 0, 0.16);
+    } else if (id === 'sticks' || id === 'branch') {
+      toolPart(group, new THREE.CylinderGeometry(0.035, 0.055, 0.42, 6), handleMaterial, 0, -0.08, 0, Math.PI / 2);
+    } else if (id === 'fiber') {
+      toolPart(group, new THREE.CylinderGeometry(0.018, 0.018, 0.32, 5), shrubFiberMaterial, -0.06, -0.08, 0, -0.22);
+      toolPart(group, new THREE.CylinderGeometry(0.018, 0.018, 0.32, 5), shrubFiberMaterial, 0.02, -0.08, 0, 0.18);
+      toolPart(group, new THREE.CylinderGeometry(0.018, 0.018, 0.32, 5), shrubFiberMaterial, 0.08, -0.08, 0, 0.42);
+    } else if (id === 'sharpShard') {
+      toolPart(group, new THREE.TetrahedronGeometry(0.19, 0), stoneHeadMaterial, 0, -0.08, 0);
+    } else if (id === 'rope') {
+      toolPart(group, new THREE.TorusGeometry(0.13, 0.035, 5, 12), handleMaterial, 0, -0.08, 0);
+    } else if (id === 'handle') {
+      toolPart(group, new THREE.CylinderGeometry(0.035, 0.045, 0.46, 7), handleMaterial, 0, -0.08, 0);
     } else {
       toolPart(group, new THREE.DodecahedronGeometry(0.15, 0), stoneHeadMaterial, 0, -0.08, 0);
     }
     viewModel.add(group);
     return group;
   }
-  for (const id of ['logs', 'planks', 'sticks', 'stone']) heldResources[id] = makeHeldResource(id);
+  for (const id of RESOURCE_IDS) heldResources[id] = makeHeldResource(id);
   let toolSwing = 0;
 
   function refreshHeldTool() {
     const activeStack = hotbarSlots[selectedSlot];
     selectedTool = activeStack && TOOL_IDS.includes(activeStack.id) ? activeStack.id : 'hands';
     for (const [id, group] of Object.entries(heldTools)) group.visible = selectedTool === id;
-    const resourceIds = ['logs', 'planks', 'sticks', 'stone'];
+    const resourceIds = Object.keys(heldResources);
     for (const id of resourceIds) {
       heldResources[id].visible = !!activeStack && activeStack.id === id && activeStack.count > 0;
     }
@@ -324,7 +486,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   function addWorkbenchMesh() {
     if (!workbench || workbenchGroup) return;
     const group = new THREE.Group();
-    group.name = 'survival-workbench';
+    group.name = 'survival-field-workplace';
     group.position.set(workbench.x, workbench.y, workbench.z);
     group.rotation.y = workbench.rotation || 0;
     const wood = new THREE.MeshStandardMaterial({ color: 0x765335, roughness: 0.96 });
@@ -447,7 +609,9 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     stonePickaxe: 'Каменная кирка',
   };
   const itemNames = {
-    logs: 'Дерево', planks: 'Доски', sticks: 'Палки', stone: 'Камень',
+    logs: 'Древесина', planks: 'Грубые доски', sticks: 'Палки', stone: 'Крупный камень',
+    branch: 'Толстая ветка', fiber: 'Растительные волокна',
+    sharpShard: 'Острый каменный осколок', rope: 'Верёвка', handle: 'Деревянная рукоятка',
     ...toolNames,
   };
 
@@ -467,6 +631,11 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     planks: '<g stroke-linejoin="round" stroke="#704827" stroke-width="1.8"><path d="M10 33 40 20 55 28 25 42Z" fill="#d5a36a"/><path d="M10 33 25 42 25 50 10 41Z" fill="#956238"/><path d="M25 42 55 28 55 36 25 50Z" fill="#b77e49"/><path d="M15 22 43 10 54 16 26 29Z" fill="#e1b47d"/><path d="M15 22 26 29 26 36 15 29Z" fill="#a16b3e"/><path d="M26 29 54 16 54 23 26 36Z" fill="#c18b53"/></g>',
     sticks: '<g stroke-linecap="round" stroke-width="5"><path d="M20 49 43 12" stroke="#704728"/><path d="M20 49 43 12" stroke="#c18a54" stroke-width="2"/><path d="M34 49 51 24" stroke="#704728"/><path d="M34 49 51 24" stroke="#d2a16a" stroke-width="2"/></g>',
     stone: '<g stroke-linejoin="round" stroke="#484b4c" stroke-width="2"><path d="m9 39 7-17 14-8 17 7 9 15-9 14-22 4-15-6Z" fill="#898d8b"/><path d="m9 39 7-17 14-8-3 21-6 19-12-6Z" fill="#686e70"/><path d="m30 14 17 7 9 15-29-1Z" fill="#aeb1aa"/><path d="m27 35 29 1-9 14-22 4Z" fill="#777d7d"/><path d="m18 24 8-4 5 4-7 6Z" fill="#c3c3b8" opacity=".8"/></g>',
+    branch: '<g stroke-linecap="round" stroke-width="6"><path d="M10 48 53 13" stroke="#66452b"/><path d="M10 48 53 13" stroke="#b17c4b" stroke-width="3"/><path d="m31 31-8-15m8 15 14 8" stroke="#805531" stroke-width="4"/></g>',
+    fiber: '<g fill="none" stroke="#c4b17a" stroke-width="4" stroke-linecap="round"><path d="M14 48Q24 30 18 12M25 50Q39 29 33 10M37 50Q52 28 47 14"/><path d="M14 29 7 20m26 17 10-12"/></g>',
+    sharpShard: '<g stroke="#414749" stroke-width="2" stroke-linejoin="round"><path d="m10 45 11-28 15-7 18 19-8 21-25 5Z" fill="#999f9c"/><path d="m21 17 15-7-3 23-23 12Z" fill="#d0d2c8"/><path d="m33 33 21-4-8 21-25 5Z" fill="#6c7475"/></g>',
+    rope: '<g fill="none" stroke="#9c7849" stroke-width="6" stroke-linecap="round"><path d="M17 18c28-14 36 31 9 29-18-2-17-25 9-26 18 0 18 22 2 27"/><path d="M17 18 29 9m11 39 8 7" stroke="#c39a60" stroke-width="3"/></g>',
+    handle: '<g stroke="#604126" stroke-width="2" stroke-linejoin="round"><path d="m25 55 12-46 7 2-12 46Z" fill="#a87745"/><path d="m26 18 14-7 6 4-14 8Z" fill="#d1a16b"/><path d="m22 41 16-5" stroke="#e0b37c" stroke-width="3"/></g>',
     woodAxe: '<g stroke-linejoin="round"><path d="m25 53 13-43 5 2-13 43Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="m39 13 3-5 5 2-3 6Z" fill="#d39b61"/><path d="m34 19 5-11 17 3 2 9-10 8-12-2Z" fill="#a97443" stroke="#644324" stroke-width="2"/><path d="m39 9 17 2 5 8-10 1-14-4Z" fill="#c18b53"/></g>',
     woodPickaxe: '<g stroke-linejoin="round" stroke-linecap="round"><path d="m27 57 12-48 5 1-12 48Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="M12 22 24 13 41 17 55 9 59 14 43 27 24 23 14 29Z" fill="#a97443" stroke="#644324" stroke-width="3"/><path d="m13 22 11-9 17 4-5 5-13-2-7 8Z" fill="#d09a61"/></g>',
     stoneAxe: '<g stroke-linejoin="round"><path d="m25 55 13-45 5 2-13 45Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="m38 14 5-12 18 4 1 15-12 8-13-4Z" fill="#7e8585" stroke="#42494b" stroke-width="2"/><path d="m43 4 18 2 1 15-8-4-12-2Z" fill="#b9bfbb"/><path d="m38 14 5-10 4 15-2 8Z" fill="#60696b"/></g>',
@@ -683,35 +852,41 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
   function findCraftRecipe() {
     const recipes = [
-      { id: 'planks', output: 'planks', count: 4, width: 1, height: 1, cells: [{ x: 0, y: 0, id: 'logs' }] },
-      { id: 'sticks', output: 'sticks', count: 4, width: 1, height: 2, cells: [{ x: 0, y: 0, id: 'planks' }, { x: 0, y: 1, id: 'planks' }] },
-      { id: 'woodAxe', output: 'woodAxe', count: 1, width: 2, height: 3, cells: [
-        { x: 0, y: 0, id: 'planks' }, { x: 1, y: 0, id: 'planks' },
-        { x: 0, y: 1, id: 'planks' }, { x: 1, y: 1, id: 'sticks' },
-        { x: 1, y: 2, id: 'sticks' },
-      ] },
-      { id: 'woodPickaxe', output: 'woodPickaxe', count: 1, width: 3, height: 3, cells: [
-        { x: 0, y: 0, id: 'planks' }, { x: 1, y: 0, id: 'planks' }, { x: 2, y: 0, id: 'planks' },
-        { x: 1, y: 1, id: 'sticks' }, { x: 1, y: 2, id: 'sticks' },
-      ] },
-      { id: 'workbench', output: 'workbench', count: 1, width: 2, height: 2, cells: [
-        { x: 0, y: 0, id: 'planks' }, { x: 1, y: 0, id: 'planks' },
-        { x: 0, y: 1, id: 'planks' }, { x: 1, y: 1, id: 'planks' },
-      ] },
-      { id: 'stoneAxe', output: 'stoneAxe', count: 1, width: 2, height: 3, bench: true, cells: [
-        { x: 0, y: 0, id: 'stone' }, { x: 1, y: 0, id: 'stone' },
-        { x: 0, y: 1, id: 'stone' }, { x: 1, y: 1, id: 'sticks' },
-        { x: 1, y: 2, id: 'sticks' },
-      ] },
-      { id: 'stonePickaxe', output: 'stonePickaxe', count: 1, width: 3, height: 3, bench: true, cells: [
-        { x: 0, y: 0, id: 'stone' }, { x: 1, y: 0, id: 'stone' }, { x: 2, y: 0, id: 'stone' },
-        { x: 1, y: 1, id: 'sticks' }, { x: 1, y: 2, id: 'sticks' },
-      ] },
+      {
+        id: 'sharpShard', output: 'sharpShard', count: 1, width: 1, height: 2,
+        cells: [{ x: 0, y: 0, id: 'stone' }, { x: 0, y: 1, id: 'stone' }],
+      },
+      {
+        id: 'rope', output: 'rope', count: 1, width: 1, height: 3,
+        cells: [
+          { x: 0, y: 0, id: 'fiber' }, { x: 0, y: 1, id: 'fiber' },
+          { x: 0, y: 2, id: 'fiber' },
+        ],
+      },
+      {
+        id: 'fieldWorkplace', output: 'fieldWorkplace', count: 1, width: 3, height: 3,
+        cells: [
+          { x: 0, y: 0, id: 'logs' }, { x: 1, y: 0, id: 'logs' }, { x: 2, y: 0, id: 'logs' },
+          { x: 0, y: 1, id: 'stone' }, { x: 1, y: 1, id: 'stone' }, { x: 2, y: 1, id: 'fiber' },
+          { x: 0, y: 2, id: 'fiber' }, { x: 1, y: 2, id: 'fiber' }, { x: 2, y: 2, id: 'fiber' },
+        ],
+      },
+      {
+        id: 'handle', output: 'handle', count: 1, width: 2, height: 1, bench: true,
+        cells: [{ x: 0, y: 0, id: 'branch' }, { x: 1, y: 0, id: 'sharpShard' }],
+      },
+      {
+        id: 'stoneAxe', output: 'stoneAxe', count: 1, width: 3, height: 2, bench: true,
+        cells: [
+          { x: 0, y: 0, id: 'sharpShard' }, { x: 1, y: 0, id: 'handle' },
+          { x: 1, y: 1, id: 'rope' }, { x: 2, y: 1, id: 'rope' },
+        ],
+      },
     ];
 
     for (const recipe of recipes) {
       if (recipe.bench && !nearWorkbench()) continue;
-      if (recipe.output === 'workbench' && workbench) continue;
+      if (recipe.output === 'fieldWorkplace' && workbench) continue;
       if (TOOL_IDS.includes(recipe.output) && inventory[recipe.output]) continue;
       for (const mirrored of [false, true]) {
         for (let offsetY = 0; offsetY <= 3 - recipe.height; offsetY++) {
@@ -762,7 +937,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     const match = findCraftRecipe();
     if (!match) return;
     const { recipe, cells } = match;
-    if (recipe.output === 'workbench') {
+    if (recipe.output === 'fieldWorkplace') {
       if (!placeWorkbench()) return;
     } else if (!canStoreItem(recipe.output, recipe.count)) {
       toast('В инвентаре нет места для результата.');
@@ -775,14 +950,14 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       stack.count -= 1;
       if (stack.count <= 0) craftingGrid[index] = null;
     }
-    if (recipe.output !== 'workbench') {
+    if (recipe.output !== 'fieldWorkplace') {
       addToInventory(recipe.output, recipe.count);
     }
     selectedCell = null;
     syncInventoryTotals();
     save();
     renderPanel();
-    toast(recipe.output === 'workbench' ? 'Верстак установлен.' : 'Предмет изготовлен.');
+    toast(recipe.output === 'fieldWorkplace' ? 'Полевое рабочее место установлено.' : 'Предмет изготовлен.');
   }
 
   function renderPanel() {
@@ -795,8 +970,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     heldNameEl.textContent = activeStack ? (itemNames[activeStack.id] || activeStack.id) : 'Руки';
 
     benchStatusEl.textContent = workbench
-      ? (nearWorkbench() ? 'Верстак: рядом' : 'Верстак: установлен в мире')
-      : 'Верстак: ещё не установлен';
+      ? (nearWorkbench() ? 'Полевое рабочее место: рядом' : 'Полевое рабочее место: установлено в мире')
+      : 'Полевое рабочее место: ещё не создано';
 
     renderCraftingOutput();
     const active = nodes.filter((node) => node.active).length;
@@ -871,12 +1046,18 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   function currentTarget() {
     raycaster.setFromCamera(center, camera);
     const localTrees = world.forests.getInteractiveMeshes(camera.position.x, camera.position.z);
-    const hits = raycaster.intersectObjects(localTrees.concat(stoneMesh), false);
+    const hits = raycaster.intersectObjects(localTrees.concat(stoneMesh, fiberMesh, branchMesh), false);
     for (const hit of hits) {
       if (hit.distance > 6.2 || hit.instanceId === undefined) continue;
       if (hit.object === stoneMesh) {
         const node = nodes[hit.instanceId];
         if (node && node.active) return { type: 'stone', node };
+      } else if (hit.object === fiberMesh) {
+        const node = fiberNodes[hit.instanceId];
+        if (node && node.active) return { type: 'fiber', node };
+      } else if (hit.object === branchMesh) {
+        const node = branchNodes[hit.instanceId];
+        if (node && node.active) return { type: 'branch', node };
       } else {
         const tree = hit.object.userData.treeInstances && hit.object.userData.treeInstances[hit.instanceId];
         if (tree && !tree.removed) return { type: 'tree', tree };
@@ -892,8 +1073,29 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     if (!target) {
       if (messageCooldown <= 0) {
         messageCooldown = 0.6;
-        toast('Наведи прицел на дерево или каменную глыбу.');
+        toast('Наведи прицел на дерево, камень, ветку или куст.');
       }
+      return;
+    }
+
+    if (target.type === 'fiber' || target.type === 'branch') {
+      const gatherMesh = target.type === 'fiber' ? fiberMesh : branchMesh;
+      unmarkResourcePosition(target.node);
+      target.node.active = false;
+      target.node.due = Date.now() + RESPAWN_MS;
+      writeGatherNode(target.node, gatherMesh, target.type === 'branch');
+      gatherMesh.instanceMatrix.needsUpdate = true;
+
+      const itemId = target.type === 'fiber' ? 'fiber' : 'branch';
+      const amount = target.type === 'fiber'
+        ? 2 + Math.floor(Math.random() * 3)
+        : 1 + (Math.random() < 0.18 ? 1 : 0);
+      const missing = addToInventory(itemId, amount);
+      save();
+      renderPanel();
+      toast((target.type === 'fiber' ? 'Куст собран: +' : 'Ветка подобрана: +') +
+        (amount - missing) + ' ' + (target.type === 'fiber' ? 'волокна.' : 'ветка.') +
+        (missing ? ' Инвентарь заполнен.' : ''));
       return;
     }
 
@@ -905,22 +1107,18 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
         world.forests.remove(target.tree);
         const woodYield = 2 + Math.floor(Math.random() * 6);
         const missingLogs = addToInventory('logs', woodYield);
-        const missingSticks = addToInventory('sticks', 1);
         save();
         renderPanel();
-        toast('Дерево срублено: +' + (woodYield - missingLogs) + ' древесины, +' + (1 - missingSticks) + ' палка.' +
-          (missingLogs || missingSticks ? ' Инвентарь заполнен.' : ''));
+        toast('Дерево срублено: +' + (woodYield - missingLogs) + ' древесины.' +
+          (missingLogs ? ' Инвентарь заполнен.' : ''));
       } else {
         toast('Удар по дереву: осталось ' + target.tree.health + '/' + TREE_HP + '.');
       }
       return;
     }
 
-    if (selectedTool !== 'woodPickaxe' && selectedTool !== 'stonePickaxe') {
-      toast('Для добычи камня нужна кирка. Сделай деревянную из досок и палок.');
-      return;
-    }
-    target.node.hp -= selectedTool === 'stonePickaxe' ? 6 : 3;
+    // Stone deposits can be cracked by hand, but pickaxes make the work much faster.
+    target.node.hp -= selectedTool === 'stonePickaxe' ? 6 : selectedTool === 'woodPickaxe' ? 3 : 1;
     if (target.node.hp <= 0) {
       target.node.active = false;
       target.node.due = Date.now() + RESPAWN_MS;
@@ -1074,9 +1272,33 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       writeNode(node);
       changed = true;
     }
+
+    const respawnGatherNodes = (list, mesh, isBranch) => {
+      let meshChanged = false;
+      for (const node of list) {
+        if (node.active || !node.due || now < node.due) continue;
+        const nextPosition = findGatherPosition({ x: node.x, z: node.z }, isBranch ? 5 : 7);
+        if (!nextPosition) {
+          node.due = now + 15000;
+          continue;
+        }
+        Object.assign(node, nextPosition, { active: true, hp: 1, due: 0 });
+        markResourcePosition(node);
+        writeGatherNode(node, mesh, isBranch);
+        meshChanged = true;
+      }
+      if (meshChanged) {
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.computeBoundingSphere();
+        changed = true;
+      }
+    };
+    respawnGatherNodes(fiberNodes, fiberMesh, false);
+    respawnGatherNodes(branchNodes, branchMesh, true);
+
     if (changed) {
       stoneMesh.instanceMatrix.needsUpdate = true;
-      // Nodes respawn far away, so refresh the aggregate bounds used by frustum culling.
+      // Respawned resources may move, so refresh aggregate bounds used by frustum culling.
       stoneMesh.computeBoundingSphere();
       save();
       renderPanel();
