@@ -1552,3 +1552,104 @@ body.in-game #survival-toggle {display:inline-flex}
   .crafting-note {margin-bottom:3px;padding:3px;font-size:7px}
   .inventory-bottom-hint {margin-top:3px;padding-top:3px}
 }
+
+
+/* Manual crafting: no recipe catalogue. Players discover layouts by arranging items. */
+.inventory-right {min-width:0}
+.crafting-workspace {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 28px 74px;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  margin:8px 0 10px;
+}
+.crafting-grid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:5px;
+  width:min(100%,300px);
+  aspect-ratio:1;
+  padding:6px;
+  background:rgba(60,60,60,.22);
+  border:2px solid rgba(245,245,245,.65);
+  border-right-color:#666;
+  border-bottom-color:#666;
+}
+.craft-slot {
+  display:grid;
+  place-items:center;
+  position:relative;
+  width:100%;
+  min-width:0;
+  aspect-ratio:1;
+  padding:0;
+  background:linear-gradient(145deg,#6f6f6f,#858585);
+  border:2px solid #eee;
+  border-right-color:#5b5b5b;
+  border-bottom-color:#5b5b5b;
+  border-radius:0;
+  cursor:pointer;
+}
+.craft-slot.empty {background:rgba(40,40,40,.22)}
+.craft-slot.moving,.inventory-slot.moving,.hotbar-slot.moving {
+  outline:3px solid #ffe18a;
+  outline-offset:1px;
+  z-index:2;
+}
+.crafting-arrow {
+  color:#333;
+  font-size:26px;
+  font-weight:900;
+  text-align:center;
+  text-shadow:1px 1px rgba(255,255,255,.4);
+}
+.crafting-result-wrap {display:grid;justify-items:center;gap:7px}
+.crafting-result-wrap .inventory-label {margin:0;text-align:center}
+.crafting-result {
+  display:grid;
+  place-items:center;
+  position:relative;
+  width:70px;height:70px;
+  padding:0;
+  background:linear-gradient(145deg,#777,#888);
+  border:3px solid #eee;
+  border-right-color:#555;
+  border-bottom-color:#555;
+  border-radius:0;
+  cursor:pointer;
+}
+.crafting-result:disabled {
+  opacity:.48;
+  cursor:default;
+  background:rgba(45,45,45,.24);
+}
+.crafting-result.available {
+  border-color:#fff5be;
+  box-shadow:0 0 0 2px rgba(255,218,110,.35),0 0 18px rgba(255,221,130,.28);
+}
+.crafting-result .item-model {width:88%;height:88%}
+.crafting-note {
+  min-height:0;
+  padding:6px 8px;
+  color:#454545;
+  background:rgba(255,255,255,.22);
+  border:1px solid rgba(0,0,0,.15);
+  font:9px/1.35 system-ui,sans-serif;
+}
+.inventory-slot,.hotbar-slot,.craft-slot {user-select:none;-webkit-user-select:none}
+.inventory-slot[draggable=true],.hotbar-slot[draggable=true],.craft-slot[draggable=true] {cursor:grab}
+.inventory-slot:active,.hotbar-slot:active,.craft-slot:active {cursor:grabbing}
+@media(max-width:900px) {
+  .crafting-workspace {grid-template-columns:minmax(0,1fr) 18px 58px;gap:4px;margin:4px 0 6px}
+  .crafting-grid {gap:3px;padding:4px}
+  .craft-slot {border-width:1px}
+  .crafting-arrow {font-size:18px}
+  .crafting-result {width:54px;height:54px}
+  .crafting-note {padding:4px 5px;font-size:7px}
+}
+@media(max-width:620px) {
+  .crafting-workspace {grid-template-columns:minmax(0,1fr) 20px 64px;width:min(100%,390px);margin:4px auto}
+  .crafting-grid {width:min(100%,230px);gap:3px}
+  .crafting-result {width:58px;height:58px}
+}
