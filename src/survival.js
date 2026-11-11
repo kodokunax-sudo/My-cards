@@ -661,6 +661,107 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   }
   addWorkbenchMesh();
 
+  function addWoodWorkshopMesh() {
+    if (!woodWorkshop || woodWorkshopGroup) return;
+    const group = new THREE.Group();
+    group.name = 'survival-wooden-workshop';
+    group.position.set(woodWorkshop.x, woodWorkshop.y, woodWorkshop.z);
+    group.rotation.y = woodWorkshop.rotation || 0;
+    const timber = new THREE.MeshStandardMaterial({ color: 0x795333, roughness: 0.98 });
+    const top = new THREE.MeshStandardMaterial({ color: 0xa87949, roughness: 0.95 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x4b3829, roughness: 1 });
+    const part = (geometry, material, x, y, z, rotationY = 0) => {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z);
+      mesh.rotation.y = rotationY;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData.noCollider = true;
+      group.add(mesh);
+    };
+    for (const x of [-0.72, 0.72]) for (const z of [-0.42, 0.42]) {
+      part(new THREE.BoxGeometry(0.13, 0.92, 0.13), timber, x, 0.46, z);
+    }
+    for (let i = 0; i < 4; i++) part(new THREE.BoxGeometry(1.62, 0.13, 0.24), top, 0, 0.91, -0.34 + i * 0.22);
+    part(new THREE.BoxGeometry(0.46, 0.18, 0.18), dark, -0.48, 1.06, -0.15);
+    part(new THREE.BoxGeometry(0.16, 0.22, 0.42), timber, 0.60, 1.02, 0.20);
+    part(new THREE.CylinderGeometry(0.055, 0.055, 0.72, 7), dark, 0.42, 0.98, -0.28, Math.PI / 2);
+    woodWorkshopGroup = group;
+    scene.add(group);
+  }
+
+  function addFurnaceMesh() {
+    if (!furnace || furnaceGroup) return;
+    const group = new THREE.Group();
+    group.name = 'survival-smelting-furnace';
+    group.position.set(furnace.x, furnace.y, furnace.z);
+    group.rotation.y = furnace.rotation || 0;
+    const stone = new THREE.MeshStandardMaterial({ color: 0x66645e, roughness: 1, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x201e1a, roughness: 1 });
+    const ember = new THREE.MeshStandardMaterial({
+      color: 0xd65b1f, emissive: 0xb52d09, emissiveIntensity: 1.2, roughness: 1,
+    });
+    const part = (geometry, material, x, y, z) => {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData.noCollider = true;
+      group.add(mesh);
+    };
+    for (let layer = 0; layer < 2; layer++) {
+      for (const x of [-0.47, 0.47]) {
+        part(new THREE.BoxGeometry(0.42, 0.42, 0.42), stone, x, 0.22 + layer * 0.42, 0);
+      }
+      part(new THREE.BoxGeometry(0.42, 0.42, 0.42), stone, 0, 0.22 + layer * 0.42, -0.46);
+      part(new THREE.BoxGeometry(0.42, 0.42, 0.42), stone, 0, 0.22 + layer * 0.42, 0.46);
+    }
+    part(new THREE.BoxGeometry(0.64, 0.48, 0.07), dark, 0, 0.34, 0.48);
+    part(new THREE.BoxGeometry(0.38, 0.16, 0.04), ember, 0, 0.26, 0.525);
+    part(new THREE.BoxGeometry(0.24, 0.06, 0.05), ember, -0.10, 0.42, 0.525);
+    furnaceGroup = group;
+    scene.add(group);
+  }
+
+  function addFullWorkbenchMesh() {
+    if (!fullWorkbench || fullWorkbenchGroup) return;
+    const group = new THREE.Group();
+    group.name = 'survival-full-workbench';
+    group.position.set(fullWorkbench.x, fullWorkbench.y, fullWorkbench.z);
+    group.rotation.y = fullWorkbench.rotation || 0;
+    const wood = new THREE.MeshStandardMaterial({ color: 0x64452f, roughness: 0.94 });
+    const iron = new THREE.MeshStandardMaterial({ color: 0x7c8587, roughness: 0.72, metalness: 0.62 });
+    const top = new THREE.MeshStandardMaterial({ color: 0x343a3b, roughness: 0.78, metalness: 0.42 });
+    const part = (geometry, material, x, y, z) => {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData.noCollider = true;
+      group.add(mesh);
+    };
+    for (const x of [-0.66, 0.66]) for (const z of [-0.38, 0.38]) {
+      part(new THREE.BoxGeometry(0.16, 0.94, 0.16), wood, x, 0.47, z);
+      part(new THREE.BoxGeometry(0.20, 0.16, 0.20), iron, x, 0.12, z);
+    }
+    part(new THREE.BoxGeometry(1.58, 0.18, 0.94), top, 0, 0.98, 0);
+    part(new THREE.BoxGeometry(1.58, 0.06, 0.08), iron, 0, 0.84, 0.40);
+    part(new THREE.BoxGeometry(0.52, 0.13, 0.16), iron, -0.38, 1.13, -0.18);
+    part(new THREE.CylinderGeometry(0.07, 0.07, 0.56, 8), iron, 0.46, 1.14, -0.18, Math.PI / 2);
+    fullWorkbenchGroup = group;
+    scene.add(group);
+  }
+
+  function addStationMesh(kind) {
+    if (kind === 'field') addWorkbenchMesh();
+    else if (kind === 'woodWorkshop') addWoodWorkshopMesh();
+    else if (kind === 'furnace') addFurnaceMesh();
+    else if (kind === 'fullWorkbench') addFullWorkbenchMesh();
+  }
+  addWoodWorkshopMesh();
+  addFurnaceMesh();
+  addFullWorkbenchMesh();
+
   const ui = document.getElementById('ui') || document.body;
   const toggle = document.createElement('button');
   toggle.id = 'survival-toggle';
