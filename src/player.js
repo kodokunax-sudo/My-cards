@@ -144,9 +144,15 @@ function createPlayerAvatar(scene) {
     return { shoulder, elbow, hand };
   }
 
-  // Both arms use the same proportions and rig.
+  // Keep the full-body arms in a separate render layer. The first-person
+  // camera uses layers 0 and 2, while the articulated survival hand/tool
+  // model is rendered on layer 0. This prevents the avatar arms from being
+  // drawn underneath the dedicated first-person arms (the "three arms" bug).
   const leftArm = makeArm(-1);
   const rightArm = makeArm(1);
+  for (const arm of [leftArm, rightArm]) {
+    arm.shoulder.traverse((object) => object.layers.set(1));
+  }
 
   function makeLeg(side) {
     const hip = new THREE.Group();
