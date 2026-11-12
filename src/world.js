@@ -1516,7 +1516,7 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables, waterRegion
     bucket.push(rock); rockById.set(rock.id, rock);
   }
   for (let id = 0; id < ROCK_COUNT; id++) {
-    let placed = null; const wet = id % 16 === 0;
+    let placed = null; const wet = id % 4 === 0;
     for (let attempt = 0; attempt < 360 && !placed; attempt++) {
       let x, z;
       if (wet) {
@@ -1768,43 +1768,6 @@ function createRiver(scene, rnd, heightAt, analyticHeightAt, riverProfiles, stre
   const bed = addRibbonChunks(scene, points, 5.8, -3.25, bedMaterial,
     'main-river-bed', { walkable: true, receiveShadow: true, heightAt: riverBedHeight }, streamer);
 
-  const pebbleGeo = new THREE.IcosahedronGeometry(2.2, 0);
-  const pebbleMat = new THREE.MeshStandardMaterial({ color: 0x756c56, roughness: 1 });
-  const pebbleBuckets = new Map();
-  for (let i = 0; i < 340; i++) {
-    const z = -4400 + rnd() * 8800;
-    const side = rnd() < 0.5 ? -1 : 1;
-    const x = centerX(z) + side * (14 + rnd() * 5);
-    const key = `${Math.floor(x / 640)},${Math.floor(z / 640)}`;
-    let bucket = pebbleBuckets.get(key);
-    if (!bucket) { bucket = []; pebbleBuckets.set(key, bucket); }
-    bucket.push({ x, z, y: heightAt(x, z) ?? 0, scale: 0.55 + rnd() * 0.85, angle: rnd() * TAU });
-  }
-
-  const pebbleMeshes = [];
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const p = new THREE.Vector3();
-  const scale = new THREE.Vector3();
-  for (const [key, data] of pebbleBuckets) {
-    const pebbles = new THREE.InstancedMesh(pebbleGeo, pebbleMat, data.length);
-    pebbles.userData.noCollider = true;
-    pebbles.name = `river-pebbles-${key}`;
-    pebbles.castShadow = false;
-    for (let i = 0; i < data.length; i++) {
-      const pebble = data[i];
-      p.set(pebble.x, pebble.y + pebble.scale * 0.34, pebble.z);
-      scale.set(pebble.scale, 0.35 + pebble.scale * 0.5, pebble.scale);
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), pebble.angle);
-      m.compose(p, q, scale);
-      pebbles.setMatrixAt(i, m);
-    }
-    pebbles.instanceMatrix.needsUpdate = true;
-    pebbles.computeBoundingSphere();
-    pebbles.frustumCulled = true;
-    scene.add(pebbles);
-    pebbleMeshes.push(pebbles);
-  }
 
   return {
     water, banks, bed, waterMaterial, centerX, halfWidth: 14.2,
