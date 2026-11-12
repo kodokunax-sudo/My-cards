@@ -23,7 +23,14 @@ function numberOrZero(value) {
   return Number.isFinite(valueNumber) && valueNumber > 0 ? Math.floor(valueNumber) : 0;
 }
 
-export function createSurvival(scene, camera, canvas, world, player, hud) {
+export function createSurvival(scene, camera, canvas, world, player, hud, options = {}) {
+  const mobileMode = options.mobile === true;
+  const FIBER_NODE_COUNT = mobileMode ? 64 : 190;
+  const BRANCH_NODE_COUNT = mobileMode ? 64 : 150;
+  const STICK_NODE_COUNT = mobileMode ? 360 : 4000;
+  const LEAF_NODE_COUNT = mobileMode ? 360 : 4000;
+  const SCRAP_NODE_COUNT = mobileMode ? 24 : 52;
+  const IRON_ORE_NODE_COUNT = mobileMode ? 12 : 28;
   const saved = loadSave();
   const inventory = {
     logs: 0, planks: 0, sticks: 0, stone: 0,
@@ -372,7 +379,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   }
 
   function initializeGatherNodes(rawNodes, count, clearance, nearTree = false) {
-    const source = Array.isArray(rawNodes) && rawNodes.length === count ? rawNodes : null;
+    // Preserve the overlapping part of saves when switching device profiles.
+    const source = Array.isArray(rawNodes) ? rawNodes.slice(0, count) : null;
     const list = Array.from({ length: count }, (_, id) => {
       const raw = source && source[id] ? source[id] : {};
       return {
@@ -415,7 +423,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   leafNodes = initializeGatherNodes(saved && saved.leafNodes, LEAF_NODE_COUNT, 1.4, true);
 
   function initializeMetalNodes(rawNodes, count, isOre) {
-    const source = Array.isArray(rawNodes) && rawNodes.length === count ? rawNodes : null;
+    // Preserve the overlapping part of saves when switching device profiles.
+    const source = Array.isArray(rawNodes) ? rawNodes.slice(0, count) : null;
     const list = Array.from({ length: count }, (_, id) => {
       const raw = source && source[id] ? source[id] : {};
       return {
