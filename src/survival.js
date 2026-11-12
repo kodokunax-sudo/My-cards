@@ -864,11 +864,11 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       group.visible = !gathering && !!activeStack && activeStack.id === id && activeStack.count > 0;
     }
     heldHands.visible = !activeStack || gathering;
-    activeHeldId = gathering || selectedTool === 'hands' ? 'hands' :
-      activeStack && heldResources[activeStack.id] ? activeStack.id : selectedTool;
-    activeHeldModel = gathering || selectedTool === 'hands' ? heldHands :
-      selectedTool !== 'hands' ? heldTools[selectedTool] :
-      activeStack && heldResources[activeStack.id] ? heldResources[activeStack.id] : heldHands;
+    const selectedResource = activeStack && heldResources[activeStack.id] ? heldResources[activeStack.id] : null;
+    activeHeldId = gathering ? 'hands' : selectedTool !== 'hands' ? selectedTool :
+      selectedResource ? activeStack.id : 'hands';
+    activeHeldModel = gathering ? heldHands : selectedTool !== 'hands' ? heldTools[selectedTool] :
+      selectedResource || heldHands;
     viewModel.visible = player.mode !== 'cinematic' && !player.swimming;
   }
 
@@ -888,6 +888,51 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     }
     return keys[keys.length - 1][1];
   }
+
+  const HELD_SWING_PROFILES = {
+    woodAxe: {
+      x: [[0, 0], [0.30, -0.78], [0.49, 0.58], [0.68, -0.10], [1, 0]],
+      y: [[0, 0], [0.30, -0.12], [0.49, 0.20], [1, 0]],
+      z: [[0, 0], [0.30, -0.60], [0.49, 0.48], [0.68, -0.08], [1, 0]],
+      py: [[0, 0], [0.30, 0.075], [0.49, -0.075], [1, 0]],
+      pz: [[0, 0], [0.30, 0.045], [0.49, -0.15], [1, 0]],
+    },
+    stoneAxe: {
+      x: [[0, 0], [0.36, -1.12], [0.55, 0.72], [0.76, -0.16], [1, 0]],
+      y: [[0, 0], [0.36, 0.15], [0.55, -0.18], [1, 0]],
+      z: [[0, 0], [0.36, -0.42], [0.55, 0.38], [0.76, -0.10], [1, 0]],
+      py: [[0, 0], [0.36, 0.12], [0.55, -0.11], [1, 0]],
+      pz: [[0, 0], [0.36, 0.08], [0.55, -0.18], [1, 0]],
+    },
+    ironAxe: {
+      x: [[0, 0], [0.25, -0.72], [0.43, 0.88], [0.60, -0.10], [1, 0]],
+      y: [[0, 0], [0.25, -0.10], [0.43, 0.16], [1, 0]],
+      z: [[0, 0], [0.25, -0.70], [0.43, 0.58], [0.60, -0.14], [1, 0]],
+      py: [[0, 0], [0.25, 0.055], [0.43, -0.10], [1, 0]],
+      pz: [[0, 0], [0.25, 0.025], [0.43, -0.18], [1, 0]],
+    },
+    woodPickaxe: {
+      x: [[0, 0], [0.28, -0.66], [0.47, 0.48], [0.66, -0.08], [1, 0]],
+      y: [[0, 0], [0.28, 0.08], [0.47, -0.08], [1, 0]],
+      z: [[0, 0], [0.28, 0.18], [0.47, -0.22], [0.66, 0.06], [1, 0]],
+      py: [[0, 0], [0.28, 0.055], [0.47, -0.065], [1, 0]],
+      pz: [[0, 0], [0.28, 0.025], [0.47, -0.12], [1, 0]],
+    },
+    stonePickaxe: {
+      x: [[0, 0], [0.35, -1.10], [0.54, 0.74], [0.73, -0.14], [1, 0]],
+      y: [[0, 0], [0.35, 0.12], [0.54, -0.14], [1, 0]],
+      z: [[0, 0], [0.35, 0.28], [0.54, -0.35], [0.73, 0.08], [1, 0]],
+      py: [[0, 0], [0.35, 0.105], [0.54, -0.12], [1, 0]],
+      pz: [[0, 0], [0.35, 0.045], [0.54, -0.17], [1, 0]],
+    },
+    ironPickaxe: {
+      x: [[0, 0], [0.32, -1.22], [0.50, 0.88], [0.68, -0.18], [1, 0]],
+      y: [[0, 0], [0.32, -0.08], [0.50, 0.12], [1, 0]],
+      z: [[0, 0], [0.32, 0.14], [0.50, -0.24], [0.68, 0.06], [1, 0]],
+      py: [[0, 0], [0.32, 0.12], [0.50, -0.13], [1, 0]],
+      pz: [[0, 0], [0.32, 0.05], [0.50, -0.20], [1, 0]],
+    },
+  };
 
   function animateHeldItem(dt) {
     heldIdleTime += dt;
@@ -955,51 +1000,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       setHandPose(-1.12, 0.82);
     } else {
       // Each material/tool family has its own weight, wind-up and follow-through.
-      const profiles = {
-        woodAxe: {
-          x: [[0, 0], [0.30, -0.78], [0.49, 0.58], [0.68, -0.10], [1, 0]],
-          y: [[0, 0], [0.30, -0.12], [0.49, 0.20], [1, 0]],
-          z: [[0, 0], [0.30, -0.60], [0.49, 0.48], [0.68, -0.08], [1, 0]],
-          py: [[0, 0], [0.30, 0.075], [0.49, -0.075], [1, 0]],
-          pz: [[0, 0], [0.30, 0.045], [0.49, -0.15], [1, 0]],
-        },
-        stoneAxe: {
-          x: [[0, 0], [0.36, -1.12], [0.55, 0.72], [0.76, -0.16], [1, 0]],
-          y: [[0, 0], [0.36, 0.15], [0.55, -0.18], [1, 0]],
-          z: [[0, 0], [0.36, -0.42], [0.55, 0.38], [0.76, -0.10], [1, 0]],
-          py: [[0, 0], [0.36, 0.12], [0.55, -0.11], [1, 0]],
-          pz: [[0, 0], [0.36, 0.08], [0.55, -0.18], [1, 0]],
-        },
-        ironAxe: {
-          x: [[0, 0], [0.25, -0.72], [0.43, 0.88], [0.60, -0.10], [1, 0]],
-          y: [[0, 0], [0.25, -0.10], [0.43, 0.16], [1, 0]],
-          z: [[0, 0], [0.25, -0.70], [0.43, 0.58], [0.60, -0.14], [1, 0]],
-          py: [[0, 0], [0.25, 0.055], [0.43, -0.10], [1, 0]],
-          pz: [[0, 0], [0.25, 0.025], [0.43, -0.18], [1, 0]],
-        },
-        woodPickaxe: {
-          x: [[0, 0], [0.28, -0.66], [0.47, 0.48], [0.66, -0.08], [1, 0]],
-          y: [[0, 0], [0.28, 0.08], [0.47, -0.08], [1, 0]],
-          z: [[0, 0], [0.28, 0.18], [0.47, -0.22], [0.66, 0.06], [1, 0]],
-          py: [[0, 0], [0.28, 0.055], [0.47, -0.065], [1, 0]],
-          pz: [[0, 0], [0.28, 0.025], [0.47, -0.12], [1, 0]],
-        },
-        stonePickaxe: {
-          x: [[0, 0], [0.35, -1.10], [0.54, 0.74], [0.73, -0.14], [1, 0]],
-          y: [[0, 0], [0.35, 0.12], [0.54, -0.14], [1, 0]],
-          z: [[0, 0], [0.35, 0.28], [0.54, -0.35], [0.73, 0.08], [1, 0]],
-          py: [[0, 0], [0.35, 0.105], [0.54, -0.12], [1, 0]],
-          pz: [[0, 0], [0.35, 0.045], [0.54, -0.17], [1, 0]],
-        },
-        ironPickaxe: {
-          x: [[0, 0], [0.32, -1.22], [0.50, 0.88], [0.68, -0.18], [1, 0]],
-          y: [[0, 0], [0.32, -0.08], [0.50, 0.12], [1, 0]],
-          z: [[0, 0], [0.32, 0.14], [0.50, -0.24], [0.68, 0.06], [1, 0]],
-          py: [[0, 0], [0.32, 0.12], [0.50, -0.13], [1, 0]],
-          pz: [[0, 0], [0.32, 0.05], [0.50, -0.20], [1, 0]],
-        },
-      };
-      const profile = profiles[activeHeldId] || profiles.woodAxe;
+      const profile = HELD_SWING_PROFILES[activeHeldId] || HELD_SWING_PROFILES.woodAxe;
       rotationX = sampleMotion(profile.x, progress);
       rotationY = sampleMotion(profile.y, progress);
       rotationZ = sampleMotion(profile.z, progress);
