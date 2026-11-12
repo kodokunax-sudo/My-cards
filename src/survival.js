@@ -1027,7 +1027,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
           Math.sin(heldIdleTime * 0.75) * 0.014,
           Math.sin(heldIdleTime * 1.6) * 0.008
         );
-        if (model.userData.fingers) setHandPose(-0.88, -0.38);
+        if (model.userData.fingers) setHandPose(1.05, 0.30);
       }
       return;
     }
@@ -1045,8 +1045,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         sampleMotion([[0, 0], [0.22, -0.09], [0.48, 0.08], [0.72, -0.025], [1, 0]], progress)
       );
       setHandPose(
-        sampleMotion([[0, -0.88], [0.20, -1.46], [0.43, -1.46], [0.66, -0.48], [0.84, -0.88], [1, -0.88]], progress),
-        sampleMotion([[0, -0.38], [0.20, -0.12], [0.43, -0.12], [0.66, 0.42], [0.84, -0.38], [1, -0.38]], progress)
+        sampleMotion([[0, 1.05], [0.20, -1.46], [0.43, -1.46], [0.66, 1.18], [0.84, 1.05], [1, 1.05]], progress),
+        sampleMotion([[0, 0.30], [0.20, -0.18], [0.43, -0.18], [0.66, 0.66], [0.84, 0.30], [1, 0.30]], progress)
       );
       return;
     }
@@ -1065,7 +1065,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       positionY = sampleMotion([[0, 0], [0.22, 0.055], [0.43, -0.035], [0.58, -0.015], [1, 0]], progress);
       positionZ = sampleMotion([[0, 0], [0.22, 0.095], [0.43, -0.29], [0.58, -0.105], [1, 0]], progress);
       // Punching keeps a firm closed fist. No opening/closing motion here.
-      setHandPose(-0.88, -0.38);
+      setHandPose(1.05, 0.30);
     } else {
       // Each material/tool family has its own weight, wind-up and follow-through.
       const profile = HELD_SWING_PROFILES[activeHeldId] || HELD_SWING_PROFILES.woodAxe;
