@@ -859,6 +859,33 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   heldHands.userData.fingers = heldFingerJoints;
   heldHands.userData.thumb = heldThumb;
   heldMotion.add(heldHands);
+
+  // Separate visible arm/hand that grips every equipped tool. This is a real
+  // mesh rig, not a floating tool icon, and it follows the tool's swing pivot.
+  const heldToolGrip = new THREE.Group();
+  heldToolGrip.name = 'held-tool-gripping-arm';
+  heldToolGrip.visible = false;
+  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.078, 0.108, 0.52, 8),
+    handSkinMaterial, 0.015, -0.43, 0.12, -0.08);
+  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.098, 0.12, 0.22, 8),
+    sleeveMaterial, 0.015, -0.66, 0.12, -0.08);
+  toolPart(heldToolGrip, new THREE.TorusGeometry(0.099, 0.014, 5, 10),
+    sleeveTrimMaterial, 0.015, -0.55, 0.12, Math.PI / 2);
+  toolPart(heldToolGrip, new THREE.SphereGeometry(0.105, 8, 6),
+    handSkinMaterial, 0.015, -0.17, 0.12, 0, 1.0, 1.05, 0.74);
+  for (let i = 0; i < 4; i++) {
+    const x = -0.073 + i * 0.05;
+    toolPart(heldToolGrip, new THREE.SphereGeometry(0.036, 7, 5),
+      handSkinMaterial, x, -0.105, 0.19, 0, 0.92, 1.08, 0.72);
+    toolPart(heldToolGrip, new THREE.CylinderGeometry(0.021, 0.026, 0.09, 7),
+      handSkinMaterial, x, -0.18, 0.20, 0.12);
+  }
+  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.027, 0.034, 0.16, 7),
+    handSkinMaterial, 0.105, -0.19, 0.15, 0.92);
+  toolPart(heldToolGrip, new THREE.SphereGeometry(0.038, 7, 5),
+    handSkinMaterial, 0.135, -0.13, 0.18, 0, 0.92, 1.0, 0.72);
+  heldMotion.add(heldToolGrip);
+
   let activeHeldModel = heldHands;
   let activeHeldId = 'hands';
   let toolSwing = 0;
@@ -877,6 +904,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       group.visible = !gathering && !!activeStack && activeStack.id === id && activeStack.count > 0;
     }
     heldHands.visible = !activeStack || gathering;
+    heldToolGrip.visible = !gathering && selectedTool !== 'hands';
     const selectedResource = activeStack && heldResources[activeStack.id] ? heldResources[activeStack.id] : null;
     activeHeldId = gathering ? 'hands' : selectedTool !== 'hands' ? selectedTool :
       selectedResource ? activeStack.id : 'hands';
@@ -967,6 +995,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     if (!isSwinging) {
       model.position.set(0, 0, 0);
       model.rotation.set(0, 0, 0);
+      if (model.userData.swingType === 'axe' || model.userData.swingType === 'pickaxe') {
+        heldToolGrip.position.set(0, 0, 0);
+        heldToolGrip.rotation.set(0, 0, 0);
+      }
       if (model.userData.fist) {
         model.userData.fist.rotation.set(
           Math.sin(heldIdleTime * 1.25) * 0.012,
@@ -1023,6 +1055,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
 
     model.rotation.set(rotationX, rotationY, rotationZ);
     model.position.set(0, positionY, positionZ);
+    if (model.userData.swingType === 'axe' || model.userData.swingType === 'pickaxe') {
+      heldToolGrip.rotation.copy(model.rotation);
+      heldToolGrip.position.copy(model.position);
+    }
   }
   refreshHeldTool();
 
@@ -1166,7 +1202,9 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   const toggle = document.createElement('button');
   toggle.id = 'survival-toggle';
   toggle.type = 'button';
-  toggle.innerHTML = '<span class="inventory-key">E</span><span>ИНВЕНТАРЬ</span>';
+  toggle.innerHTML = mobileMode
+    ? '<span>ИНВЕНТАРЬ</span>'
+    : '<span class="inventory-key">E</span><span>ИНВЕНТАРЬ</span>';
   toggle.setAttribute('aria-expanded', 'false');
   toggle.setAttribute('aria-controls', 'survival-panel');
   ui.appendChild(toggle);
@@ -2158,7 +2196,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   mobileHit.addEventListener('click', () => hitTarget());
 
   window.addEventListener('keydown', (event) => {
-    if ((event.code === 'KeyE' || event.code === 'KeyI') && !event.repeat) {
+    if (!mobileMode && event.code === 'KeyE' && !event.repeat) {
       event.preventDefault();
       showPanel(!panelOpen);
     } else if (/^Digit[1-9]$/.test(event.code) && !event.repeat) {
