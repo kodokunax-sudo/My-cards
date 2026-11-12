@@ -12,7 +12,7 @@ import { createAmbience } from './audio.js';
 import { createTouchControls } from './touch.js';
 import { createWorld } from './world.js';
 import { createOcclusionCuller } from './occlusion.js';
-import { createSurvival } from './survival.js';
+import { createSurvival, SAVE_KEY } from './survival.js';
 
 
 window.__titanBootStatus?.('Подготавливаем графику и игровые модули...');
@@ -63,6 +63,18 @@ const occlusionCuller = createOcclusionCuller(renderer, scene, camera);
 const hud = createHud();
 const audio = createAmbience();
 const physics = createPhysicsWorld(scene, world);
+function loadSavedGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+const previousSave = loadSavedGame();
+let elapsed = Number(previousSave?.session?.elapsed);
+if (!Number.isFinite(elapsed) || elapsed < 0) elapsed = 0;
+
 const player = createPlayer(camera, canvas, physics, world, (mode) => {
   hud.setMode(mode);
   touch?.setFlyState(mode === 'fly');
@@ -80,6 +92,9 @@ const touch = createTouchControls(player, {
 if (touch) {
   touch.setSoundState(audio.enabled);
 }
+if (previousSave?.session?.player) {
+  player.restoreState(previousSave.session.player);
+}
 
 window.__titanBootStatus?.('Расставляем ресурсы и готовим управление...');
 await new Promise((resolve) => requestAnimationFrame(() =>
@@ -87,6 +102,21 @@ await new Promise((resolve) => requestAnimationFrame(() =>
 ));
 const survival = createSurvival(scene, camera, canvas, world, player, hud, {
   mobile: isCoarseDevice,
+  getSessionState: () => ({
+    elapsed,
+    player: player.getSaveState(),
+  }),
+});
+
+function saveGameBeforeExit() {
+  const saved = survival.save();
+  saveGraphicsSettings();
+  return saved;
+}
+window.addEventListener('pagehide', saveGameBeforeExit);
+window.addEventListener('beforeunload', saveGameBeforeExit);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveGameBeforeExit();
 });
 
 // ---------- постобработка ----------
@@ -427,12 +457,13 @@ window.addEventListener('keydown', (e) => {
 
 // ---------- цикл ----------
 const clock = new THREE.Clock();
-let elapsed = 0;
+let saveAccumulator = 0;
 let previousDayPhase = 0;
 const DAY_DURATION_SECONDS = 14 * 60;
 const NIGHT_DURATION_SECONDS = 10 * 60;
 const DAY_NIGHT_CYCLE_SECONDS = DAY_DURATION_SECONDS + NIGHT_DURATION_SECONDS;
 const NIGHT_TRANSITION_SECONDS = 55;
+previousDayPhase = elapsed % DAY_NIGHT_CYCLE_SECONDS;
 const DUSK_START_SECONDS = DAY_DURATION_SECONDS - NIGHT_TRANSITION_SECONDS;
 const DAWN_START_SECONDS = DAY_NIGHT_CYCLE_SECONDS - NIGHT_TRANSITION_SECONDS;
 const dayFog = new THREE.Color(0xd9ae86);
@@ -464,6 +495,11 @@ function animate() {
 
   player.update(dt);
   survival.update(dt);
+  saveAccumulator += dt;
+  if (saveAccumulator >= 12) {
+    saveAccumulator %= 12;
+    if (!survival.save()) console.warn('[SAVE] Не удалось записать игру в хранилище браузера.');
+  }
   touch?.setSwimState(player.swimming);
   if (player.consumeDrownedEvent()) {
     hud.toast('Вы утонули: закончился кислород. Вы вернулись к стартовому дому.');
