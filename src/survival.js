@@ -882,24 +882,6 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   heldHands.userData.thumb = rightFistRig.thumb;
   heldMotion.add(heldHands);
 
-  // The left arm is a separate, always-visible first-person model. It rests
-  // in the lower-left of the view and counterbalances the right arm's swings.
-  const heldLeftArm = new THREE.Group();
-  heldLeftArm.name = 'held-left-arm';
-  heldLeftArm.position.set(-0.84, 0.075, 0.045);
-  heldLeftArm.rotation.z = -0.13;
-  toolPart(heldLeftArm, new THREE.CylinderGeometry(0.078, 0.105, 0.58, 18),
-    handSkinMaterial, 0, -0.315, 0.075, -0.10);
-  toolPart(heldLeftArm, new THREE.SphereGeometry(1, 16, 12),
-    handSkinMaterial, 0, -0.065, 0.045, 0, 0.082, 0.092, 0.066);
-  toolPart(heldLeftArm, new THREE.CylinderGeometry(0.096, 0.126, 0.30, 18),
-    sleeveMaterial, 0, -0.635, 0.105, -0.10);
-  toolPart(heldLeftArm, new THREE.TorusGeometry(0.104, 0.012, 8, 20),
-    sleeveTrimMaterial, 0, -0.49, 0.105, Math.PI / 2);
-  const leftFistRig = createFirstPersonFist(heldLeftArm, true);
-  leftFistRig.pivot.rotation.set(0.04, 0.02, 0.10);
-  viewModel.add(heldLeftArm);
-
   // Separate visible arm/hand that grips every equipped tool. This is a real
   // mesh rig, not a floating tool icon, and it follows the tool's swing pivot.
   const heldToolGrip = new THREE.Group();
@@ -1031,16 +1013,6 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     const progress = THREE.MathUtils.clamp(1 - toolSwing, 0, 1);
 
     heldMotion.position.set(0, Math.sin(heldIdleTime * 2.1) * 0.008, 0);
-    heldLeftArm.position.set(
-      -0.84 + Math.sin(heldIdleTime * 0.9) * 0.006,
-      0.075 + Math.sin(heldIdleTime * 1.7) * 0.004,
-      0.045
-    );
-    heldLeftArm.rotation.set(
-      0.025 + Math.sin(heldIdleTime * 0.8) * 0.012,
-      Math.sin(heldIdleTime * 0.6) * 0.012,
-      -0.13 + Math.sin(heldIdleTime * 1.1) * 0.012
-    );
     heldMotion.rotation.set(0, Math.sin(heldIdleTime * 0.85) * 0.012, 0);
 
     const setHandPose = (curl, thumbAngle) => {
@@ -1103,9 +1075,6 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       positionZ = sampleMotion([[0, 0], [0.22, 0.095], [0.43, -0.29], [0.58, -0.105], [1, 0]], progress);
       // Punching keeps a firm closed fist. No opening/closing motion here.
       setHandPose(0.92, 0.28);
-      const counter = sampleMotion([[0, 0], [0.22, -0.07], [0.43, 0.10], [0.62, -0.025], [1, 0]], progress);
-      heldLeftArm.position.x = -0.84 - counter * 0.42;
-      heldLeftArm.rotation.x = 0.025 + counter * 0.38;
     } else {
       // Each material/tool family has its own weight, wind-up and follow-through.
       const profile = HELD_SWING_PROFILES[activeHeldId] || HELD_SWING_PROFILES.woodAxe;
