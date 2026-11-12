@@ -711,6 +711,19 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       }
       toolPart(group, new THREE.TorusGeometry(0.12, 0.018, 5, 12), handleMaterial, 0, -0.13, 0.035, 0.22, 1, 1, 0.62);
       toolPart(group, new THREE.TorusGeometry(0.12, 0.018, 5, 12), shrubFiberMaterial, 0, -0.01, -0.025, -0.18, 1, 1, 0.62);
+    } else if (id === 'leaves') {
+      const leafMaterial = new THREE.MeshStandardMaterial({ color: 0x6f9145, roughness: 0.96, flatShading: true });
+      const leafVeinMaterial = new THREE.MeshStandardMaterial({ color: 0xa8b978, roughness: 1 });
+      const leafShape = new THREE.SphereGeometry(0.13, 7, 5);
+      toolPart(group, new THREE.CylinderGeometry(0.018, 0.024, 0.48, 5), handleMaterial, 0, -0.08, 0, 0.08);
+      toolPart(group, leafShape, leafMaterial, -0.105, 0.01, 0.005, -0.38, 0.72, 0.14, 1.72, 0.12);
+      toolPart(group, leafShape, leafMaterial, 0.09, 0.105, 0.015, 0.34, 0.72, 0.14, 1.72, -0.1);
+      toolPart(group, leafShape, leafMaterial, -0.095, -0.145, 0.035, -0.50, 0.65, 0.13, 1.48, -0.16);
+      toolPart(group, leafShape, leafMaterial, 0.105, -0.12, -0.025, 0.48, 0.65, 0.13, 1.48, 0.16);
+      toolPart(group, leafShape, leafMaterial, 0.0, 0.245, 0.015, 0.05, 0.66, 0.13, 1.58);
+      toolPart(group, new THREE.CylinderGeometry(0.006, 0.008, 0.34, 4), leafVeinMaterial, -0.045, 0.02, 0.12, -0.24, 1, 1, 1, Math.PI / 2);
+      toolPart(group, new THREE.CylinderGeometry(0.006, 0.008, 0.34, 4), leafVeinMaterial, 0.055, -0.095, 0.10, 0.18, 1, 1, 1, Math.PI / 2);
+      toolPart(group, new THREE.TorusGeometry(0.06, 0.012, 4, 10), shrubFiberMaterial, 0, -0.2, 0.045, 0.12, 1, 1, 0.72);
     } else if (id === 'sharpShard') {
       toolPart(group, new THREE.TetrahedronGeometry(0.25, 0), stoneHeadMaterial, 0, -0.08, 0, 0.14, 0.75, 1.25, 0.7);
       toolPart(group, new THREE.TetrahedronGeometry(0.12, 0), metalEdgeMaterial, 0.13, -0.16, 0.08, -0.3, 0.8, 1.15, 0.8);
