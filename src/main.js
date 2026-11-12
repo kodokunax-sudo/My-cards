@@ -428,9 +428,13 @@ window.addEventListener('keydown', (e) => {
 // ---------- цикл ----------
 const clock = new THREE.Clock();
 let elapsed = 0;
-let nightStartedMessageShown = false;
-const NIGHT_START_SECONDS = 180;
+let previousDayPhase = 0;
+const DAY_DURATION_SECONDS = 14 * 60;
+const NIGHT_DURATION_SECONDS = 10 * 60;
+const DAY_NIGHT_CYCLE_SECONDS = DAY_DURATION_SECONDS + NIGHT_DURATION_SECONDS;
 const NIGHT_TRANSITION_SECONDS = 55;
+const DUSK_START_SECONDS = DAY_DURATION_SECONDS - NIGHT_TRANSITION_SECONDS;
+const DAWN_START_SECONDS = DAY_NIGHT_CYCLE_SECONDS - NIGHT_TRANSITION_SECONDS;
 const dayFog = new THREE.Color(0xd9ae86);
 const nightFog = new THREE.Color(0x081326);
 
@@ -465,11 +469,33 @@ function animate() {
     hud.toast('Вы утонули: закончился кислород. Вы вернулись к стартовому дому.');
   }
 
-  // The park starts changing at exactly 03:00 of session time.
-  const nightLinear = THREE.MathUtils.clamp(
-    (elapsed - NIGHT_START_SECONDS) / NIGHT_TRANSITION_SECONDS, 0, 1
-  );
-  const nightProgress = nightLinear * nightLinear * (3 - 2 * nightLinear);
+  // A full cycle lasts 24 minutes: 14 minutes of day, then 10 minutes
+  // of night. Dusk and dawn are blended into the final 55 seconds of each
+  // period, so the cycle still keeps the exact requested duration.
+  const dayPhase = elapsed % DAY_NIGHT_CYCLE_SECONDS;
+  let nightLinear = 0;
+  if (dayPhase >= DUSK_START_SECONDS && dayPhase < DAY_DURATION_SECONDS) {
+    const t = THREE.MathUtils.clamp(
+      (dayPhase - DUSK_START_SECONDS) / NIGHT_TRANSITION_SECONDS, 0, 1
+    );
+    nightLinear = t * t * (3 - 2 * t);
+  } else if (dayPhase >= DAY_DURATION_SECONDS && dayPhase < DAWN_START_SECONDS) {
+    nightLinear = 1;
+  } else if (dayPhase >= DAWN_START_SECONDS) {
+    const t = THREE.MathUtils.clamp(
+      (dayPhase - DAWN_START_SECONDS) / NIGHT_TRANSITION_SECONDS, 0, 1
+    );
+    const dawn = t * t * (3 - 2 * t);
+    nightLinear = 1 - dawn;
+  }
+  const nightProgress = nightLinear;
+
+  if (dayPhase < previousDayPhase) {
+    hud.toast('Наступило утро. Начинается новый день.');
+  } else if (dayPhase >= DAY_DURATION_SECONDS && previousDayPhase < DAY_DURATION_SECONDS) {
+    hud.toast('Наступила ночь. До рассвета 10 минут.');
+  }
+  previousDayPhase = dayPhase;
   sky.update(elapsed, camera, nightProgress);
   env.setTimeOfDay(nightProgress);
   if (env.update(elapsed, renderer.getPixelRatio(), camera.position)) {
@@ -494,10 +520,6 @@ function animate() {
     scene.fog.density = THREE.MathUtils.lerp(
       0.00020 * (3200 / drawDistance), 0.00038 * (3200 / drawDistance), nightProgress
     );
-  }
-  if (elapsed >= NIGHT_START_SECONDS && !nightStartedMessageShown) {
-    nightStartedMessageShown = true;
-    hud.toast('Солнце садится. Наступает ночь.');
   }
   const fountainRegion = world.getWaterRegionAt(camera.position.x, camera.position.z);
   const beneathFountainSurface = fountainRegion?.id === 'fountain' && player.underwater;
