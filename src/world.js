@@ -1429,17 +1429,75 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
 
 function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
   const chunkSize = 640;
+  const SHRUB_RESPAWN_MS = 5 * 60 * 1000;
   const generated = new Set();
   const meshes = [];
+  const shrubMeshes = [];
+  const shrubById = new Map();
+  const depleted = new Map();
   const grassGeometry = new THREE.ConeGeometry(0.32, 1.65, 3, 1);
-  const shrubGeometry = new THREE.DodecahedronGeometry(1, 0);
+
+  // One bush is a merged cluster of several low-poly foliage lobes. This is
+  // still one instanced draw call per chunk, but reads clearly as a shrub.
+  function makeShrubGeometry() {
+    const parts = [
+      { radius: 0.78, x: 0, y: 0.76, z: 0, sx: 1.0, sy: 1.0, sz: 1.0 },
+      { radius: 0.68, x: -0.54, y: 0.40, z: 0.02, sx: 1.04, sy: 0.88, sz: 0.98 },
+      { radius: 0.69, x: 0.54, y: 0.42, z: -0.02, sx: 1.02, sy: 0.90, sz: 1.0 },
+      { radius: 0.58, x: 0.02, y: 0.31, z: 0.46, sx: 1.0, sy: 0.84, sz: 0.92 },
+    ];
+    const vertices = [];
+    const indices = [];
+    for (const part of parts) {
+      const geometry = new THREE.DodecahedronGeometry(part.radius, 0);
+      geometry.applyMatrix4(new THREE.Matrix4().makeScale(part.sx, part.sy, part.sz));
+      geometry.applyMatrix4(new THREE.Matrix4().makeTranslation(part.x, part.y, part.z));
+      const positionAttribute = geometry.getAttribute('position');
+      const indexAttribute = geometry.getIndex();
+      const base = vertices.length / 3;
+      for (let i = 0; i < positionAttribute.count; i++) {
+        vertices.push(
+          positionAttribute.getX(i),
+          positionAttribute.getY(i),
+          positionAttribute.getZ(i)
+        );
+      }
+      if (indexAttribute) {
+        for (let i = 0; i < indexAttribute.count; i++) indices.push(base + indexAttribute.getX(i));
+      } else {
+        for (let i = 0; i < positionAttribute.count; i++) indices.push(base + i);
+      }
+      geometry.dispose();
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+    return geometry;
+  }
+
+  const shrubGeometry = makeShrubGeometry();
   const grassMaterial = new THREE.MeshStandardMaterial({ color: 0x557b3d, roughness: 1, flatShading: true });
-  const shrubMaterial = new THREE.MeshStandardMaterial({ color: 0x426b38, roughness: 1, flatShading: true });
+  const shrubMaterial = new THREE.MeshStandardMaterial({ color: 0x507d3b, roughness: 1, flatShading: true });
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const position = new THREE.Vector3();
   const scale = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
+
+  function writeShrub(shrub, queueBufferUpdate = false) {
+    if (!shrub.active) {
+      matrix.makeScale(0, 0, 0);
+    } else {
+      quaternion.setFromAxisAngle(up, shrub.angle);
+      position.set(shrub.x, shrub.y + shrub.sy * 0.62, shrub.z);
+      scale.set(shrub.sx, shrub.sy, shrub.sz);
+      matrix.compose(position, quaternion, scale);
+    }
+    shrub.mesh.setMatrixAt(shrub.instanceId, matrix);
+    if (queueBufferUpdate) queueInstanceBufferRange(shrub.mesh, shrub.instanceId);
+  }
 
   function generateChunk(cx, cz) {
     const key = `${cx},${cz}`;
@@ -1461,20 +1519,30 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
       grass.push({ x, z, y, size: 0.48 + random() * 0.82, angle: random() * TAU, hue: random() });
     }
 
+    // Shrubs are common ground cover, not a rare decoration. Relaxing the old
+    // rejection thresholds and more than doubling the quota fills the park.
     tries = 0;
-    while (shrubs.length < 11 && tries++ < 80) {
+    while (shrubs.length < 25 && tries++ < 220) {
       const x = left + random() * chunkSize;
       const z = top + random() * chunkSize;
       if (Math.hypot(x, z) < 265 || Math.hypot(x, z) > GRASS_RADIUS - 350) continue;
-      if (pointInReservedArea(x, z, routePoints) || random() < 0.34) continue;
+      if (pointInReservedArea(x, z, routePoints) || random() < 0.14) continue;
       const forestMask = valueNoise(x / 1250, z / 1250, 71) * 0.62 +
         valueNoise(x / 2650, z / 2650, 73) * 0.38;
-      if (forestMask > 0.56) continue;
+      if (forestMask > 0.72) continue;
       const y = heightAt(x, z);
       if (!Number.isFinite(y)) continue;
+      const id = `${key}:${shrubs.length}`;
       shrubs.push({
-        x, z, y, sx: 0.8 + random() * 1.2, sy: 0.45 + random() * 0.8,
-        sz: 0.8 + random() * 1.2, angle: random() * TAU, hue: random(),
+        id, x, z, y,
+        sx: 0.88 + random() * 0.52,
+        sy: 0.72 + random() * 0.52,
+        sz: 0.88 + random() * 0.54,
+        angle: random() * TAU,
+        hue: random(),
+        active: true,
+        hp: 2,
+        due: 0,
       });
     }
 
@@ -1504,31 +1572,96 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
 
     if (shrubs.length) {
       const mesh = new THREE.InstancedMesh(shrubGeometry, shrubMaterial, shrubs.length);
+      mesh.name = `wild-shrubs-${key}`;
+      mesh.userData.noCollider = true;
+      mesh.userData.shrubInstances = shrubs;
+      mesh.userData.chunkCenterX = (cx + 0.5) * chunkSize;
+      mesh.userData.chunkCenterZ = (cz + 0.5) * chunkSize;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      configureDynamicInstanceBuffer(mesh);
+      const now = Date.now();
       for (let i = 0; i < shrubs.length; i++) {
-        const item = shrubs[i];
-        quaternion.setFromAxisAngle(up, item.angle);
-        position.set(item.x, item.y + item.sy * 0.72, item.z);
-        scale.set(item.sx, item.sy, item.sz);
-        matrix.compose(position, quaternion, scale);
-        mesh.setMatrixAt(i, matrix);
+        const shrub = shrubs[i];
+        shrub.mesh = mesh;
+        shrub.instanceId = i;
+        const due = depleted.get(shrub.id) || 0;
+        if (due > now) {
+          shrub.active = false;
+          shrub.due = due;
+        } else {
+          depleted.delete(shrub.id);
+        }
+        writeShrub(shrub);
         mesh.setColorAt(i, new THREE.Color().setHSL(
-          0.25 + item.hue * 0.07, 0.30 + item.hue * 0.2, 0.17 + item.hue * 0.12
+          0.25 + shrub.hue * 0.07,
+          0.42 + shrub.hue * 0.18,
+          0.24 + shrub.hue * 0.10
         ));
+        shrubById.set(shrub.id, shrub);
       }
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      mesh.userData.noCollider = true;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.name = `wild-shrubs-${key}`;
+      mesh.computeBoundingSphere();
       registerChunkMesh(mesh, renderables, 2200, true);
       scene.add(mesh);
       meshes.push(mesh);
+      shrubMeshes.push(mesh);
     }
     return true;
   }
 
+  function removeShrub(shrub, respawnAt = Date.now() + SHRUB_RESPAWN_MS) {
+    if (!shrub || !shrub.active || !shrub.mesh) return false;
+    shrub.active = false;
+    shrub.hp = 0;
+    shrub.due = respawnAt;
+    depleted.set(shrub.id, respawnAt);
+    writeShrub(shrub, true);
+    flushInstanceBuffer(shrub.mesh);
+    shrub.mesh.computeBoundingSphere();
+    return true;
+  }
+
+  function restoreDepleted(entries) {
+    const now = Date.now();
+    const changedMeshes = new Set();
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      const id = String(entry && typeof entry === 'object' ? entry.id : entry);
+      const respawnAt = Number(entry && typeof entry === 'object' ? entry.respawnAt : now + SHRUB_RESPAWN_MS);
+      if (!id || id === 'undefined' || !Number.isFinite(respawnAt) || respawnAt <= now) continue;
+      depleted.set(id, respawnAt);
+      const shrub = shrubById.get(id);
+      if (!shrub || !shrub.active) continue;
+      shrub.active = false;
+      shrub.hp = 0;
+      shrub.due = respawnAt;
+      writeShrub(shrub, true);
+      changedMeshes.add(shrub.mesh);
+    }
+    for (const mesh of changedMeshes) {
+      flushInstanceBuffer(mesh);
+      mesh.computeBoundingSphere();
+    }
+  }
+
   function updateNear(x, z, maxBuilds = 1) {
+    const now = Date.now();
+    const respawnMeshes = new Set();
+    for (const shrub of shrubById.values()) {
+      if (shrub.active || !shrub.due || now < shrub.due) continue;
+      shrub.active = true;
+      shrub.hp = 2;
+      shrub.due = 0;
+      depleted.delete(shrub.id);
+      writeShrub(shrub, true);
+      respawnMeshes.add(shrub.mesh);
+    }
+    for (const mesh of respawnMeshes) {
+      flushInstanceBuffer(mesh);
+      mesh.computeBoundingSphere();
+    }
+
     const cx = Math.floor(x / chunkSize), cz = Math.floor(z / chunkSize);
     const candidates = [];
     for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
@@ -1543,8 +1676,38 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
     return { pending: candidates.length - Math.min(maxBuilds, candidates.length), generated: generated.size };
   }
 
+  function getInteractiveMeshes(x, z) {
+    return shrubMeshes.filter((mesh) =>
+      Math.hypot(mesh.userData.chunkCenterX - x, mesh.userData.chunkCenterZ - z) <= chunkSize * 0.82
+    );
+  }
+
   updateNear(-1600, 900, 1);
-  return { get grass() { return generated.size * 32; }, get shrubs() { return generated.size * 11; }, get chunks() { return generated.size; }, meshes, updateNear };
+  return {
+    get grass() { return generated.size * 32; },
+    get shrubs() { return Array.from(shrubById.values()).filter((shrub) => shrub.active).length; },
+    get chunks() { return generated.size; },
+    meshes,
+    updateNear,
+    getInteractiveMeshes,
+    remove: removeShrub,
+    removeById(entry) {
+      const id = String(entry && typeof entry === 'object' ? entry.id : entry);
+      const stored = entry && typeof entry === 'object' ? Number(entry.respawnAt) : 0;
+      const respawnAt = Number.isFinite(stored) && stored > 0 ? stored : Date.now() + SHRUB_RESPAWN_MS;
+      const shrub = shrubById.get(id);
+      if (shrub) return removeShrub(shrub, respawnAt);
+      if (!id || id === 'undefined' || respawnAt <= Date.now()) return false;
+      depleted.set(id, respawnAt);
+      return true;
+    },
+    restoreDepleted,
+    get depletedIds() {
+      const now = Date.now();
+      return Array.from(depleted, ([id, respawnAt]) => ({ id, respawnAt }))
+        .filter((entry) => entry.respawnAt > now);
+    },
+  };
 }
 
 
