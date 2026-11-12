@@ -1,8 +1,4 @@
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 import { PALETTE, FOUNTAIN_HEIGHT } from './config.js';
 import { createSky } from './sky.js';
@@ -94,6 +90,17 @@ const survival = createSurvival(scene, camera, canvas, world, player, hud, {
 let composer = null;
 let bloom = null;
 if (!isCoarseDevice) {
+  const [
+    { EffectComposer },
+    { RenderPass },
+    { UnrealBloomPass },
+    { OutputPass },
+  ] = await Promise.all([
+    import('three/addons/postprocessing/EffectComposer.js'),
+    import('three/addons/postprocessing/RenderPass.js'),
+    import('three/addons/postprocessing/UnrealBloomPass.js'),
+    import('three/addons/postprocessing/OutputPass.js'),
+  ]);
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   bloom = new UnrealBloomPass(
