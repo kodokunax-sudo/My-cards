@@ -1453,8 +1453,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         id: 'fieldWorkplace', output: 'fieldWorkplace', count: 1, width: 3, height: 3,
         cells: [
           { x: 0, y: 0, id: 'logs' }, { x: 1, y: 0, id: 'logs' }, { x: 2, y: 0, id: 'logs' },
-          { x: 0, y: 1, id: 'stone' }, { x: 1, y: 1, id: 'stone' }, { x: 2, y: 1, id: 'fiber' },
-          { x: 0, y: 2, id: 'fiber' }, { x: 1, y: 2, id: 'fiber' }, { x: 2, y: 2, id: 'fiber' },
+          { x: 0, y: 1, id: 'fiber' }, { x: 1, y: 1, id: 'fiber' }, { x: 2, y: 1, id: 'fiber' },
+          { x: 0, y: 2, id: 'stone' }, { x: 1, y: 2, id: 'stone' }, { x: 2, y: 2, id: 'stone' },
         ],
       },
       {
