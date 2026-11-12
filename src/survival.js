@@ -1601,13 +1601,13 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     benchStatusEl.textContent = stationLines.join(' · ');
 
     renderCraftingOutput();
-    const active = nodes.filter((node) => node.active).length;
+    const active = nodes.filter((node) => node.active).length + world.rocks.activeCount;
     const activeScrap = scrapNodes.filter((node) => node.active).length;
     const activeOre = ironOreNodes.filter((node) => node.active).length;
     nodeCountEl.textContent = active + ' камней · ' + activeOre + ' жил · ' + activeScrap + ' объектов';
     status.textContent = 'Слот ' + (selectedSlot + 1) + ' · ' +
       (activeStack ? (itemNames[activeStack.id] || activeStack.id) : 'Пусто') +
-      ' · Камни на карте: ' + active + '/' + NODE_COUNT;
+      ' · Камни на карте: ' + active + '/2000';
   }
 
   function selectHotbarSlot(index) {
@@ -1690,8 +1690,9 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   function currentTarget() {
     raycaster.setFromCamera(center, camera);
     const localTrees = world.forests.getInteractiveMeshes(camera.position.x, camera.position.z);
+    const localRocks = world.rocks.getInteractiveMeshes(camera.position.x, camera.position.z);
     const hits = raycaster.intersectObjects(localTrees.concat(
-      stoneMesh, fiberMesh, branchMesh, ...scrapMeshes, ironOreMesh
+      localRocks, stoneMesh, fiberMesh, branchMesh, stickMesh, leafMesh, ...scrapMeshes, ironOreMesh
     ), false);
     for (const hit of hits) {
       if (hit.distance > 6.2 || hit.instanceId === undefined) continue;
@@ -1704,6 +1705,15 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       } else if (hit.object === branchMesh) {
         const node = branchNodes[hit.instanceId];
         if (node && node.active) return { type: 'branch', node };
+      } else if (hit.object === stickMesh) {
+        const node = stickNodes[hit.instanceId];
+        if (node && node.active) return { type: 'stick', node };
+      } else if (hit.object === leafMesh) {
+        const node = leafNodes[hit.instanceId];
+        if (node && node.active) return { type: 'leaf', node };
+      } else if (hit.object.userData.rockInstances) {
+        const rock = hit.object.userData.rockInstances[hit.instanceId];
+        if (rock && rock.active) return { type: 'decorRock', rock };
       } else if (scrapMeshes.includes(hit.object)) {
         const node = scrapNodes[hit.instanceId];
         const type = scrapMeshes.indexOf(hit.object);
@@ -1732,24 +1742,37 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       return;
     }
 
-    if (target.type === 'fiber' || target.type === 'branch') {
-      const gatherMesh = target.type === 'fiber' ? fiberMesh : branchMesh;
+    if (target.type === 'fiber' || target.type === 'branch' || target.type === 'stick' || target.type === 'leaf') {
+      const isFiber = target.type === 'fiber';
+      const isStick = target.type === 'stick';
+      const isLeaf = target.type === 'leaf';
+      const isBranch = target.type === 'branch' || isStick;
+      const gatherMesh = isFiber ? fiberMesh : isLeaf ? leafMesh : isStick ? stickMesh : branchMesh;
       unmarkResourcePosition(target.node);
       target.node.active = false;
       target.node.due = Date.now() + RESPAWN_MS;
-      writeGatherNode(target.node, gatherMesh, target.type === 'branch');
+      writeGatherNode(target.node, gatherMesh, isBranch, isLeaf);
       gatherMesh.instanceMatrix.needsUpdate = true;
-
-      const itemId = target.type === 'fiber' ? 'fiber' : 'branch';
-      const amount = target.type === 'fiber'
-        ? 2 + Math.floor(Math.random() * 3)
-        : 1 + (Math.random() < 0.18 ? 1 : 0);
+      const itemId = isFiber ? 'fiber' : isLeaf ? 'leaves' : isStick ? 'sticks' : 'branch';
+      const amount = isFiber || isLeaf ? 2 + Math.floor(Math.random() * 3) : 1 + (Math.random() < 0.18 ? 1 : 0);
       const missing = addToInventory(itemId, amount);
-      save();
-      renderPanel();
-      toast((target.type === 'fiber' ? 'Куст собран: +' : 'Ветка подобрана: +') +
-        (amount - missing) + ' ' + (target.type === 'fiber' ? 'волокна.' : 'ветка.') +
-        (missing ? ' Инвентарь заполнен.' : ''));
+      save(); renderPanel();
+      const label = isFiber ? 'волокна' : isLeaf ? 'листьев' : isStick ? 'палок' : 'ветку';
+      const message = isFiber ? 'Куст собран: +' : isLeaf ? 'Листья собраны: +' : isStick ? 'Палки подобраны: +' : 'Ветка подобрана: +';
+      toast(message + (amount - missing) + ' ' + label + '.' + (missing ? ' Инвентарь заполнен.' : ''));
+      return;
+    }
+
+    if (target.type === 'decorRock') {
+      const damage = selectedTool === 'ironPickaxe' ? 18 : selectedTool === 'stonePickaxe' ? 9 : selectedTool === 'woodPickaxe' ? 3 : 1;
+      target.rock.hp -= damage;
+      if (target.rock.hp <= 0) {
+        world.rocks.remove(target.rock);
+        const amount = 2 + Math.floor(Math.random() * 3);
+        const missing = addToInventory('stone', amount);
+        save(); renderPanel();
+        toast('Декоративный камень разбит: +' + (amount - missing) + ' камня.' + (missing ? ' Инвентарь заполнен.' : ' Через 5 минут здесь появится новый.'));
+      } else toast('Декоративный камень: осталось ' + target.rock.hp + '/' + target.rock.maxHp + ' прочности.');
       return;
     }
 
@@ -1760,12 +1783,27 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       target.tree.health -= damage;
       if (target.tree.health <= 0) {
         world.forests.remove(target.tree);
+        let sticksChanged = false, leavesChanged = false;
+        const clearTreeResources = (list, mesh, isStick, isLeaf) => {
+          for (const node of list) {
+            if (!node.active || Math.hypot(node.x - target.tree.x, node.z - target.tree.z) > 23) continue;
+            unmarkResourcePosition(node);
+            node.active = false;
+            node.due = Date.now() + 15000;
+            writeGatherNode(node, mesh, isStick, isLeaf);
+            if (isLeaf) leavesChanged = true; else sticksChanged = true;
+          }
+        };
+        clearTreeResources(stickNodes, stickMesh, true, false);
+        clearTreeResources(leafNodes, leafMesh, false, true);
+        if (sticksChanged) stickMesh.instanceMatrix.needsUpdate = true;
+        if (leavesChanged) leafMesh.instanceMatrix.needsUpdate = true;
         const woodYield = 2 + Math.floor(Math.random() * 6);
         const missingLogs = addToInventory('logs', woodYield);
         save();
         renderPanel();
         toast('Дерево срублено: +' + (woodYield - missingLogs) + ' древесины.' +
-          (missingLogs ? ' Инвентарь заполнен.' : ''));
+          (missingLogs ? ' Инвентарь заполнен.' : ' Через 10 минут оно вырастет на этом же месте.'));
       } else {
         toast('Удар по дереву: осталось ' + target.tree.health + '/' + TREE_HP + '.');
       }
@@ -1982,28 +2020,22 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       changed = true;
     }
 
-    const respawnGatherNodes = (list, mesh, isBranch) => {
+    const respawnGatherNodes = (list, mesh, isBranch, isLeaf = false, nearTree = false) => {
       let meshChanged = false;
       for (const node of list) {
         if (node.active || !node.due || now < node.due) continue;
-        const nextPosition = findGatherPosition({ x: node.x, z: node.z }, isBranch ? 5 : 7);
-        if (!nextPosition) {
-          node.due = now + 15000;
-          continue;
-        }
+        const oldPosition = { x: node.x, z: node.z };
+        const nextPosition = nearTree ? findTreeGatherPosition(oldPosition) : findGatherPosition(oldPosition, isBranch ? 5 : 7);
+        if (!nextPosition) { node.due = now + 15000; continue; }
         Object.assign(node, nextPosition, { active: true, hp: 1, due: 0 });
-        markResourcePosition(node);
-        writeGatherNode(node, mesh, isBranch);
-        meshChanged = true;
+        markResourcePosition(node); writeGatherNode(node, mesh, isBranch, isLeaf); meshChanged = true;
       }
-      if (meshChanged) {
-        mesh.instanceMatrix.needsUpdate = true;
-        mesh.computeBoundingSphere();
-        changed = true;
-      }
+      if (meshChanged) { mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); changed = true; }
     };
     respawnGatherNodes(fiberNodes, fiberMesh, false);
     respawnGatherNodes(branchNodes, branchMesh, true);
+    respawnGatherNodes(stickNodes, stickMesh, true, false, true);
+    respawnGatherNodes(leafNodes, leafMesh, false, true, true);
 
     let scrapChanged = false;
     for (const node of scrapNodes) {
@@ -2061,6 +2093,6 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     close() { showPanel(false); },
     get inventory() { return inventory; },
     get selectedTool() { return selectedTool; },
-    get activeStoneNodes() { return nodes.filter((node) => node.active).length; },
+    get activeStoneNodes() { return nodes.filter((node) => node.active).length + world.rocks.activeCount; },
   };
 }
