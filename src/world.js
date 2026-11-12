@@ -1289,11 +1289,12 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
   }
   function respawnReadyTrees() {
     const now = Date.now(); let restored = 0;
-    for (const tree of trees) {
-      if (!tree.removed || !tree.respawnAt || now < tree.respawnAt) continue;
-      restoreTree(tree); restored++;
+    for (const [id, due] of depletedIds) {
+      if (now < due) continue;
+      const tree = treeById.get(id);
+      if (tree) { restoreTree(tree); restored++; }
+      else depletedIds.delete(id);
     }
-    for (const [id, due] of depletedIds) if (now >= due && !treeById.has(id)) depletedIds.delete(id);
     return restored;
   }
 
@@ -1583,8 +1584,12 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables, waterRegion
     candidates.sort((a, b) => a.d - b.d);
     for (let i = 0; i < Math.min(maxBuilds, candidates.length); i++) generateChunk(candidates[i].gx, candidates[i].gz);
     const now = Date.now(), changed = new Set();
-    for (const rock of rockById.values()) if (!rock.active && rock.respawnAt && now >= rock.respawnAt) {
-      rock.active = true; rock.respawnAt = 0; rock.hp = rock.maxHp; depleted.delete(rock.id); writeRock(rock); if (rock.mesh) changed.add(rock.mesh);
+    for (const [id, due] of depleted) {
+      if (now < due) continue;
+      const rock = rockById.get(id);
+      if (!rock) { depleted.delete(id); continue; }
+      rock.active = true; rock.respawnAt = 0; rock.hp = rock.maxHp;
+      depleted.delete(id); writeRock(rock); if (rock.mesh) changed.add(rock.mesh);
     }
     for (const mesh of changed) { mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); }
     return { pending: candidates.length - Math.min(maxBuilds, candidates.length), generated: generated.size };
