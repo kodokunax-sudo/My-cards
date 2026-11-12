@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { configureDynamicInstanceBuffer, queueInstanceBufferRange, flushInstanceBuffer } from './gpu-buffers.js';
 
-const SAVE_KEY = 'titan-survival-v1';
+export const SAVE_KEY = 'titan-survival-v1';
 const NODE_COUNT = 500;
 const RESPAWN_MS = 5 * 60 * 1000;
 const TREE_HP = 12;
@@ -118,6 +118,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   for (const entry of savedTreeIds) world.forests.removeById(entry);
   const savedRockIds = saved && Array.isArray(saved.depletedRocks) ? saved.depletedRocks : [];
   for (const entry of savedRockIds) world.rocks.removeById(entry);
+  const savedDamagedTrees = saved && Array.isArray(saved.damagedTrees) ? saved.damagedTrees : [];
+  for (const entry of savedDamagedTrees) world.forests.setHealthById?.(entry);
+  const savedDamagedRocks = saved && Array.isArray(saved.damagedRocks) ? saved.damagedRocks : [];
+  for (const entry of savedDamagedRocks) world.rocks.setHealthById?.(entry);
 
   const nodes = saved && Array.isArray(saved.nodes) && saved.nodes.length === NODE_COUNT
     ? saved.nodes.map((node, id) => ({
@@ -137,7 +141,12 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
 
   function save() {
     try {
+      const session = typeof options.getSessionState === 'function'
+        ? options.getSessionState() : (saved && saved.session) || null;
       localStorage.setItem(SAVE_KEY, JSON.stringify({
+        saveVersion: 2,
+        savedAt: Date.now(),
+        session,
         inventory,
         inventorySlots,
         hotbarSlots,
@@ -146,6 +155,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         selectedSlot,
         depletedTrees: world.forests.depletedIds || world.forests.trees.filter((tree) => tree.removed).map((tree) => tree.id),
         depletedRocks: world.rocks.depletedIds || [],
+        damagedTrees: world.forests.damagedTrees || [],
+        damagedRocks: world.rocks.damagedIds || [],
         nodes: nodes.map((node) => ({
           x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
           active: node.active, hp: node.hp, due: node.due,
@@ -179,8 +190,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
           active: node.active, hp: node.hp, due: node.due,
         })),
       }));
+      return true;
     } catch (error) {
       // Storage is optional; the current session remains playable without it.
+      return false;
     }
   }
 
@@ -1948,7 +1961,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         const missing = addToInventory('stone', amount);
         save(); renderPanel();
         toast('Декоративный камень разбит: +' + (amount - missing) + ' камня.' + (missing ? ' Инвентарь заполнен.' : ' Через 5 минут здесь появится новый.'));
-      } else toast('Декоративный камень: осталось ' + target.rock.hp + '/' + target.rock.maxHp + ' прочности.');
+      } else {
+        save();
+        toast('Декоративный камень: осталось ' + target.rock.hp + '/' + target.rock.maxHp + ' прочности.');
+      }
       return;
     }
 
@@ -1957,6 +1973,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         selectedTool === 'stoneAxe' ? 8 : selectedTool === 'woodAxe' ? 4 : 1;
       target.tree.health = target.tree.health || TREE_HP;
       target.tree.health -= damage;
+      if (target.tree.health > 0) world.forests.setHealthById?.({ id: target.tree.id, health: target.tree.health });
       if (target.tree.health <= 0) {
         world.forests.remove(target.tree);
         let sticksChanged = false, leavesChanged = false;
@@ -1981,6 +1998,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         toast('Дерево срублено: +' + (woodYield - missingLogs) + ' древесины.' +
           (missingLogs ? ' Инвентарь заполнен.' : ' Через 10 минут оно вырастет на этом же месте.'));
       } else {
+        save();
         toast('Удар по дереву: осталось ' + target.tree.health + '/' + TREE_HP + '.');
       }
       return;
@@ -2009,6 +2027,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         toast('Старый объект разобран: +' + (amount - missing) + ' железного лома.' +
           (missing ? ' Инвентарь заполнен.' : ' Через 5 минут объект заменится другим.'));
       } else {
+        save();
         toast('Металл поддаётся: осталось ' + target.node.hp + ' прочности.');
       }
       return;
@@ -2033,6 +2052,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         toast('Железная жила добыта: +' + (amount - missing) + ' руды.' +
           (missing ? ' Инвентарь заполнен.' : ' Через 5 минут появится новая жила.'));
       } else {
+        save();
         toast('Железная жила: осталось ' + target.node.hp + '/18 прочности.');
       }
       return;
@@ -2055,6 +2075,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       toast('Каменная глыба разрушена: +' + (stoneYield - missingStone) + ' камня.' +
         (missingStone ? ' Инвентарь заполнен.' : ' Через 5 минут она появится в другом месте.'));
     } else {
+      save();
       toast('Камень раскалывается: осталось ' + target.node.hp + '/' + STONE_HP + '.');
     }
   }
@@ -2273,6 +2294,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   renderPanel();
   return {
     update,
+    save,
     open() { showPanel(true); },
     close() { showPanel(false); },
     get inventory() { return inventory; },
