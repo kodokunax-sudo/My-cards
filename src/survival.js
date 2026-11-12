@@ -799,81 +799,103 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     color: 0xb77d60, roughness: 0.94, metalness: 0,
   });
   const sleeveMaterial = new THREE.MeshStandardMaterial({
-    color: 0x536044, roughness: 1, flatShading: true,
+    color: 0x315d83, roughness: 0.94,
   });
   const sleeveTrimMaterial = new THREE.MeshStandardMaterial({
-    color: 0x394631, roughness: 1,
+    color: 0x203f5a, roughness: 0.96,
   });
   const heldHands = new THREE.Group();
-  heldHands.name = 'held-hands';
+  heldHands.name = 'held-right-arm';
 
-  // Right forearm enters from the lower-right. The cuff and wrist overlap
-  // deliberately, avoiding a disconnected stick-like arm silhouette.
-  toolPart(heldHands, new THREE.CylinderGeometry(0.078, 0.108, 0.58, 14),
-    handSkinMaterial, 0, -0.385, 0.105, -0.075);
-  toolPart(heldHands, new THREE.CylinderGeometry(0.098, 0.128, 0.27, 14),
-    sleeveMaterial, 0, -0.655, 0.12, -0.075);
-  toolPart(heldHands, new THREE.TorusGeometry(0.105, 0.012, 8, 18),
-    sleeveTrimMaterial, 0, -0.525, 0.12, Math.PI / 2);
+  // The first-person arms use the same blue jacket and skin palette as the
+  // character model. Rounded overlapping forms keep the silhouette human,
+  // instead of making the wrist look like a floating glove.
+  toolPart(heldHands, new THREE.CylinderGeometry(0.078, 0.108, 0.60, 18),
+    handSkinMaterial, 0, -0.345, 0.055, -0.08);
+  toolPart(heldHands, new THREE.SphereGeometry(1, 16, 12),
+    handSkinMaterial, 0, -0.075, 0.035, 0, 0.084, 0.095, 0.068);
+  toolPart(heldHands, new THREE.CylinderGeometry(0.098, 0.128, 0.29, 18),
+    sleeveMaterial, 0, -0.665, 0.09, -0.08);
+  toolPart(heldHands, new THREE.TorusGeometry(0.106, 0.012, 8, 20),
+    sleeveTrimMaterial, 0, -0.525, 0.09, Math.PI / 2);
 
-  // Palm and fingers are built as overlapping rounded forms, not separate
-  // sticks. The thumb sits on the INNER (screen-left) edge: this is the
-  // player's RIGHT hand when it is held in the lower-right of the view.
-  const heldFist = new THREE.Group();
-  heldFist.name = 'held-right-fist-pivot';
-  heldFist.position.set(0, -0.012, 0);
-  heldHands.add(heldFist);
+  function createFirstPersonFist(parent, isLeft = false) {
+    const fist = new THREE.Group();
+    fist.name = isLeft ? 'left-fist' : 'right-fist';
+    parent.add(fist);
 
-  toolPart(heldFist, new THREE.SphereGeometry(0.13, 16, 12),
-    handSkinMaterial, 0, 0, -0.052, 0, 0.88, 0.98, 1.08);
-  toolPart(heldFist, new THREE.SphereGeometry(0.092, 14, 10),
-    handSkinMaterial, 0, -0.035, -0.105, 0, 0.96, 0.72, 0.76);
-  toolPart(heldFist, new THREE.SphereGeometry(0.048, 12, 8),
-    handShadeMaterial, -0.005, -0.055, -0.105, 0, 1.0, 0.78, 0.72);
+    // Palm and back of the hand.
+    toolPart(fist, new THREE.SphereGeometry(1, 20, 16),
+      handSkinMaterial, 0, -0.005, -0.025, 0, 0.105, 0.094, 0.070);
+    toolPart(fist, new THREE.SphereGeometry(1, 18, 14),
+      handSkinMaterial, 0, -0.022, 0.018, 0, 0.089, 0.074, 0.050);
 
-  const heldFingerJoints = [];
-  const fingerWidths = [0.026, 0.029, 0.028, 0.025];
-  for (let i = 0; i < 4; i++) {
-    const x = -0.082 + i * 0.055;
-    const base = new THREE.Group();
-    base.position.set(x, 0.043, -0.112);
-    heldFist.add(base);
-    const width = fingerWidths[i];
+    const fingers = [];
+    const widths = [0.026, 0.029, 0.028, 0.025];
+    for (let i = 0; i < 4; i++) {
+      const x = -0.067 + i * 0.045;
+      const base = new THREE.Group();
+      base.position.set(x, 0.046, 0.039);
+      fist.add(base);
 
-    toolPart(base, new THREE.SphereGeometry(1, 12, 10),
-      handSkinMaterial, 0, 0.036, -0.004, 0, width, 0.060, 0.034);
-    toolPart(base, new THREE.SphereGeometry(1, 12, 10),
-      handSkinMaterial, 0, 0.083, -0.009, 0, width * 0.91, 0.037, 0.031);
+      const width = widths[i];
+      toolPart(base, new THREE.SphereGeometry(1, 14, 12),
+        handSkinMaterial, 0, -0.016, 0.002, 0, width, 0.043, 0.027);
 
-    const tip = new THREE.Group();
-    tip.position.set(0, 0.092, -0.008);
-    base.add(tip);
-    toolPart(tip, new THREE.SphereGeometry(1, 12, 10),
-      handSkinMaterial, 0, 0.022, -0.004, 0, width * 0.86, 0.043, 0.030);
-    toolPart(tip, new THREE.SphereGeometry(1, 10, 8),
-      handShadeMaterial, 0, 0.047, -0.006, 0, width * 0.72, 0.017, 0.022);
-    heldFingerJoints.push({ base, tip, fan: (i - 1.5) * 0.025 });
+      const tip = new THREE.Group();
+      tip.position.set(0, -0.043, -0.014);
+      base.add(tip);
+      toolPart(tip, new THREE.SphereGeometry(1, 14, 12),
+        handSkinMaterial, 0, -0.010, 0.003, 0, width * 0.91, 0.034, 0.025);
+      toolPart(tip, new THREE.SphereGeometry(1, 10, 8),
+        handShadeMaterial, 0, -0.027, 0.005, 0, width * 0.66, 0.012, 0.020);
+      fingers.push({ base, tip, fan: (i - 1.5) * 0.022 });
+    }
+
+    // The thumb always folds across the palm from the inner edge of its hand.
+    const thumbSide = isLeft ? 1 : -1;
+    const thumb = new THREE.Group();
+    thumb.position.set(thumbSide * 0.081, 0.010, 0.018);
+    fist.add(thumb);
+    toolPart(thumb, new THREE.SphereGeometry(1, 14, 12),
+      handSkinMaterial, -thumbSide * 0.025, -0.012, 0.008,
+      thumbSide * 0.48, 0.034, 0.058, 0.031);
+    toolPart(thumb, new THREE.SphereGeometry(1, 14, 12),
+      handSkinMaterial, -thumbSide * 0.049, -0.046, 0.018,
+      thumbSide * 0.72, 0.030, 0.043, 0.027);
+    toolPart(thumb, new THREE.SphereGeometry(1, 10, 8),
+      handShadeMaterial, -thumbSide * 0.055, -0.066, 0.020,
+      0, 0.019, 0.014, 0.019);
+
+    return { pivot: fist, fingers, thumb };
   }
 
-  // Right-hand thumb: starts on the left/inner side and folds across the
-  // index finger. The old model put it on the outer side and looked mirrored.
-  const heldThumb = new THREE.Group();
-  heldThumb.position.set(-0.105, -0.012, -0.055);
-  heldFist.add(heldThumb);
-  toolPart(heldThumb, new THREE.SphereGeometry(1, 12, 10),
-    handSkinMaterial, 0.045, 0.026, -0.018, -0.28, 1.75, 0.72, 0.78);
-  toolPart(heldThumb, new THREE.SphereGeometry(1, 12, 10),
-    handSkinMaterial, 0.092, 0.053, -0.044, -0.18, 1.10, 0.82, 0.86);
-  toolPart(heldThumb, new THREE.SphereGeometry(0.025, 10, 8),
-    handShadeMaterial, 0.108, 0.058, -0.047, 0, 1, 1, 1);
-
+  const rightFistRig = createFirstPersonFist(heldHands, false);
   heldHands.userData.swingType = 'hands';
-  heldHands.userData.fist = heldFist;
-  heldHands.userData.fingers = heldFingerJoints;
-  heldHands.userData.thumb = heldThumb;
+  heldHands.userData.fist = rightFistRig.pivot;
+  heldHands.userData.fingers = rightFistRig.fingers;
+  heldHands.userData.thumb = rightFistRig.thumb;
   heldMotion.add(heldHands);
 
-    // Separate visible arm/hand that grips every equipped tool. This is a real
+  // The left arm is a separate, always-visible first-person model. It rests
+  // in the lower-left of the view and counterbalances the right arm's swings.
+  const heldLeftArm = new THREE.Group();
+  heldLeftArm.name = 'held-left-arm';
+  heldLeftArm.position.set(-0.84, 0.075, 0.045);
+  heldLeftArm.rotation.z = -0.13;
+  toolPart(heldLeftArm, new THREE.CylinderGeometry(0.078, 0.105, 0.58, 18),
+    handSkinMaterial, 0, -0.315, 0.075, -0.10);
+  toolPart(heldLeftArm, new THREE.SphereGeometry(1, 16, 12),
+    handSkinMaterial, 0, -0.065, 0.045, 0, 0.082, 0.092, 0.066);
+  toolPart(heldLeftArm, new THREE.CylinderGeometry(0.096, 0.126, 0.30, 18),
+    sleeveMaterial, 0, -0.635, 0.105, -0.10);
+  toolPart(heldLeftArm, new THREE.TorusGeometry(0.104, 0.012, 8, 20),
+    sleeveTrimMaterial, 0, -0.49, 0.105, Math.PI / 2);
+  const leftFistRig = createFirstPersonFist(heldLeftArm, true);
+  leftFistRig.pivot.rotation.set(0.04, 0.02, 0.10);
+  viewModel.add(heldLeftArm);
+
+  // Separate visible arm/hand that grips every equipped tool. This is a real
   // mesh rig, not a floating tool icon, and it follows the tool's swing pivot.
   const heldToolGrip = new THREE.Group();
   heldToolGrip.name = 'held-tool-gripping-right-hand';
@@ -1004,6 +1026,16 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     const progress = THREE.MathUtils.clamp(1 - toolSwing, 0, 1);
 
     heldMotion.position.set(0, Math.sin(heldIdleTime * 2.1) * 0.008, 0);
+    heldLeftArm.position.set(
+      -0.84 + Math.sin(heldIdleTime * 0.9) * 0.006,
+      0.075 + Math.sin(heldIdleTime * 1.7) * 0.004,
+      0.045
+    );
+    heldLeftArm.rotation.set(
+      0.025 + Math.sin(heldIdleTime * 0.8) * 0.012,
+      Math.sin(heldIdleTime * 0.6) * 0.012,
+      -0.13 + Math.sin(heldIdleTime * 1.1) * 0.012
+    );
     heldMotion.rotation.set(0, Math.sin(heldIdleTime * 0.85) * 0.012, 0);
 
     const setHandPose = (curl, thumbAngle) => {
@@ -1065,7 +1097,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       positionY = sampleMotion([[0, 0], [0.22, 0.055], [0.43, -0.035], [0.58, -0.015], [1, 0]], progress);
       positionZ = sampleMotion([[0, 0], [0.22, 0.095], [0.43, -0.29], [0.58, -0.105], [1, 0]], progress);
       // Punching keeps a firm closed fist. No opening/closing motion here.
-      setHandPose(1.05, 0.30);
+      setHandPose(0.92, 0.28);
+      const counter = sampleMotion([[0, 0], [0.22, -0.07], [0.43, 0.10], [0.62, -0.025], [1, 0]], progress);
+      heldLeftArm.position.x = -0.84 - counter * 0.42;
+      heldLeftArm.rotation.x = 0.025 + counter * 0.38;
     } else {
       // Each material/tool family has its own weight, wind-up and follow-through.
       const profile = HELD_SWING_PROFILES[activeHeldId] || HELD_SWING_PROFILES.woodAxe;
