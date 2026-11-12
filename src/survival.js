@@ -118,6 +118,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   for (const entry of savedTreeIds) world.forests.removeById(entry);
   const savedRockIds = saved && Array.isArray(saved.depletedRocks) ? saved.depletedRocks : [];
   for (const entry of savedRockIds) world.rocks.removeById(entry);
+  const savedShrubs = saved && Array.isArray(saved.depletedShrubs) ? saved.depletedShrubs : [];
+  world.groundCover?.restoreDepleted?.(savedShrubs);
   const savedDamagedTrees = saved && Array.isArray(saved.damagedTrees) ? saved.damagedTrees : [];
   for (const entry of savedDamagedTrees) world.forests.setHealthById?.(entry);
   const savedDamagedRocks = saved && Array.isArray(saved.damagedRocks) ? saved.damagedRocks : [];
@@ -155,6 +157,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         selectedSlot,
         depletedTrees: world.forests.depletedIds || world.forests.trees.filter((tree) => tree.removed).map((tree) => tree.id),
         depletedRocks: world.rocks.depletedIds || [],
+        depletedShrubs: world.groundCover?.depletedIds || [],
         damagedTrees: world.forests.damagedTrees || [],
         damagedRocks: world.rocks.damagedIds || [],
         nodes: nodes.map((node) => ({
@@ -1966,8 +1969,9 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     raycaster.setFromCamera(center, camera);
     const localTrees = world.forests.getInteractiveMeshes(camera.position.x, camera.position.z);
     const localRocks = world.rocks.getInteractiveMeshes(camera.position.x, camera.position.z);
+    const localShrubs = world.groundCover?.getInteractiveMeshes?.(camera.position.x, camera.position.z) || [];
     const hits = raycaster.intersectObjects(localTrees.concat(
-      localRocks, stoneMesh, fiberMesh, branchMesh, stickMesh, leafMesh, ...scrapMeshes, ironOreMesh
+      localRocks, localShrubs, stoneMesh, fiberMesh, branchMesh, stickMesh, leafMesh, ...scrapMeshes, ironOreMesh
     ), false);
     for (const hit of hits) {
       if (hit.distance > 6.2 || hit.instanceId === undefined) continue;
@@ -1986,6 +1990,9 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       } else if (hit.object === leafMesh) {
         const node = leafNodes[hit.instanceId];
         if (node && node.active) return { type: 'leaf', node };
+      } else if (hit.object.userData.shrubInstances) {
+        const shrub = hit.object.userData.shrubInstances[hit.instanceId];
+        if (shrub && shrub.active) return { type: 'bush', shrub };
       } else if (hit.object.userData.rockInstances) {
         const rock = hit.object.userData.rockInstances[hit.instanceId];
         if (rock && rock.active) return { type: 'decorRock', rock };
@@ -2049,6 +2056,27 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
 
     if (selectedTool === 'hands') startHeldAction('punch');
     else startHeldAction('tool');
+
+    if (target.type === 'bush') {
+      const damage = selectedTool.endsWith('Axe') ? 2 : 1;
+      target.shrub.hp = Math.max(0, target.shrub.hp - damage);
+      if (target.shrub.hp <= 0) {
+        world.groundCover.remove(target.shrub);
+        const fiberAmount = 1 + Math.floor(Math.random() * 2);
+        const leafAmount = 2 + Math.floor(Math.random() * 3);
+        const missingFiber = addToInventory('fiber', fiberAmount);
+        const missingLeaves = addToInventory('leaves', leafAmount);
+        save();
+        renderPanel();
+        toast('Куст сломан: +' + (fiberAmount - missingFiber) + ' волокна, +' +
+          (leafAmount - missingLeaves) + ' листьев. Через 5 минут вырастет снова.' +
+          (missingFiber + missingLeaves ? ' Инвентарь заполнен.' : ''));
+      } else {
+        save();
+        toast('Куст повреждён: осталось ' + target.shrub.hp + '/2 прочности.');
+      }
+      return;
+    }
 
     if (target.type === 'decorRock') {
       const damage = selectedTool === 'ironPickaxe' ? 18 : selectedTool === 'stonePickaxe' ? 9 : selectedTool === 'woodPickaxe' ? 3 : 1;
