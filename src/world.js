@@ -1061,7 +1061,8 @@ function createChunkRandom(cx, cz, salt = 1) {
 function createForests(scene, heightAt, routePoints, rnd, renderables) {
   const trees = [];
   const treeById = new Map();
-  const depletedIds = new Set();
+  const depletedIds = new Map();
+  const TREE_RESPAWN_MS = 10 * 60 * 1000;
   const chunkSize = 640;
   const cell = 16;
   const half = GRASS_RADIUS - 80;
@@ -1095,7 +1096,9 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     tree.seed = tree.rotation;
     tree.minY = tree.y;
     tree.maxY = tree.y + 8 * tree.scale;
-    tree.removed = depletedIds.has(tree.id);
+    tree.respawnAt = depletedIds.get(tree.id) || 0;
+    tree.removed = tree.respawnAt > Date.now();
+    if (!tree.removed) depletedIds.delete(tree.id);
     const cx = Math.floor(tree.x / collisionCellSize);
     const cz = Math.floor(tree.z / collisionCellSize);
     const key = `${cx},${cz}`;
@@ -1252,17 +1255,46 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     return { blocked: changed, x: px, z: pz, changed };
   }
 
-  function removeTree(tree) {
+  function writeTreeInstances(tree) {
+    quaternion.setFromAxisAngle(up, tree.rotation);
+    position.set(tree.x, tree.y + 4 * tree.scale, tree.z);
+    scale.set(tree.scale, tree.scale, tree.scale); matrix.compose(position, quaternion, scale);
+    tree.trunkMesh?.setMatrixAt(tree.trunkInstanceId, matrix);
+    const variant = tree.variant;
+    const crownY = tree.pine ? [9.4, 10.0, 10.6][variant] : [8.0, 8.1, 7.8, 8.2, 8.0][variant];
+    const width = tree.pine ? [1.16, 1.12, 1.04][variant] : [1.25, 1.22, 1.34, 1.12, 1.28][variant];
+    const height = tree.pine ? [1.08, 1.16, 1.24][variant] : [1.12, 1.05, 0.82, 1.12, 1.18][variant];
+    position.set(tree.x, tree.y + crownY * tree.scale, tree.z);
+    scale.set(tree.scale * width, tree.scale * height, tree.scale * width); matrix.compose(position, quaternion, scale);
+    tree.crownMesh?.setMatrixAt(tree.crownInstanceId, matrix);
+    if (tree.trunkMesh) tree.trunkMesh.instanceMatrix.needsUpdate = true;
+    if (tree.crownMesh) tree.crownMesh.instanceMatrix.needsUpdate = true;
+  }
+  function restoreTree(tree) {
     if (!tree) return false;
-    depletedIds.add(tree.id);
+    tree.removed = false; tree.respawnAt = 0; tree.health = undefined; depletedIds.delete(tree.id);
+    writeTreeInstances(tree); return true;
+  }
+  function removeTree(tree, respawnAt = Date.now() + TREE_RESPAWN_MS) {
+    if (!tree) return false;
+    tree.respawnAt = Math.max(Date.now() + 1000, Number(respawnAt) || Date.now() + TREE_RESPAWN_MS);
+    depletedIds.set(tree.id, tree.respawnAt);
     if (tree.removed) return true;
-    tree.removed = true;
-    const zeroScale = new THREE.Matrix4().makeScale(0, 0, 0);
+    tree.removed = true; const zeroScale = new THREE.Matrix4().makeScale(0, 0, 0);
     tree.trunkMesh?.setMatrixAt(tree.trunkInstanceId, zeroScale);
     tree.crownMesh?.setMatrixAt(tree.crownInstanceId, zeroScale);
     if (tree.trunkMesh) tree.trunkMesh.instanceMatrix.needsUpdate = true;
     if (tree.crownMesh) tree.crownMesh.instanceMatrix.needsUpdate = true;
     return true;
+  }
+  function respawnReadyTrees() {
+    const now = Date.now(); let restored = 0;
+    for (const tree of trees) {
+      if (!tree.removed || !tree.respawnAt || now < tree.respawnAt) continue;
+      restoreTree(tree); restored++;
+    }
+    for (const [id, due] of depletedIds) if (now >= due && !treeById.has(id)) depletedIds.delete(id);
+    return restored;
   }
 
   function isNearTree(x, z, clearance = 8) {
@@ -1312,7 +1344,8 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     for (let i = 0; i < Math.min(maxBuilds, candidates.length); i++) {
       generateChunk(candidates[i].gx, candidates[i].gz);
     }
-    return { pending: candidates.length - Math.min(maxBuilds, candidates.length), generated: generated.size };
+    const restoredTrees = respawnReadyTrees();
+    return { pending: candidates.length - Math.min(maxBuilds, candidates.length), generated: generated.size, restored: restoredTrees };
   }
 
   updateNear(-1600, 900, 1);
@@ -1324,13 +1357,17 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     trees,
     updateNear,
     remove: removeTree,
-    removeById(id) {
+    removeById(entry) {
+      const id = typeof entry === 'object' && entry ? Number(entry.id) : Number(entry);
+      if (!Number.isInteger(id) || id < 0) return false;
+      const now = Date.now();
+      const stored = entry && typeof entry === 'object' ? Number(entry.respawnAt) : 0;
+      const due = Number.isFinite(stored) && stored > 0 ? stored : (typeof entry === 'number' ? now + TREE_RESPAWN_MS : 0);
       const tree = treeById.get(id);
-      if (tree) return removeTree(tree);
-      depletedIds.add(id);
-      return true;
+      if (!due || due <= now) { depletedIds.delete(id); if (tree && tree.removed) restoreTree(tree); return true; }
+      depletedIds.set(id, due); if (tree) removeTree(tree, due); return true;
     },
-    get depletedIds() { return Array.from(depletedIds); },
+    get depletedIds() { return Array.from(depletedIds, ([id, respawnAt]) => ({ id, respawnAt })); },
     isNearTree,
     isBlocked(x, feetY, z, radius, height) {
       return forestCollision(x, z, feetY, height, radius, false).blocked;
@@ -1463,118 +1500,113 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
 }
 
 
-function createRocks(scene, heightAt, routePoints, rnd, renderables) {
-  const chunkSize = 640;
-  const generated = new Set();
-  const meshes = [];
-  const geometry = new THREE.IcosahedronGeometry(1, 0);
-  const largeMaterial = new THREE.MeshStandardMaterial({ color: 0x777568, roughness: 1, flatShading: true });
-  const smallMaterial = new THREE.MeshStandardMaterial({ color: 0x827d6b, roughness: 1, flatShading: true });
-  const matrix = new THREE.Matrix4();
-  const quaternion = new THREE.Quaternion();
-  const position = new THREE.Vector3();
-  const scale = new THREE.Vector3();
-  const up = new THREE.Vector3(0, 1, 0);
-
-  function generateChunk(cx, cz) {
-    const key = `${cx},${cz}`;
-    if (generated.has(key)) return false;
-    generated.add(key);
-    const random = createChunkRandom(cx, cz, 109);
-    const left = cx * chunkSize, top = cz * chunkSize;
-    const large = [];
-    const small = [];
-
-    let tries = 0;
-    while (large.length < 3 && tries++ < 50) {
-      const x = left + random() * chunkSize, z = top + random() * chunkSize;
-      if (Math.hypot(x, z) < 270 || Math.hypot(x, z) > GRASS_RADIUS - 470) continue;
-      if (pointInReservedArea(x, z, routePoints) || random() < 0.28) continue;
-      large.push({
-        x, z, y: heightAt(x, z) ?? 0,
-        sx: 1.8 + random() * 4.4, sy: 1.15 + random() * 3.4,
-        sz: 1.8 + random() * 4.4, angle: random() * TAU,
-      });
-    }
-
-    tries = 0;
-    while (small.length < 13 && tries++ < 36) {
-      const x = left + random() * chunkSize, z = top + random() * chunkSize;
-      if (Math.hypot(x, z) < 255 || Math.hypot(x, z) > GRASS_RADIUS - 330) continue;
-      if (pointInReservedArea(x, z, routePoints)) continue;
-      small.push({
-        x, z, y: heightAt(x, z) ?? 0,
-        sx: 0.6 + random() * 1.4, sy: 0.35 + random() * 0.85,
-        sz: 0.6 + random() * 1.4, angle: random() * TAU,
-      });
-    }
-
-    if (large.length) {
-      const mesh = new THREE.InstancedMesh(geometry, largeMaterial, large.length);
-      for (let i = 0; i < large.length; i++) {
-        const rock = large[i];
-        quaternion.setFromAxisAngle(up, rock.angle);
-        position.set(rock.x, rock.y + rock.sy * 0.48, rock.z);
-        scale.set(rock.sx, rock.sy, rock.sz);
-        matrix.compose(position, quaternion, scale);
-        mesh.setMatrixAt(i, matrix);
-      }
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.name = `boulders-${key}`;
-      registerChunkMesh(mesh, renderables, 2500, true);
-      scene.add(mesh);
-      meshes.push(mesh);
-    }
-
-    if (small.length) {
-      const mesh = new THREE.InstancedMesh(geometry, smallMaterial, small.length);
-      for (let i = 0; i < small.length; i++) {
-        const rock = small[i];
-        quaternion.setFromAxisAngle(up, rock.angle);
-        position.set(rock.x, rock.y + rock.sy * 0.38, rock.z);
-        scale.set(rock.sx, rock.sy, rock.sz);
-        matrix.compose(position, quaternion, scale);
-        mesh.setMatrixAt(i, matrix);
-      }
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.userData.noCollider = true;
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
-      mesh.name = `stones-${key}`;
-      registerChunkMesh(mesh, renderables, 1500, true);
-      scene.add(mesh);
-      meshes.push(mesh);
-    }
-    return true;
+function createRocks(scene, heightAt, routePoints, rnd, renderables, waterRegions = []) {
+  const chunkSize = 640, ROCK_COUNT = 1500, ROCK_RESPAWN_MS = 5 * 60 * 1000;
+  const generated = new Set(), meshes = [], chunkMeshes = new Map(), rocksByChunk = new Map();
+  const rockById = new Map(), depleted = new Map();
+  const geometry = new THREE.IcosahedronGeometry(1, 1);
+  const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.98, flatShading: true });
+  const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion();
+  const position = new THREE.Vector3(), scale = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  const colors = [0x777568, 0x827d6b, 0x686d6c, 0x999286, 0x747b80].map(v => new THREE.Color(v));
+  const waterAt = (x, z) => waterRegions.find(region => region && region.contains(x, z)) || null;
+  function addRock(rock) {
+    const key = Math.floor(rock.x / chunkSize) + ',' + Math.floor(rock.z / chunkSize);
+    let bucket = rocksByChunk.get(key); if (!bucket) { bucket = []; rocksByChunk.set(key, bucket); }
+    bucket.push(rock); rockById.set(rock.id, rock);
   }
-
-  function updateNear(x, z, maxBuilds = 1) {
-    const cx = Math.floor(x / chunkSize), cz = Math.floor(z / chunkSize);
-    const candidates = [];
-    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
-      const gx = cx + dx, gz = cz + dz;
-      const centerX = (gx + 0.5) * chunkSize, centerZ = (gz + 0.5) * chunkSize;
-      if (Math.hypot(centerX - x, centerZ - z) <= 1160 && !generated.has(`${gx},${gz}`)) {
-        candidates.push({ gx, gz, d: Math.hypot(centerX - x, centerZ - z) });
+  for (let id = 0; id < ROCK_COUNT; id++) {
+    let placed = null; const wet = id % 16 === 0;
+    for (let attempt = 0; attempt < 360 && !placed; attempt++) {
+      let x, z;
+      if (wet) {
+        const region = waterRegions[id % 32 === 0 ? 0 : 1] || waterRegions[0]; if (!region) break;
+        if (region.id === 'river') { z = -4300 + rnd() * 8600; x = mainRiverX(z) + (rnd() * 2 - 1) * mainRiverHalfWidth(z) * 1.12; }
+        else { x = -2700 + rnd() * 5400; z = tributaryZ(x) + (rnd() * 2 - 1) * tributaryHalfWidth(x) * 1.12; }
+        if (!region.contains(x, z)) continue;
+      } else {
+        const angle = rnd() * TAU, minR = 300, maxR = GRASS_RADIUS - 420;
+        const radius = Math.sqrt(minR * minR + rnd() * (maxR * maxR - minR * minR));
+        x = Math.cos(angle) * radius; z = Math.sin(angle) * radius;
+        if (pointInReservedArea(x, z, routePoints) || waterAt(x, z)) continue;
       }
+      const y = heightAt(x, z); if (!Number.isFinite(y)) continue;
+      const big = id % 11 === 0, size = big ? 1.25 + rnd() * 0.95 : 0.48 + rnd() * 0.98;
+      placed = { id, x, y, z, size, sx: size * (0.82 + rnd() * 0.42), sy: size * (0.55 + rnd() * 0.32),
+        sz: size * (0.82 + rnd() * 0.42), angle: rnd() * TAU, hp: big ? 18 : 10, maxHp: big ? 18 : 10,
+        active: true, respawnAt: 0, mesh: null, instanceId: -1 };
+    }
+    if (placed) addRock(placed);
+  }
+  function writeRock(rock) {
+    if (!rock.mesh || rock.instanceId < 0) return;
+    if (!rock.active) matrix.makeScale(0, 0, 0);
+    else { quaternion.setFromAxisAngle(up, rock.angle); position.set(rock.x, rock.y + rock.sy * 0.38, rock.z);
+      scale.set(rock.sx, rock.sy, rock.sz); matrix.compose(position, quaternion, scale); }
+    rock.mesh.setMatrixAt(rock.instanceId, matrix);
+  }
+  function generateChunk(cx, cz) {
+    const key = cx + ',' + cz; if (generated.has(key)) return false; generated.add(key);
+    const data = rocksByChunk.get(key) || []; if (!data.length) return true;
+    const mesh = new THREE.InstancedMesh(geometry, material, data.length);
+    mesh.name = 'mineable-decorative-stones-' + key; mesh.userData.noCollider = true; mesh.userData.rockInstances = data;
+    mesh.castShadow = false; mesh.receiveShadow = true;
+    for (let i = 0; i < data.length; i++) {
+      const rock = data[i]; rock.mesh = mesh; rock.instanceId = i;
+      if (rock.respawnAt > Date.now()) rock.active = false;
+      else if (rock.respawnAt) { rock.respawnAt = 0; rock.active = true; depleted.delete(rock.id); }
+      writeRock(rock); mesh.setColorAt(i, colors[rock.id % colors.length]);
+    }
+    mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere(); registerChunkMesh(mesh, renderables, 1750, true);
+    scene.add(mesh); meshes.push(mesh); chunkMeshes.set(key, mesh); return true;
+  }
+  function removeRock(rock, due = Date.now() + ROCK_RESPAWN_MS) {
+    if (!rock) return false; if (!rock.active) return true;
+    rock.active = false; rock.respawnAt = Math.max(Date.now() + 1000, Number(due) || Date.now() + ROCK_RESPAWN_MS);
+    depleted.set(rock.id, rock.respawnAt); writeRock(rock);
+    if (rock.mesh) rock.mesh.instanceMatrix.needsUpdate = true; return true;
+  }
+  function getInteractiveMeshes(x, z) {
+    const cx = Math.floor(x / chunkSize), cz = Math.floor(z / chunkSize), result = [];
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const mesh = chunkMeshes.get((cx + dx) + ',' + (cz + dz)); if (mesh) result.push(mesh);
+    }
+    return result;
+  }
+  function updateNear(x, z, maxBuilds = 1) {
+    const cx = Math.floor(x / chunkSize), cz = Math.floor(z / chunkSize), candidates = [];
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+      const gx = cx + dx, gz = cz + dz, px = (gx + 0.5) * chunkSize, pz = (gz + 0.5) * chunkSize, d = Math.hypot(px - x, pz - z);
+      if (d <= 1160 && !generated.has(gx + ',' + gz)) candidates.push({ gx, gz, d });
     }
     candidates.sort((a, b) => a.d - b.d);
     for (let i = 0; i < Math.min(maxBuilds, candidates.length); i++) generateChunk(candidates[i].gx, candidates[i].gz);
+    const now = Date.now(), changed = new Set();
+    for (const rock of rockById.values()) if (!rock.active && rock.respawnAt && now >= rock.respawnAt) {
+      rock.active = true; rock.respawnAt = 0; rock.hp = rock.maxHp; depleted.delete(rock.id); writeRock(rock); if (rock.mesh) changed.add(rock.mesh);
+    }
+    for (const mesh of changed) { mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); }
     return { pending: candidates.length - Math.min(maxBuilds, candidates.length), generated: generated.size };
   }
-
   updateNear(-1600, 900, 1);
   return {
-    get boulders() { return generated.size * 3; },
-    get stones() { return generated.size * 13; },
-    get chunks() { return generated.size; },
-    meshes,
-    updateNear,
+    get boulders() { return Array.from(rockById.values()).filter(rock => rock.size > 1.25).length; },
+    get stones() { return rockById.size; }, get count() { return rockById.size; },
+    get activeCount() { return Array.from(rockById.values()).filter(rock => rock.active).length; },
+    meshes, updateNear, getInteractiveMeshes, remove: removeRock,
+    removeById(entry) {
+      const id = typeof entry === 'object' && entry ? Number(entry.id) : Number(entry);
+      if (!Number.isInteger(id) || id < 0) return false;
+      const rock = rockById.get(id), stored = entry && typeof entry === 'object' ? Number(entry.respawnAt) : 0, now = Date.now();
+      const due = Number.isFinite(stored) && stored > 0 ? stored : (typeof entry === 'number' ? now + ROCK_RESPAWN_MS : 0);
+      if (!due || due <= now) { depleted.delete(id); if (rock) { rock.active = true; rock.respawnAt = 0; rock.hp = rock.maxHp; writeRock(rock); } return true; }
+      depleted.set(id, due); if (rock) { rock.active = false; rock.respawnAt = due; writeRock(rock); if (rock.mesh) rock.mesh.instanceMatrix.needsUpdate = true; }
+      return true;
+    },
+    get depletedIds() { return Array.from(depleted, ([id, respawnAt]) => ({ id, respawnAt })); },
   };
 }
-
 
 function createHouse(scene, materials, baseY = 0) {
   const house = new THREE.Group();
@@ -1935,7 +1967,7 @@ export async function createWorld(scene, onProgress = () => {}) {
   onProgress('Готовим только ближайшие участки...');
   const forests = createForests(scene, heightAt, routePoints, rnd, renderables);
   const groundCover = createGroundCover(scene, heightAt, routePoints, rnd, renderables);
-  const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables);
+  const rocks = createRocks(scene, heightAt, routePoints, rnd, renderables, [river.region, tributary.region]);
   const canSpawnResourceAt = (x, z, clearance = 9) => {
     if (Math.hypot(x, z) < 285 || Math.hypot(x + 1600, z - 900) < 92) return false;
     if (pointInReservedArea(x, z, routePoints)) return false;
