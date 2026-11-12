@@ -1072,6 +1072,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
   const trees = [];
   const treeById = new Map();
   const depletedIds = new Map();
+  const damagedHealth = new Map();
   const TREE_RESPAWN_MS = 10 * 60 * 1000;
   const chunkSize = 640;
   const cell = 16;
@@ -1108,6 +1109,8 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     tree.maxY = tree.y + 8 * tree.scale;
     tree.respawnAt = depletedIds.get(tree.id) || 0;
     tree.removed = tree.respawnAt > Date.now();
+    const savedHealth = damagedHealth.get(tree.id);
+    if (savedHealth && !tree.removed) tree.health = savedHealth;
     if (!tree.removed) depletedIds.delete(tree.id);
     const cx = Math.floor(tree.x / collisionCellSize);
     const cz = Math.floor(tree.z / collisionCellSize);
@@ -1290,13 +1293,15 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
   }
   function restoreTree(tree) {
     if (!tree) return false;
-    tree.removed = false; tree.respawnAt = 0; tree.health = undefined; depletedIds.delete(tree.id);
+    tree.removed = false; tree.respawnAt = 0; tree.health = undefined;
+    depletedIds.delete(tree.id); damagedHealth.delete(tree.id);
     writeTreeInstances(tree); return true;
   }
   function removeTree(tree, respawnAt = Date.now() + TREE_RESPAWN_MS) {
     if (!tree) return false;
     tree.respawnAt = Math.max(Date.now() + 1000, Number(respawnAt) || Date.now() + TREE_RESPAWN_MS);
     depletedIds.set(tree.id, tree.respawnAt);
+    damagedHealth.delete(tree.id);
     if (tree.removed) return true;
     tree.removed = true; const zeroScale = new THREE.Matrix4().makeScale(0, 0, 0);
     tree.trunkMesh?.setMatrixAt(tree.trunkInstanceId, zeroScale);
@@ -1393,6 +1398,24 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       depletedIds.set(id, due); if (tree) removeTree(tree, due); return true;
     },
     get depletedIds() { return Array.from(depletedIds, ([id, respawnAt]) => ({ id, respawnAt })); },
+    get damagedTrees() {
+      const entries = new Map(damagedHealth);
+      for (const tree of trees) {
+        if (!tree.removed && Number.isFinite(tree.health) && tree.health > 0 && tree.health < 12) {
+          entries.set(tree.id, tree.health);
+        }
+      }
+      return Array.from(entries, ([id, health]) => ({ id, health }));
+    },
+    setHealthById(entry) {
+      const id = Number(entry && entry.id);
+      const health = Number(entry && entry.health);
+      if (!Number.isInteger(id) || id < 0 || !Number.isFinite(health) || health <= 0 || health >= 12) return false;
+      damagedHealth.set(id, Math.max(1, Math.min(11, health)));
+      const tree = treeById.get(id);
+      if (tree && !tree.removed) tree.health = damagedHealth.get(id);
+      return true;
+    },
     isNearTree,
     isBlocked(x, feetY, z, radius, height) {
       return forestCollision(x, z, feetY, height, radius, false).blocked;
@@ -1645,6 +1668,19 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables, waterRegion
       return true;
     },
     get depletedIds() { return Array.from(depleted, ([id, respawnAt]) => ({ id, respawnAt })); },
+    get damagedIds() {
+      return Array.from(rockById.values())
+        .filter((rock) => rock.active && rock.hp > 0 && rock.hp < rock.maxHp)
+        .map((rock) => ({ id: rock.id, hp: rock.hp }));
+    },
+    setHealthById(entry) {
+      const id = Number(entry && entry.id);
+      const hp = Number(entry && entry.hp);
+      const rock = rockById.get(id);
+      if (!rock || !Number.isFinite(hp) || hp <= 0 || hp >= rock.maxHp || !rock.active) return false;
+      rock.hp = Math.max(1, Math.min(rock.maxHp - 1, Math.floor(hp)));
+      return true;
+    },
   };
 }
 
