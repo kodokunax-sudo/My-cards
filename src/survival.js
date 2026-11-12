@@ -7,6 +7,8 @@ const TREE_HP = 12;
 const STONE_HP = 12;
 const FIBER_NODE_COUNT = 190;
 const BRANCH_NODE_COUNT = 150;
+const STICK_NODE_COUNT = 4000;
+const LEAF_NODE_COUNT = 4000;
 const SCRAP_NODE_COUNT = 52;
 const IRON_ORE_NODE_COUNT = 28;
 
@@ -24,14 +26,14 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   const saved = loadSave();
   const inventory = {
     logs: 0, planks: 0, sticks: 0, stone: 0,
-    branch: 0, fiber: 0, sharpShard: 0, rope: 0, handle: 0,
+    branch: 0, fiber: 0, leaves: 0, sharpShard: 0, rope: 0, handle: 0,
     stoneWedge: 0, bark: 0, ironScrap: 0, ironOre: 0, ironIngot: 0, metalFastener: 0,
     woodAxe: false, woodPickaxe: false, stoneAxe: false, stonePickaxe: false,
     ironAxe: false, ironPickaxe: false,
   };
   const RESOURCE_IDS = [
     'logs', 'planks', 'sticks', 'stone',
-    'branch', 'fiber', 'sharpShard', 'rope', 'handle',
+    'branch', 'fiber', 'leaves', 'sharpShard', 'rope', 'handle',
     'stoneWedge', 'bark', 'ironScrap', 'ironOre', 'ironIngot', 'metalFastener',
   ];
   const TOOL_IDS = ['woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe', 'ironAxe', 'ironPickaxe'];
@@ -99,13 +101,15 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   let fullWorkbenchGroup = null;
   let fiberNodes = [];
   let branchNodes = [];
+  let stickNodes = [];
+  let leafNodes = [];
   let scrapNodes = [];
   let ironOreNodes = [];
 
   const savedTreeIds = saved && Array.isArray(saved.depletedTrees) ? saved.depletedTrees : [];
-  for (const id of savedTreeIds) {
-    if (Number.isInteger(id) && id >= 0) world.forests.removeById(id);
-  }
+  for (const entry of savedTreeIds) world.forests.removeById(entry);
+  const savedRockIds = saved && Array.isArray(saved.depletedRocks) ? saved.depletedRocks : [];
+  for (const entry of savedRockIds) world.rocks.removeById(entry);
 
   const nodes = saved && Array.isArray(saved.nodes) && saved.nodes.length === NODE_COUNT
     ? saved.nodes.map((node, id) => ({
@@ -133,6 +137,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
         selectedTool,
         selectedSlot,
         depletedTrees: world.forests.depletedIds || world.forests.trees.filter((tree) => tree.removed).map((tree) => tree.id),
+        depletedRocks: world.rocks.depletedIds || [],
         nodes: nodes.map((node) => ({
           x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
           active: node.active, hp: node.hp, due: node.due,
@@ -146,6 +151,14 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
           active: node.active, hp: node.hp, due: node.due,
         })),
         branchNodes: branchNodes.map((node) => ({
+          x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
+          active: node.active, hp: node.hp, due: node.due,
+        })),
+        stickNodes: stickNodes.map((node) => ({
+          x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
+          active: node.active, hp: node.hp, due: node.due,
+        })),
+        leafNodes: leafNodes.map((node) => ({
           x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
           active: node.active, hp: node.hp, due: node.due,
         })),
@@ -303,7 +316,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     if (index >= 0) cell.splice(index, 1);
     if (!cell.length) resourceCells.delete(key);
   }
-  function resourcePositionCrowded(x, z) {
+  function resourcePositionCrowded(x, z, minDistance = 17) {
     const gx = Math.floor(x / RESOURCE_CELL_SIZE);
     const gz = Math.floor(z / RESOURCE_CELL_SIZE);
     for (let dx = -1; dx <= 1; dx++) {
@@ -311,7 +324,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
         const cell = resourceCells.get(`${gx + dx},${gz + dz}`);
         if (!cell) continue;
         for (const other of cell) {
-          if (Math.hypot(x - other.x, z - other.z) < 17) return true;
+          if (Math.hypot(x - other.x, z - other.z) < minDistance) return true;
         }
       }
     }
@@ -335,7 +348,28 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     return null;
   }
 
-  function initializeGatherNodes(rawNodes, count, clearance) {
+  function findTreeGatherPosition(oldPosition) {
+    const treePool = world.forests.trees;
+    if (!treePool || !treePool.length) return null;
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const tree = treePool[Math.floor(Math.random() * treePool.length)];
+      if (!tree || tree.removed) continue;
+      const angle = Math.random() * Math.PI * 2;
+      const radius = (tree.radius || 0.48) + 2.8 + Math.random() * 15;
+      const x = tree.x + Math.cos(angle) * radius;
+      const z = tree.z + Math.sin(angle) * radius;
+      if (!world.canSpawnResourceAt(x, z, 1.4)) continue;
+      if (!world.forests.isNearTree(x, z, 22)) continue;
+      if (resourcePositionCrowded(x, z, 4.6)) continue;
+      if (oldPosition && Math.hypot(x - oldPosition.x, z - oldPosition.z) < 22) continue;
+      const y = world.heightAt(x, z);
+      if (!Number.isFinite(y)) continue;
+      return { x, y, z, size: 0.62 + Math.random() * 0.38, angle: Math.random() * Math.PI * 2 };
+    }
+    return null;
+  }
+
+  function initializeGatherNodes(rawNodes, count, clearance, nearTree = false) {
     const source = Array.isArray(rawNodes) && rawNodes.length === count ? rawNodes : null;
     const list = Array.from({ length: count }, (_, id) => {
       const raw = source && source[id] ? source[id] : {};
@@ -353,22 +387,20 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     });
 
     const now = Date.now();
+    const spacing = nearTree ? 4.6 : 17;
+    const valid = node => world.canSpawnResourceAt(node.x, node.z, nearTree ? 1.4 : clearance) &&
+      (!nearTree || world.forests.isNearTree(node.x, node.z, 22));
+    const findPosition = () => nearTree ? findTreeGatherPosition(null) : findGatherPosition(null, clearance);
     for (const node of list) {
       if (!node.active) continue;
-      if (!world.canSpawnResourceAt(node.x, node.z, clearance) || resourcePositionCrowded(node.x, node.z)) {
-        node.active = false;
-        node.due = now + 15000;
-      } else {
-        markResourcePosition(node);
-      }
+      if (!valid(node) || resourcePositionCrowded(node.x, node.z, spacing)) {
+        node.active = false; node.due = now + 15000;
+      } else markResourcePosition(node);
     }
     for (const node of list) {
       if (node.active || (node.due && node.due > now)) continue;
-      const position = findGatherPosition(null, clearance);
-      if (!position) {
-        node.due = now + 15000;
-        continue;
-      }
+      const position = findPosition();
+      if (!position) { node.due = now + 15000; continue; }
       Object.assign(node, position, { active: true, hp: 1, due: 0 });
       markResourcePosition(node);
     }
@@ -377,6 +409,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
   fiberNodes = initializeGatherNodes(saved && saved.fiberNodes, FIBER_NODE_COUNT, 7);
   branchNodes = initializeGatherNodes(saved && saved.branchNodes, BRANCH_NODE_COUNT, 5);
+  stickNodes = initializeGatherNodes(saved && saved.stickNodes, STICK_NODE_COUNT, 1.4, true);
+  leafNodes = initializeGatherNodes(saved && saved.leafNodes, LEAF_NODE_COUNT, 1.4, true);
 
   function initializeMetalNodes(rawNodes, count, isOre) {
     const source = Array.isArray(rawNodes) && rawNodes.length === count ? rawNodes : null;
