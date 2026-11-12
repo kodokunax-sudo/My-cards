@@ -47,6 +47,9 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(new THREE.Color(0xd9ae86), 0.00020);
 
 const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 12000);
+// First-person hands and tools are attached to the camera. Add the camera to
+// the scene so Three.js traverses and renders those child view models.
+scene.add(camera);
 camera.layers.enable(2);   // слой 2 — поверхность воды (исключается из отражений)
 
 // ---------- сцена ----------
