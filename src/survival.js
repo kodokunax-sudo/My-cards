@@ -906,7 +906,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     handSkinMaterial, 0.045, 0.018, 0.015, -0.30, 1.65, 0.78, 0.82);
   toolPart(toolThumb, new THREE.SphereGeometry(1, 12, 10),
     handSkinMaterial, 0.09, 0.033, 0.005, -0.16, 1.05, 0.78, 0.82);
-  heldMotion.add(heldToolGrip);  heldMotion.add(heldToolGrip);
+  heldMotion.add(heldToolGrip);
 
   let activeHeldModel = heldHands;
   let activeHeldId = 'hands';
