@@ -332,6 +332,12 @@ function createPlayerAvatar(scene) {
     motion.rotation.z += (bodyZ - motion.rotation.z) * blend;
   }
 
+  // The player camera is positioned inside the avatar's head. Keep the entire
+  // full-body avatar on layer 1 so the first-person camera (layers 0 and 2)
+  // cannot draw the head, neck, torso or avatar arms through the viewmodel.
+  // The separate first-person hands are built on the camera's normal layer.
+  root.traverse((object) => object.layers.set(1));
+
   root.visible = true;
   hitbox.visible = false;
   scene.add(root, hitbox);
