@@ -461,6 +461,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   const branchMaterial = new THREE.MeshStandardMaterial({
     color: 0x805534, roughness: 1, flatShading: true,
   });
+  const stickMaterial = new THREE.MeshStandardMaterial({ color: 0x987047, roughness: 1, flatShading: true });
+  const leafMaterial = new THREE.MeshStandardMaterial({ color: 0x6d8741, roughness: 1, flatShading: true });
   const fiberMesh = new THREE.InstancedMesh(
     new THREE.IcosahedronGeometry(0.75, 0), fiberMaterial, FIBER_NODE_COUNT
   );
@@ -471,31 +473,40 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   );
   branchMesh.name = 'survival-gatherable-branches';
   branchMesh.userData.noCollider = true;
+  const stickMesh = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(0.045, 0.065, 0.88, 5), stickMaterial, STICK_NODE_COUNT
+  );
+  stickMesh.name = 'survival-tree-side-sticks';
+  stickMesh.userData.noCollider = true;
+  const leafMesh = new THREE.InstancedMesh(
+    new THREE.SphereGeometry(0.5, 7, 4), leafMaterial, LEAF_NODE_COUNT
+  );
+  leafMesh.name = 'survival-tree-side-leaves';
+  leafMesh.userData.noCollider = true;
   const branchTilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, Math.PI / 2));
 
-  function writeGatherNode(node, mesh, isBranch) {
+  function writeGatherNode(node, mesh, isBranch, isLeaf = false) {
     if (!node.active) {
       matrix.makeScale(0, 0, 0);
     } else {
       rotation.setFromAxisAngle(up, node.angle);
       if (isBranch) rotation.multiply(branchTilt);
-      position.set(node.x, node.y + (isBranch ? 0.12 : 0.52), node.z);
-      scale.set(
-        node.size * (isBranch ? 1 : 1.28),
-        node.size * (isBranch ? 1 : 0.84),
-        node.size * (isBranch ? 1 : 1.08)
-      );
+      position.set(node.x, node.y + (isLeaf ? 0.045 : isBranch ? 0.12 : 0.52), node.z);
+      if (isLeaf) scale.set(node.size * 0.96, node.size * 0.18, node.size * 0.62);
+      else scale.set(node.size * (isBranch ? 0.82 : 1.28), node.size * (isBranch ? 0.82 : 0.84), node.size * (isBranch ? 1.35 : 1.08));
       matrix.compose(position, rotation, scale);
     }
     mesh.setMatrixAt(node.id, matrix);
   }
   for (const node of fiberNodes) writeGatherNode(node, fiberMesh, false);
   for (const node of branchNodes) writeGatherNode(node, branchMesh, true);
-  fiberMesh.instanceMatrix.needsUpdate = true;
-  branchMesh.instanceMatrix.needsUpdate = true;
-  fiberMesh.computeBoundingSphere();
-  branchMesh.computeBoundingSphere();
-  scene.add(fiberMesh, branchMesh);
+  for (const node of stickNodes) writeGatherNode(node, stickMesh, true);
+  for (const node of leafNodes) writeGatherNode(node, leafMesh, false, true);
+  for (const mesh of [fiberMesh, branchMesh, stickMesh, leafMesh]) {
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }
+  scene.add(fiberMesh, branchMesh, stickMesh, leafMesh);
 
   const scrapTypeNames = ['barrel', 'crate', 'equipment', 'fence'];
   const scrapGeometries = [
@@ -1072,7 +1083,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   };
   const itemNames = {
     logs: 'Древесина', planks: 'Грубые доски', sticks: 'Палки', stone: 'Крупный камень',
-    branch: 'Толстая ветка', fiber: 'Растительные волокна',
+    branch: 'Толстая ветка', fiber: 'Растительные волокна', leaves: 'Листья',
     sharpShard: 'Острый каменный осколок', rope: 'Верёвка', handle: 'Деревянная рукоятка',
     stoneWedge: 'Каменный клин', bark: 'Кора',
     ironScrap: 'Железный лом', ironOre: 'Железная руда',
@@ -1113,6 +1124,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     sticks: '<g stroke-linecap="round" stroke-width="5"><path d="M20 49 43 12" stroke="#704728"/><path d="M20 49 43 12" stroke="#c18a54" stroke-width="2"/><path d="M34 49 51 24" stroke="#704728"/><path d="M34 49 51 24" stroke="#d2a16a" stroke-width="2"/></g>',
     stone: '<g stroke-linejoin="round" stroke="#484b4c" stroke-width="2"><path d="m9 39 7-17 14-8 17 7 9 15-9 14-22 4-15-6Z" fill="#898d8b"/><path d="m9 39 7-17 14-8-3 21-6 19-12-6Z" fill="#686e70"/><path d="m30 14 17 7 9 15-29-1Z" fill="#aeb1aa"/><path d="m27 35 29 1-9 14-22 4Z" fill="#777d7d"/><path d="m18 24 8-4 5 4-7 6Z" fill="#c3c3b8" opacity=".8"/></g>',
     branch: '<g stroke-linecap="round" stroke-width="6"><path d="M10 48 53 13" stroke="#66452b"/><path d="M10 48 53 13" stroke="#b17c4b" stroke-width="3"/><path d="m31 31-8-15m8 15 14 8" stroke="#805531" stroke-width="4"/></g>',
+    leaves: '<g fill="#6f9145" stroke="#40592e" stroke-width="2"><path d="M8 42Q11 14 34 10Q35 32 8 42Z"/><path d="M22 53Q25 27 55 25Q54 47 22 53Z"/><path d="M13 30 33 11M25 45 51 27" fill="none" stroke="#b0c27a" stroke-width="2"/></g>',
     fiber: '<g fill="none" stroke="#c4b17a" stroke-width="4" stroke-linecap="round"><path d="M14 48Q24 30 18 12M25 50Q39 29 33 10M37 50Q52 28 47 14"/><path d="M14 29 7 20m26 17 10-12"/></g>',
     sharpShard: '<g stroke="#414749" stroke-width="2" stroke-linejoin="round"><path d="m10 45 11-28 15-7 18 19-8 21-25 5Z" fill="#999f9c"/><path d="m21 17 15-7-3 23-23 12Z" fill="#d0d2c8"/><path d="m33 33 21-4-8 21-25 5Z" fill="#6c7475"/></g>',
     rope: '<g fill="none" stroke="#9c7849" stroke-width="6" stroke-linecap="round"><path d="M17 18c28-14 36 31 9 29-18-2-17-25 9-26 18 0 18 22 2 27"/><path d="M17 18 29 9m11 39 8 7" stroke="#c39a60" stroke-width="3"/></g>',
