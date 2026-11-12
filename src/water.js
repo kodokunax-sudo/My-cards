@@ -277,14 +277,15 @@ function rndFactory(seed) {
   };
 }
 
-export function createWater(scene, fountain, camera, renderer) {
+export function createWater(scene, fountain, camera, renderer, options = {}) {
+  const initialCubeSize = options.mobile ? 64 : 256;
   const rnd = rndFactory(777123);
   const group = new THREE.Group();
   scene.add(group);
   const sprite = softSprite();
 
   // ---------------- отражение кубической камерой ----------------
-  const cubeRT = new THREE.WebGLCubeRenderTarget(256, {
+  const cubeRT = new THREE.WebGLCubeRenderTarget(initialCubeSize, {
     generateMipmaps: true,
     minFilter: THREE.LinearMipmapLinearFilter,
     type: THREE.HalfFloatType,
@@ -527,7 +528,7 @@ export function createWater(scene, fountain, camera, renderer) {
   let cubeInterval = 3;
   let reflectionsEnabled = true;
   let particlesEnabled = true;
-  let cubeSize = 256;
+  let cubeSize = initialCubeSize;
   const camPos = new THREE.Vector3();
 
   return {
