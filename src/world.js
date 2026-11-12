@@ -714,9 +714,10 @@ function createHeightFunction(baseHeightAt, riverProfiles, bridgeDeckTopY) {
   };
 }
 
-function createWorldChunkStreamer() {
+function createWorldChunkStreamer({ mobile = false } = {}) {
   const jobs = [];
-  const LOAD_RADIUS = 1480;
+  const LOAD_RADIUS = mobile ? 1250 : 1480;
+  const initialJobLimit = mobile ? 8 : Infinity;
   let loaded = 0;
 
   function enqueue(x, z, type, build) {
@@ -754,19 +755,26 @@ function createWorldChunkStreamer() {
       for (let i = 0; i < Math.min(count, nearby.length); i++) buildOne(nearby[i]);
     },
     async preloadNearby(x, z, onProgress = () => {}) {
-      // Finish the complete starting bubble before the player enters the world.
-      // Chunks outside LOAD_RADIUS remain untouched until the player approaches.
+      // Phones only build a playable starting bubble. Remaining chunks are
+      // streamed in after the player enters the world, instead of blocking boot.
       const nearby = nearbyJobs(x, z);
-      for (let i = 0; i < nearby.length; i++) {
+      const buildLimit = Math.min(nearby.length, initialJobLimit);
+      for (let i = 0; i < buildLimit; i++) {
         const job = nearby[i];
         if (job.done) continue;
         buildOne(job);
-        if (i % 2 === 1 || i === nearby.length - 1) {
-          onProgress(`Подготавливаем ближайший мир... ${Math.round((i + 1) / nearby.length * 100)}%`);
+        const yieldInterval = mobile ? 1 : 2;
+        if (i % yieldInterval === yieldInterval - 1 || i === buildLimit - 1) {
+          onProgress(mobile
+            ? `Готовим стартовую область... ${Math.round((i + 1) / buildLimit * 100)}%`
+            : `Подготавливаем ближайший мир... ${Math.round((i + 1) / buildLimit * 100)}%`);
           await new Promise((resolve) => requestAnimationFrame(resolve));
         }
       }
-      return nearby.length;
+      if (mobile && nearby.length > buildLimit) {
+        onProgress('Стартовая область готова. Остальной мир будет подгружаться во время игры.');
+      }
+      return buildLimit;
     },
     update(x, z) {
       const nearby = nearbyJobs(x, z);
@@ -1865,7 +1873,8 @@ function createTributary(scene, heightAt, analyticHeightAt, riverProfiles, strea
   };
 }
 
-export async function createWorld(scene, onProgress = () => {}) {
+export async function createWorld(scene, onProgress = () => {}, options = {}) {
+  const mobileMode = options.mobile === true;
   const rnd = seededRandom();
   const routePoints = [
     { x: -1588, z: 900 },
@@ -1893,7 +1902,7 @@ export async function createWorld(scene, onProgress = () => {}) {
   const analyticHeightAt = createHeightFunction(baseHeightAt, riverProfiles, BRIDGE_DECK_TOP_Y);
   const heightAt = createRenderedTerrainSampler(analyticHeightAt);
   const renderables = [];
-  const streamer = createWorldChunkStreamer();
+  const streamer = createWorldChunkStreamer({ mobile: mobileMode });
   let streamTick = 0;
   const terrain = createTerrain(scene, analyticHeightAt, renderables, streamer);
 
@@ -1978,9 +1987,10 @@ export async function createWorld(scene, onProgress = () => {}) {
   // plus a 3x3 neighborhood of forest, ground cover and rocks. Nothing else
   // is generated until the player moves toward the edge of this bubble.
   await streamer.preloadNearby(-1600, 900, onProgress);
-  forests.updateNear(-1600, 900, 13);
-  groundCover.updateNear(-1600, 900, 13);
-  rocks.updateNear(-1600, 900, 13);
+  const initialChunkBuilds = mobileMode ? 3 : 13;
+  forests.updateNear(-1600, 900, initialChunkBuilds);
+  groundCover.updateNear(-1600, 900, initialChunkBuilds);
+  rocks.updateNear(-1600, 900, initialChunkBuilds);
   onProgress('Ближайшая область готова.');
 
   return {
@@ -2003,11 +2013,19 @@ export async function createWorld(scene, onProgress = () => {}) {
       river.waterMaterial.userData.setTime(time);
       tributary.waterMaterial.userData.setTime(time);
       streamTick++;
-      if (streamTick % 4 === 0) streamer.update(playerPosition.x, playerPosition.z);
-      else if (streamTick % 4 === 1) forests.updateNear(playerPosition.x, playerPosition.z, 1);
-      else if (streamTick % 4 === 2) groundCover.updateNear(playerPosition.x, playerPosition.z, 1);
-      else rocks.updateNear(playerPosition.x, playerPosition.z, 1);
-      const terrainProgress = streamer.updateProgress(playerPosition.x, playerPosition.z);
+       if (mobileMode) {
+         // Spread chunk construction over more frames on phones to avoid
+         // repeated long main-thread stalls while the player is moving.
+         const phase = streamTick % 12;
+         if (phase === 0) streamer.update(playerPosition.x, playerPosition.z);
+         else if (phase === 3) forests.updateNear(playerPosition.x, playerPosition.z, 1);
+         else if (phase === 6) groundCover.updateNear(playerPosition.x, playerPosition.z, 1);
+         else if (phase === 9) rocks.updateNear(playerPosition.x, playerPosition.z, 1);
+       } else if (streamTick % 4 === 0) streamer.update(playerPosition.x, playerPosition.z);
+       else if (streamTick % 4 === 1) forests.updateNear(playerPosition.x, playerPosition.z, 1);
+       else if (streamTick % 4 === 2) groundCover.updateNear(playerPosition.x, playerPosition.z, 1);
+       else rocks.updateNear(playerPosition.x, playerPosition.z, 1);
+       const terrainProgress = streamer.updateProgress(playerPosition.x, playerPosition.z);
       const forestProgress = forests.updateNear(playerPosition.x, playerPosition.z, 0);
       const coverProgress = groundCover.updateNear(playerPosition.x, playerPosition.z, 0);
       const rockProgress = rocks.updateNear(playerPosition.x, playerPosition.z, 0);
