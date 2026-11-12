@@ -871,6 +871,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   }
 
   const rightFistRig = createFirstPersonFist(heldHands, false);
+  const heldFingerJoints = rightFistRig.fingers;
+  const heldThumb = rightFistRig.thumb;
   heldHands.userData.swingType = 'hands';
   heldHands.userData.fist = rightFistRig.pivot;
   heldHands.userData.fingers = rightFistRig.fingers;
