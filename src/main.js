@@ -81,6 +81,10 @@ if (touch) {
   touch.setSoundState(audio.enabled);
 }
 
+window.__titanBootStatus?.('Расставляем ресурсы и готовим управление...');
+await new Promise((resolve) => requestAnimationFrame(() =>
+  requestAnimationFrame(resolve)
+));
 const survival = createSurvival(scene, camera, canvas, world, player, hud, {
   mobile: isCoarseDevice,
 });
@@ -165,7 +169,7 @@ let quality = isCoarseDevice ? 'low' : QUALITY[forced] ? forced :
 if (!isCoarseDevice && savedSettings && savedSettings.auto === true && !forced) autoQuality = true;
 else if (!isCoarseDevice && savedSettings && savedSettings.auto === false && !forced) autoQuality = false;
 
-let drawDistance = THREE.MathUtils.clamp(
+let drawDistance = isCoarseDevice ? 2200 : THREE.MathUtils.clamp(
   Number(savedSettings?.drawDistance) || 3200, 900, 8000
 );
 let graphicsOptions = {
@@ -311,7 +315,7 @@ bloomInput?.addEventListener('change', () => {
 // The far plane additionally clips terrain, trees and props beyond this radius.
 camera.far = drawDistance;
 if (isCoarseDevice) {
-  for (const control of [shadowsInput, reflectionsInput, bloomInput]) {
+  for (const control of [qualitySelect, shadowsInput, reflectionsInput, bloomInput]) {
     if (control) control.disabled = true;
   }
 }
