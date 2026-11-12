@@ -1,4 +1,4 @@
-const CACHE_NAME = 'titan-assets-v17';
+const CACHE_NAME = 'titan-assets-v18';
 const SHELL_CACHE = 'titan-shell-v1';
 const BASE_PATH = new URL('./', self.location.href).pathname;
 const SHELL_FILES = [
