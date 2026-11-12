@@ -34,9 +34,11 @@ const isCoarseDevice = (navigator.maxTouchPoints || 0) > 0 ||
   ('ontouchstart' in window) ||
   (window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
 const renderer = new THREE.WebGLRenderer({
-  canvas, antialias: false, powerPreference: 'high-performance', stencil: false,
+  canvas, antialias: false,
+  powerPreference: isCoarseDevice ? 'low-power' : 'high-performance',
+  stencil: false,
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isCoarseDevice ? 0.55 : 0.9));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isCoarseDevice ? 0.48 : 0.9));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -55,8 +57,12 @@ camera.layers.enable(2);   // слой 2 — поверхность воды (и
 const sky = createSky(scene);
 const env = createEnvironment(scene);
 const fountain = createFountain(scene);
-const water = createWater(scene, fountain, camera, renderer);
-const world = await createWorld(scene, (message) => window.__titanBootStatus?.(message));
+const water = createWater(scene, fountain, camera, renderer, { mobile: isCoarseDevice });
+const world = await createWorld(
+  scene,
+  (message) => window.__titanBootStatus?.(message),
+  { mobile: isCoarseDevice }
+);
 const occlusionCuller = createOcclusionCuller(renderer, scene, camera);
 const hud = createHud();
 const audio = createAmbience();
@@ -79,16 +85,23 @@ if (touch) {
   touch.setSoundState(audio.enabled);
 }
 
-const survival = createSurvival(scene, camera, canvas, world, player, hud);
+const survival = createSurvival(scene, camera, canvas, world, player, hud, {
+  mobile: isCoarseDevice,
+});
 
 // ---------- постобработка ----------
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.15, 0.62, 0.94
-);
-composer.addPass(bloom);
-composer.addPass(new OutputPass());
+// Phones render directly to avoid the extra full-screen composer buffers.
+let composer = null;
+let bloom = null;
+if (!isCoarseDevice) {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  bloom = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight), 0.15, 0.62, 0.94
+  );
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+}
 
 // ---------- графика, дальность прорисовки и адаптивная производительность ----------
 const QUALITY = {
@@ -137,13 +150,13 @@ function loadSavedSettings() {
   }
 }
 const savedSettings = loadSavedSettings();
-const forced = new URLSearchParams(location.search).get('quality');
-let autoQuality = !QUALITY[forced];
-let quality = QUALITY[forced] ? forced :
+const forced = isCoarseDevice ? null : new URLSearchParams(location.search).get('quality');
+let autoQuality = isCoarseDevice ? true : !QUALITY[forced];
+let quality = isCoarseDevice ? 'low' : QUALITY[forced] ? forced :
   (savedSettings?.auto === false && QUALITY[savedSettings?.quality]
     ? savedSettings.quality : detectDeviceQuality());
-if (savedSettings && savedSettings.auto === true && !forced) autoQuality = true;
-else if (savedSettings && savedSettings.auto === false && !forced) autoQuality = false;
+if (!isCoarseDevice && savedSettings && savedSettings.auto === true && !forced) autoQuality = true;
+else if (!isCoarseDevice && savedSettings && savedSettings.auto === false && !forced) autoQuality = false;
 
 let drawDistance = THREE.MathUtils.clamp(
   Number(savedSettings?.drawDistance) || 3200, 900, 8000
@@ -153,7 +166,7 @@ let graphicsOptions = {
   reflections: QUALITY[quality].reflections,
   bloom: QUALITY[quality].bloom,
 };
-if (savedSettings?.options && typeof savedSettings.options === 'object') {
+if (!isCoarseDevice && savedSettings?.options && typeof savedSettings.options === 'object') {
   graphicsOptions = {
     shadows: savedSettings.options.shadows !== false,
     reflections: savedSettings.options.reflections !== false,
@@ -211,8 +224,11 @@ function applyDrawDistance() {
 
 function applyQuality() {
   const profile = QUALITY[quality];
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, profile.pr));
-  bloom.enabled = graphicsOptions.bloom;
+  renderer.setPixelRatio(Math.min(
+    window.devicePixelRatio || 1,
+    isCoarseDevice ? Math.min(profile.pr, 0.48) : profile.pr
+  ));
+  if (bloom) bloom.enabled = graphicsOptions.bloom;
   renderer.shadowMap.enabled = graphicsOptions.shadows;
   env.setShadowSize(profile.shadow);
   renderer.shadowMap.needsUpdate = graphicsOptions.shadows;
@@ -287,6 +303,11 @@ bloomInput?.addEventListener('change', () => {
 // The browser's own frustum culling discards chunks behind the camera.
 // The far plane additionally clips terrain, trees and props beyond this radius.
 camera.far = drawDistance;
+if (isCoarseDevice) {
+  for (const control of [shadowsInput, reflectionsInput, bloomInput]) {
+    if (control) control.disabled = true;
+  }
+}
 syncGraphicsControls();
 applyQuality();
 
@@ -326,7 +347,7 @@ function sampleQuality() {
       hud.toast(`Автонастройка: качество снижено до «${quality === 'low' ? 'низкого' : 'среднего'}»`);
     }
     slowSamples = 0;
-  } else if (fastSamples >= 12 && quality !== 'high') {
+  } else if (!isCoarseDevice && fastSamples >= 12 && quality !== 'high') {
     const index = QUALITY_ORDER.indexOf(quality);
     chooseQuality(QUALITY_ORDER[index + 1], true);
     hud.toast('Автонастройка: качество повышено');
@@ -404,11 +425,14 @@ const nightFog = new THREE.Color(0x081326);
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
-  const pr = Math.min(window.devicePixelRatio, QUALITY[quality].pr);
+  const pr = Math.min(
+    window.devicePixelRatio || 1,
+    isCoarseDevice ? Math.min(QUALITY[quality].pr, 0.48) : QUALITY[quality].pr
+  );
   renderer.setPixelRatio(pr);
   renderer.setSize(w, h);
-  composer.setSize(w, h);
-  bloom.setSize(w, h);
+  composer?.setSize(w, h);
+  bloom?.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
@@ -473,7 +497,8 @@ function animate() {
 
   try {
     if (started) occlusionCuller.update(quality);
-    composer.render();
+    if (composer) composer.render();
+    else renderer.render(scene, camera);
   } finally {
     // Reflection rendering has already completed above. Restore the chunks
     // immediately after the main camera so other camera passes see the world.
