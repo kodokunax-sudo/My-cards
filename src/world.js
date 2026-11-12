@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { configureDynamicInstanceBuffer, queueInstanceBufferRange, flushInstanceBuffer, interleaveStaticGeometryVBO } from './gpu-buffers.js';
 import {
   POOL_RADIUS, POOL_BOTTOM_Y, WATER_Y, GRASS_RADIUS, PLAZA_RADIUS,
 } from './config.js';
@@ -882,6 +883,7 @@ function createTerrain(scene, heightAt, renderables, streamer) {
       geometry.computeVertexNormals();
       // Keep halo triangles out of the draw call while retaining their normals.
       geometry.setIndex(indices);
+      interleaveStaticGeometryVBO(geometry);
 
       const terrain = new THREE.Mesh(geometry, material);
       terrain.receiveShadow = true;
@@ -1156,6 +1158,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     }
 
     const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, bucket.trees.length);
+    configureDynamicInstanceBuffer(trunks);
     trunks.userData.noCollider = true;
     trunks.userData.treeInstances = bucket.trees;
     for (let i = 0; i < bucket.trees.length; i++) {
@@ -1181,6 +1184,7 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
       const group = bucket.variants[variant];
       if (!group.length) continue;
       const crowns = new THREE.InstancedMesh(crownGeometries[variant], crownMaterials[variant], group.length);
+      configureDynamicInstanceBuffer(crowns);
       for (let i = 0; i < group.length; i++) {
         const tree = group[i];
         quaternion.setFromAxisAngle(up, tree.rotation);
@@ -1267,8 +1271,14 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     position.set(tree.x, tree.y + crownY * tree.scale, tree.z);
     scale.set(tree.scale * width, tree.scale * height, tree.scale * width); matrix.compose(position, quaternion, scale);
     tree.crownMesh?.setMatrixAt(tree.crownInstanceId, matrix);
-    if (tree.trunkMesh) tree.trunkMesh.instanceMatrix.needsUpdate = true;
-    if (tree.crownMesh) tree.crownMesh.instanceMatrix.needsUpdate = true;
+    if (tree.trunkMesh) {
+      queueInstanceBufferRange(tree.trunkMesh, tree.trunkInstanceId);
+      flushInstanceBuffer(tree.trunkMesh);
+    }
+    if (tree.crownMesh) {
+      queueInstanceBufferRange(tree.crownMesh, tree.crownInstanceId);
+      flushInstanceBuffer(tree.crownMesh);
+    }
   }
   function restoreTree(tree) {
     if (!tree) return false;
@@ -1283,8 +1293,14 @@ function createForests(scene, heightAt, routePoints, rnd, renderables) {
     tree.removed = true; const zeroScale = new THREE.Matrix4().makeScale(0, 0, 0);
     tree.trunkMesh?.setMatrixAt(tree.trunkInstanceId, zeroScale);
     tree.crownMesh?.setMatrixAt(tree.crownInstanceId, zeroScale);
-    if (tree.trunkMesh) tree.trunkMesh.instanceMatrix.needsUpdate = true;
-    if (tree.crownMesh) tree.crownMesh.instanceMatrix.needsUpdate = true;
+    if (tree.trunkMesh) {
+      queueInstanceBufferRange(tree.trunkMesh, tree.trunkInstanceId);
+      flushInstanceBuffer(tree.trunkMesh);
+    }
+    if (tree.crownMesh) {
+      queueInstanceBufferRange(tree.crownMesh, tree.crownInstanceId);
+      flushInstanceBuffer(tree.crownMesh);
+    }
     return true;
   }
   function respawnReadyTrees() {
@@ -1550,7 +1566,9 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables, waterRegion
     const key = cx + ',' + cz; if (generated.has(key)) return false; generated.add(key);
     const data = rocksByChunk.get(key) || []; if (!data.length) return true;
     const mesh = new THREE.InstancedMesh(geometry, material, data.length);
-    mesh.name = 'mineable-decorative-stones-' + key; mesh.userData.noCollider = true; mesh.userData.rockInstances = data;
+    mesh.name = 'mineable-decorative-stones-' + key;
+    configureDynamicInstanceBuffer(mesh);
+    mesh.userData.noCollider = true; mesh.userData.rockInstances = data;
     mesh.castShadow = false; mesh.receiveShadow = true;
     for (let i = 0; i < data.length; i++) {
       const rock = data[i]; rock.mesh = mesh; rock.instanceId = i;
@@ -1566,7 +1584,11 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables, waterRegion
     if (!rock) return false; if (!rock.active) return true;
     rock.active = false; rock.respawnAt = Math.max(Date.now() + 1000, Number(due) || Date.now() + ROCK_RESPAWN_MS);
     depleted.set(rock.id, rock.respawnAt); writeRock(rock);
-    if (rock.mesh) rock.mesh.instanceMatrix.needsUpdate = true; return true;
+    if (rock.mesh) {
+      queueInstanceBufferRange(rock.mesh, rock.instanceId);
+      flushInstanceBuffer(rock.mesh);
+    }
+    return true;
   }
   function getInteractiveMeshes(x, z) {
     const cx = Math.floor(x / chunkSize), cz = Math.floor(z / chunkSize), result = [];
@@ -1589,9 +1611,10 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables, waterRegion
       const rock = rockById.get(id);
       if (!rock) { depleted.delete(id); continue; }
       rock.active = true; rock.respawnAt = 0; rock.hp = rock.maxHp;
-      depleted.delete(id); writeRock(rock); if (rock.mesh) changed.add(rock.mesh);
+      depleted.delete(id); writeRock(rock);
+      if (rock.mesh) { queueInstanceBufferRange(rock.mesh, rock.instanceId); changed.add(rock.mesh); }
     }
-    for (const mesh of changed) { mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); }
+    for (const mesh of changed) { flushInstanceBuffer(mesh); mesh.computeBoundingSphere(); }
     return { pending: candidates.length - Math.min(maxBuilds, candidates.length), generated: generated.size };
   }
   updateNear(-1600, 900, 1);
@@ -1606,7 +1629,11 @@ function createRocks(scene, heightAt, routePoints, rnd, renderables, waterRegion
       const rock = rockById.get(id), stored = entry && typeof entry === 'object' ? Number(entry.respawnAt) : 0, now = Date.now();
       const due = Number.isFinite(stored) && stored > 0 ? stored : (typeof entry === 'number' ? now + ROCK_RESPAWN_MS : 0);
       if (!due || due <= now) { depleted.delete(id); if (rock) { rock.active = true; rock.respawnAt = 0; rock.hp = rock.maxHp; writeRock(rock); } return true; }
-      depleted.set(id, due); if (rock) { rock.active = false; rock.respawnAt = due; writeRock(rock); if (rock.mesh) rock.mesh.instanceMatrix.needsUpdate = true; }
+      depleted.set(id, due);
+      if (rock) {
+        rock.active = false; rock.respawnAt = due; writeRock(rock);
+        if (rock.mesh) { queueInstanceBufferRange(rock.mesh, rock.instanceId); flushInstanceBuffer(rock.mesh); }
+      }
       return true;
     },
     get depletedIds() { return Array.from(depleted, ([id, respawnAt]) => ({ id, respawnAt })); },
