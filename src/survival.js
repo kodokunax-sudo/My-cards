@@ -770,15 +770,58 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
   }
 
   for (const id of RESOURCE_IDS) heldResources[id] = makeHeldResource(id);
+  const handSkinMaterial = new THREE.MeshStandardMaterial({
+    color: 0xc58e6c, roughness: 0.96, flatShading: true,
+  });
+  const handShadeMaterial = new THREE.MeshStandardMaterial({
+    color: 0xa97458, roughness: 1, flatShading: true,
+  });
+  const sleeveMaterial = new THREE.MeshStandardMaterial({
+    color: 0x536044, roughness: 1, flatShading: true,
+  });
+  const sleeveTrimMaterial = new THREE.MeshStandardMaterial({
+    color: 0x394631, roughness: 1,
+  });
   const heldHands = new THREE.Group();
   heldHands.name = 'held-hands';
-  toolPart(heldHands, new THREE.SphereGeometry(0.13, 8, 6), handleMaterial, 0, -0.14, 0, 0, 1.2, 1.15, 0.72);
+
+  // Forearm and a short, worn sleeve enter the view from the lower-right corner.
+  toolPart(heldHands, new THREE.CylinderGeometry(0.078, 0.116, 0.62, 8),
+    handSkinMaterial, 0, -0.40, 0.12, -0.08);
+  toolPart(heldHands, new THREE.CylinderGeometry(0.096, 0.124, 0.25, 8),
+    sleeveMaterial, 0, -0.66, 0.13, -0.08);
+  toolPart(heldHands, new THREE.TorusGeometry(0.098, 0.014, 5, 10),
+    sleeveTrimMaterial, 0, -0.535, 0.13, Math.PI / 2);
+
+  // The fist has its own pivot so the wrist can snap slightly on impact.
+  const heldFist = new THREE.Group();
+  heldFist.name = 'held-fist-pivot';
+  heldFist.position.set(0, -0.015, 0);
+  heldHands.add(heldFist);
+  toolPart(heldFist, new THREE.SphereGeometry(0.145, 8, 6),
+    handSkinMaterial, 0, 0, -0.045, 0, 0.94, 1.02, 0.70);
+  toolPart(heldFist, new THREE.SphereGeometry(0.073, 7, 5),
+    handShadeMaterial, 0, -0.055, -0.105, 0, 1.08, 0.72, 0.54);
+
+  // Four knuckles and curled finger pads form a closed, readable fist silhouette.
   for (let i = 0; i < 4; i++) {
-    toolPart(heldHands, new THREE.CylinderGeometry(0.027, 0.035, 0.19, 6), handleMaterial,
-      -0.09 + i * 0.06, 0.015, 0.015, 0, 1, 1, 1, 0, 0);
+    const x = -0.091 + i * 0.061;
+    toolPart(heldFist, new THREE.SphereGeometry(0.043, 7, 5),
+      handSkinMaterial, x, 0.075, -0.132, 0, 0.92, 1.08, 0.72);
+    toolPart(heldFist, new THREE.SphereGeometry(0.034, 7, 5),
+      handShadeMaterial, x, 0.018, -0.143, 0, 1.0, 0.78, 0.68);
   }
-  toolPart(heldHands, new THREE.CylinderGeometry(0.03, 0.04, 0.15, 6), handleMaterial, 0.13, -0.12, 0.02, 0.85);
+
+  // The thumb rests diagonally across the curled fingers.
+  toolPart(heldFist, new THREE.CylinderGeometry(0.027, 0.037, 0.16, 7),
+    handSkinMaterial, 0.112, -0.005, -0.085, 0.94);
+  toolPart(heldFist, new THREE.SphereGeometry(0.043, 7, 5),
+    handSkinMaterial, 0.145, 0.055, -0.115, 0, 0.92, 1.0, 0.72);
+  toolPart(heldFist, new THREE.SphereGeometry(0.028, 6, 5),
+    handShadeMaterial, 0.083, -0.065, -0.13, 0, 1, 0.82, 0.72);
+
   heldHands.userData.swingType = 'hands';
+  heldHands.userData.fist = heldFist;
   heldMotion.add(heldHands);
   let activeHeldModel = heldHands;
   let activeHeldId = 'hands';
@@ -829,6 +872,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
     if (!isSwinging) {
       model.position.set(0, 0, 0);
       model.rotation.set(0, 0, 0);
+      if (model.userData.fist) model.userData.fist.rotation.set(0, 0, 0);
       return;
     }
 
@@ -851,11 +895,12 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       positionY = sampleMotion([[0, 0], [0.32, 0.10], [0.53, -0.12], [1, 0]], progress);
       positionZ = sampleMotion([[0, 0], [0.32, 0.03], [0.53, -0.16], [1, 0]], progress);
     } else if (model.userData.swingType === 'hands') {
-      rotationX = sampleMotion([[0, 0], [0.28, -0.28], [0.48, 0.52], [1, 0]], progress);
-      rotationY = 0;
-      rotationZ = sampleMotion([[0, 0], [0.28, -0.12], [0.48, 0.14], [1, 0]], progress);
-      positionY = sampleMotion([[0, 0], [0.28, 0.035], [0.48, -0.06], [1, 0]], progress);
-      positionZ = sampleMotion([[0, 0], [0.28, 0.04], [0.48, -0.12], [1, 0]], progress);
+      // Brief pull-back, strong forward jab, then a quick recoil.
+      rotationX = sampleMotion([[0, 0], [0.22, -0.24], [0.43, 0.76], [0.58, -0.12], [1, 0]], progress);
+      rotationY = sampleMotion([[0, 0], [0.22, 0.08], [0.43, -0.10], [0.58, 0.035], [1, 0]], progress);
+      rotationZ = sampleMotion([[0, 0], [0.22, -0.16], [0.43, 0.20], [0.58, -0.045], [1, 0]], progress);
+      positionY = sampleMotion([[0, 0], [0.22, 0.055], [0.43, -0.035], [0.58, -0.015], [1, 0]], progress);
+      positionZ = sampleMotion([[0, 0], [0.22, 0.095], [0.43, -0.29], [0.58, -0.105], [1, 0]], progress);
     } else {
       rotationX = sampleMotion([[0, 0], [0.30, -0.42], [0.50, 0.32], [1, 0]], progress);
       rotationY = sampleMotion([[0, 0], [0.30, -0.16], [0.50, 0.12], [1, 0]], progress);
@@ -866,6 +911,13 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
 
     model.rotation.set(rotationX, rotationY, rotationZ);
     model.position.set(0, positionY, positionZ);
+    if (model.userData.fist) {
+      model.userData.fist.rotation.set(
+        sampleMotion([[0, 0], [0.22, -0.08], [0.43, 0.28], [0.58, -0.035], [1, 0]], progress),
+        sampleMotion([[0, 0], [0.22, 0.025], [0.43, -0.045], [0.58, 0.01], [1, 0]], progress),
+        sampleMotion([[0, 0], [0.22, -0.04], [0.43, 0.12], [0.58, -0.015], [1, 0]], progress)
+      );
+    }
   }
 
   refreshHeldTool();
