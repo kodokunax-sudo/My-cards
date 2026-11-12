@@ -802,7 +802,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   toolPart(heldHands, new THREE.TorusGeometry(0.098, 0.014, 5, 10),
     sleeveTrimMaterial, 0, -0.535, 0.13, Math.PI / 2);
 
-  // The fist has its own pivot so the wrist can snap slightly on impact.
+  // Articulated fist: four two-joint fingers and a thumb can open for gathering.
   const heldFist = new THREE.Group();
   heldFist.name = 'held-fist-pivot';
   heldFist.position.set(0, -0.015, 0);
@@ -812,42 +812,62 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   toolPart(heldFist, new THREE.SphereGeometry(0.073, 7, 5),
     handShadeMaterial, 0, -0.055, -0.105, 0, 1.08, 0.72, 0.54);
 
-  // Four knuckles and curled finger pads form a closed, readable fist silhouette.
+  const heldFingerJoints = [];
   for (let i = 0; i < 4; i++) {
     const x = -0.091 + i * 0.061;
-    toolPart(heldFist, new THREE.SphereGeometry(0.043, 7, 5),
-      handSkinMaterial, x, 0.075, -0.132, 0, 0.92, 1.08, 0.72);
-    toolPart(heldFist, new THREE.SphereGeometry(0.034, 7, 5),
-      handShadeMaterial, x, 0.018, -0.143, 0, 1.0, 0.78, 0.68);
+    const base = new THREE.Group();
+    base.position.set(x, 0.045, -0.115);
+    heldFist.add(base);
+    toolPart(base, new THREE.CylinderGeometry(0.022, 0.027, 0.115, 7),
+      handSkinMaterial, 0, 0.055, 0);
+    toolPart(base, new THREE.SphereGeometry(0.028, 7, 5),
+      handSkinMaterial, 0, 0.111, 0, 0, 0.95, 1, 0.9);
+
+    const tip = new THREE.Group();
+    tip.position.set(0, 0.105, 0);
+    base.add(tip);
+    toolPart(tip, new THREE.CylinderGeometry(0.018, 0.024, 0.09, 7),
+      handSkinMaterial, 0, 0.043, 0);
+    toolPart(tip, new THREE.SphereGeometry(0.024, 7, 5),
+      handShadeMaterial, 0, 0.087, -0.004, 0, 0.95, 0.9, 0.9);
+    heldFingerJoints.push({ base, tip, fan: (i - 1.5) * 0.045 });
   }
 
-  // The thumb rests diagonally across the curled fingers.
-  toolPart(heldFist, new THREE.CylinderGeometry(0.027, 0.037, 0.16, 7),
-    handSkinMaterial, 0.112, -0.005, -0.085, 0.94);
-  toolPart(heldFist, new THREE.SphereGeometry(0.043, 7, 5),
-    handSkinMaterial, 0.145, 0.055, -0.115, 0, 0.92, 1.0, 0.72);
-  toolPart(heldFist, new THREE.SphereGeometry(0.028, 6, 5),
-    handShadeMaterial, 0.083, -0.065, -0.13, 0, 1, 0.82, 0.72);
+  const heldThumb = new THREE.Group();
+  heldThumb.position.set(0.105, -0.025, -0.075);
+  heldFist.add(heldThumb);
+  toolPart(heldThumb, new THREE.CylinderGeometry(0.026, 0.034, 0.17, 7),
+    handSkinMaterial, 0.045, 0.055, 0, Math.PI / 2);
+  toolPart(heldThumb, new THREE.SphereGeometry(0.04, 7, 5),
+    handSkinMaterial, 0.13, 0.055, -0.005, 0, 0.95, 0.9, 0.85);
 
   heldHands.userData.swingType = 'hands';
   heldHands.userData.fist = heldFist;
+  heldHands.userData.fingers = heldFingerJoints;
+  heldHands.userData.thumb = heldThumb;
   heldMotion.add(heldHands);
   let activeHeldModel = heldHands;
   let activeHeldId = 'hands';
   let toolSwing = 0;
+  let toolSwingSpeed = 3.8;
+  let toolAction = 'idle';
   let heldIdleTime = 0;
 
   function refreshHeldTool() {
     const activeStack = hotbarSlots[selectedSlot];
     selectedTool = activeStack && TOOL_IDS.includes(activeStack.id) ? activeStack.id : 'hands';
-    for (const [id, group] of Object.entries(heldTools)) group.visible = selectedTool === id;
-    for (const [id, group] of Object.entries(heldResources)) {
-      group.visible = !!activeStack && activeStack.id === id && activeStack.count > 0;
+    const gathering = toolAction === 'gather' && toolSwing > 0;
+    for (const [id, group] of Object.entries(heldTools)) {
+      group.visible = selectedTool === id && !gathering;
     }
-    heldHands.visible = !activeStack;
-    activeHeldId = selectedTool !== 'hands' ? selectedTool :
-      activeStack && heldResources[activeStack.id] ? activeStack.id : 'hands';
-    activeHeldModel = selectedTool !== 'hands' ? heldTools[selectedTool] :
+    for (const [id, group] of Object.entries(heldResources)) {
+      group.visible = !gathering && !!activeStack && activeStack.id === id && activeStack.count > 0;
+    }
+    heldHands.visible = !activeStack || gathering;
+    activeHeldId = gathering || selectedTool === 'hands' ? 'hands' :
+      activeStack && heldResources[activeStack.id] ? activeStack.id : selectedTool;
+    activeHeldModel = gathering || selectedTool === 'hands' ? heldHands :
+      selectedTool !== 'hands' ? heldTools[selectedTool] :
       activeStack && heldResources[activeStack.id] ? heldResources[activeStack.id] : heldHands;
     viewModel.visible = player.mode !== 'cinematic' && !player.swimming;
   }
@@ -878,10 +898,44 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     heldMotion.position.set(0, Math.sin(heldIdleTime * 2.1) * 0.008, 0);
     heldMotion.rotation.set(0, Math.sin(heldIdleTime * 0.85) * 0.012, 0);
 
+    const setHandPose = (curl, thumbAngle) => {
+      for (const finger of heldFingerJoints) {
+        finger.base.rotation.set(curl, 0, finger.fan);
+        finger.tip.rotation.set(curl * 0.88, 0, finger.fan * 0.35);
+      }
+      heldThumb.rotation.set(0, thumbAngle, 0);
+    };
+
     if (!isSwinging) {
       model.position.set(0, 0, 0);
       model.rotation.set(0, 0, 0);
-      if (model.userData.fist) model.userData.fist.rotation.set(0, 0, 0);
+      if (model.userData.fist) {
+        model.userData.fist.rotation.set(
+          Math.sin(heldIdleTime * 1.25) * 0.012,
+          Math.sin(heldIdleTime * 0.75) * 0.014,
+          Math.sin(heldIdleTime * 1.6) * 0.008
+        );
+        if (model.userData.fingers) setHandPose(-1.06, 0.78);
+      }
+      return;
+    }
+
+    if (model.userData.swingType === 'hands' && toolAction === 'gather') {
+      // Open, reach, close around the branch/leaf, then draw the hand back.
+      const reachX = sampleMotion([[0, 0], [0.22, -0.18], [0.48, 0.22], [0.72, -0.08], [1, 0]], progress);
+      const reachY = sampleMotion([[0, 0], [0.22, 0.045], [0.48, -0.075], [0.72, -0.025], [1, 0]], progress);
+      const reachZ = sampleMotion([[0, 0], [0.22, 0.06], [0.48, -0.34], [0.72, -0.16], [1, 0]], progress);
+      model.rotation.set(reachX, sampleMotion([[0, 0], [0.48, -0.08], [1, 0]], progress), 0);
+      model.position.set(0, reachY, reachZ);
+      model.userData.fist.rotation.set(
+        sampleMotion([[0, 0], [0.22, -0.12], [0.48, 0.12], [0.72, -0.035], [1, 0]], progress),
+        0,
+        sampleMotion([[0, 0], [0.22, -0.09], [0.48, 0.08], [0.72, -0.025], [1, 0]], progress)
+      );
+      setHandPose(
+        sampleMotion([[0, -1.06], [0.20, -0.08], [0.43, 0.02], [0.66, -1.12], [1, -1.06]], progress),
+        sampleMotion([[0, 0.78], [0.22, -0.18], [0.44, -0.30], [0.68, 0.95], [1, 0.78]], progress)
+      );
       return;
     }
 
@@ -891,44 +945,71 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     let positionY;
     let positionZ;
 
-    if (model.userData.swingType === 'axe') {
-      rotationX = sampleMotion([[0, 0], [0.34, -0.95], [0.54, 0.46], [1, 0]], progress);
-      rotationY = sampleMotion([[0, 0], [0.34, -0.18], [0.54, 0.25], [1, 0]], progress);
-      rotationZ = sampleMotion([[0, 0], [0.34, -0.58], [0.54, 0.52], [1, 0]], progress);
-      positionY = sampleMotion([[0, 0], [0.34, 0.08], [0.54, -0.10], [1, 0]], progress);
-      positionZ = sampleMotion([[0, 0], [0.34, 0.045], [0.54, -0.13], [1, 0]], progress);
-    } else if (model.userData.swingType === 'pickaxe') {
-      rotationX = sampleMotion([[0, 0], [0.32, -1.12], [0.53, 0.68], [1, 0]], progress);
-      rotationY = sampleMotion([[0, 0], [0.32, 0.10], [0.53, -0.12], [1, 0]], progress);
-      rotationZ = sampleMotion([[0, 0], [0.32, 0.24], [0.53, -0.30], [1, 0]], progress);
-      positionY = sampleMotion([[0, 0], [0.32, 0.10], [0.53, -0.12], [1, 0]], progress);
-      positionZ = sampleMotion([[0, 0], [0.32, 0.03], [0.53, -0.16], [1, 0]], progress);
-    } else if (model.userData.swingType === 'hands') {
-      // Brief pull-back, strong forward jab, then a quick recoil.
+    if (model.userData.swingType === 'hands') {
+      // A compact pull-back, straight punch, impact and wrist recoil.
       rotationX = sampleMotion([[0, 0], [0.22, -0.24], [0.43, 0.76], [0.58, -0.12], [1, 0]], progress);
       rotationY = sampleMotion([[0, 0], [0.22, 0.08], [0.43, -0.10], [0.58, 0.035], [1, 0]], progress);
       rotationZ = sampleMotion([[0, 0], [0.22, -0.16], [0.43, 0.20], [0.58, -0.045], [1, 0]], progress);
       positionY = sampleMotion([[0, 0], [0.22, 0.055], [0.43, -0.035], [0.58, -0.015], [1, 0]], progress);
       positionZ = sampleMotion([[0, 0], [0.22, 0.095], [0.43, -0.29], [0.58, -0.105], [1, 0]], progress);
+      setHandPose(-1.12, 0.82);
     } else {
-      rotationX = sampleMotion([[0, 0], [0.30, -0.42], [0.50, 0.32], [1, 0]], progress);
-      rotationY = sampleMotion([[0, 0], [0.30, -0.16], [0.50, 0.12], [1, 0]], progress);
-      rotationZ = sampleMotion([[0, 0], [0.30, -0.24], [0.50, 0.26], [1, 0]], progress);
-      positionY = sampleMotion([[0, 0], [0.30, 0.045], [0.50, -0.07], [1, 0]], progress);
-      positionZ = sampleMotion([[0, 0], [0.30, 0.025], [0.50, -0.09], [1, 0]], progress);
+      // Each material/tool family has its own weight, wind-up and follow-through.
+      const profiles = {
+        woodAxe: {
+          x: [[0, 0], [0.30, -0.78], [0.49, 0.58], [0.68, -0.10], [1, 0]],
+          y: [[0, 0], [0.30, -0.12], [0.49, 0.20], [1, 0]],
+          z: [[0, 0], [0.30, -0.60], [0.49, 0.48], [0.68, -0.08], [1, 0]],
+          py: [[0, 0], [0.30, 0.075], [0.49, -0.075], [1, 0]],
+          pz: [[0, 0], [0.30, 0.045], [0.49, -0.15], [1, 0]],
+        },
+        stoneAxe: {
+          x: [[0, 0], [0.36, -1.12], [0.55, 0.72], [0.76, -0.16], [1, 0]],
+          y: [[0, 0], [0.36, 0.15], [0.55, -0.18], [1, 0]],
+          z: [[0, 0], [0.36, -0.42], [0.55, 0.38], [0.76, -0.10], [1, 0]],
+          py: [[0, 0], [0.36, 0.12], [0.55, -0.11], [1, 0]],
+          pz: [[0, 0], [0.36, 0.08], [0.55, -0.18], [1, 0]],
+        },
+        ironAxe: {
+          x: [[0, 0], [0.25, -0.72], [0.43, 0.88], [0.60, -0.10], [1, 0]],
+          y: [[0, 0], [0.25, -0.10], [0.43, 0.16], [1, 0]],
+          z: [[0, 0], [0.25, -0.70], [0.43, 0.58], [0.60, -0.14], [1, 0]],
+          py: [[0, 0], [0.25, 0.055], [0.43, -0.10], [1, 0]],
+          pz: [[0, 0], [0.25, 0.025], [0.43, -0.18], [1, 0]],
+        },
+        woodPickaxe: {
+          x: [[0, 0], [0.28, -0.66], [0.47, 0.48], [0.66, -0.08], [1, 0]],
+          y: [[0, 0], [0.28, 0.08], [0.47, -0.08], [1, 0]],
+          z: [[0, 0], [0.28, 0.18], [0.47, -0.22], [0.66, 0.06], [1, 0]],
+          py: [[0, 0], [0.28, 0.055], [0.47, -0.065], [1, 0]],
+          pz: [[0, 0], [0.28, 0.025], [0.47, -0.12], [1, 0]],
+        },
+        stonePickaxe: {
+          x: [[0, 0], [0.35, -1.10], [0.54, 0.74], [0.73, -0.14], [1, 0]],
+          y: [[0, 0], [0.35, 0.12], [0.54, -0.14], [1, 0]],
+          z: [[0, 0], [0.35, 0.28], [0.54, -0.35], [0.73, 0.08], [1, 0]],
+          py: [[0, 0], [0.35, 0.105], [0.54, -0.12], [1, 0]],
+          pz: [[0, 0], [0.35, 0.045], [0.54, -0.17], [1, 0]],
+        },
+        ironPickaxe: {
+          x: [[0, 0], [0.32, -1.22], [0.50, 0.88], [0.68, -0.18], [1, 0]],
+          y: [[0, 0], [0.32, -0.08], [0.50, 0.12], [1, 0]],
+          z: [[0, 0], [0.32, 0.14], [0.50, -0.24], [0.68, 0.06], [1, 0]],
+          py: [[0, 0], [0.32, 0.12], [0.50, -0.13], [1, 0]],
+          pz: [[0, 0], [0.32, 0.05], [0.50, -0.20], [1, 0]],
+        },
+      };
+      const profile = profiles[activeHeldId] || profiles.woodAxe;
+      rotationX = sampleMotion(profile.x, progress);
+      rotationY = sampleMotion(profile.y, progress);
+      rotationZ = sampleMotion(profile.z, progress);
+      positionY = sampleMotion(profile.py, progress);
+      positionZ = sampleMotion(profile.pz, progress);
     }
 
     model.rotation.set(rotationX, rotationY, rotationZ);
     model.position.set(0, positionY, positionZ);
-    if (model.userData.fist) {
-      model.userData.fist.rotation.set(
-        sampleMotion([[0, 0], [0.22, -0.08], [0.43, 0.28], [0.58, -0.035], [1, 0]], progress),
-        sampleMotion([[0, 0], [0.22, 0.025], [0.43, -0.045], [0.58, 0.01], [1, 0]], progress),
-        sampleMotion([[0, 0], [0.22, -0.04], [0.43, 0.12], [0.58, -0.015], [1, 0]], progress)
-      );
-    }
   }
-
   refreshHeldTool();
 
   function addWorkbenchMesh() {
@@ -1811,10 +1892,18 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     return null;
   }
 
+  function startHeldAction(action) {
+    toolAction = action;
+    toolSwing = 1;
+    if (action === 'gather') toolSwingSpeed = 2.3;
+    else if (action === 'punch') toolSwingSpeed = 3.0;
+    else if (selectedTool.endsWith('Pickaxe')) toolSwingSpeed = 2.55;
+    else toolSwingSpeed = 2.85;
+  }
+
   function hitTarget() {
     if (panelOpen || player.mode === 'fly' || player.swimming) return;
     refreshHeldTool();
-    toolSwing = 1;
     const target = currentTarget();
     if (!target) {
       if (messageCooldown <= 0) {
@@ -1825,6 +1914,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     }
 
     if (target.type === 'fiber' || target.type === 'branch' || target.type === 'stick' || target.type === 'leaf') {
+      startHeldAction('gather');
       const isFiber = target.type === 'fiber';
       const isStick = target.type === 'stick';
       const isLeaf = target.type === 'leaf';
@@ -1844,6 +1934,9 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       toast(message + (amount - missing) + ' ' + label + '.' + (missing ? ' Инвентарь заполнен.' : ''));
       return;
     }
+
+    if (selectedTool === 'hands') startHeldAction('punch');
+    else startHeldAction('tool');
 
     if (target.type === 'decorRock') {
       const damage = selectedTool === 'ironPickaxe' ? 18 : selectedTool === 'stonePickaxe' ? 9 : selectedTool === 'woodPickaxe' ? 3 : 1;
@@ -2078,7 +2171,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   function update(dt) {
     messageCooldown = Math.max(0, messageCooldown - dt);
     hitCooldown = Math.max(0, hitCooldown - dt);
-    toolSwing = Math.max(0, toolSwing - dt * 3.8);
+    toolSwing = Math.max(0, toolSwing - dt * toolSwingSpeed);
+    if (toolSwing <= 0) toolAction = 'idle';
     viewModel.rotation.set(-0.12, 0, -0.28);
     viewModel.position.set(0.40, -0.34, -0.66);
     refreshHeldTool();
