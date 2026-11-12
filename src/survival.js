@@ -2014,6 +2014,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       hitCooldown = selectedTool === 'hands' ? 0.72 : 0.46;
     }
     let changed = false;
+    let stoneBufferChanged = false;
     const now = Date.now();
     for (const node of nodes) {
       if (node.active || !node.due || now < node.due) continue;
@@ -2026,6 +2027,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       Object.assign(node, nextPosition, { active: true, hp: STONE_HP, due: 0 });
       markResourcePosition(node);
       writeNode(node, true);
+      stoneBufferChanged = true;
       changed = true;
     }
 
@@ -2088,10 +2090,12 @@ export function createSurvival(scene, camera, canvas, world, player, hud) {
       changed = true;
     }
 
-    if (changed) {
+    if (stoneBufferChanged) {
       flushInstanceBuffer(stoneMesh);
-      // Respawned resources may move, so refresh aggregate bounds used by frustum culling.
+      // Respawned stone deposits may move, so refresh their frustum bounds.
       stoneMesh.computeBoundingSphere();
+    }
+    if (changed) {
       save();
       renderPanel();
     }
