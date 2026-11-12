@@ -971,6 +971,45 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       return THREE.MathUtils.lerp(1, FLY_BOOST_MAX_MULTIPLIER, eased);
     },
     get body() { return avatar.root; },
+    getSaveState() {
+      return {
+        position: camera.position.toArray(),
+        quaternion: camera.quaternion.toArray(),
+        feetY,
+        oxygen,
+        mode: mode === 'fly' ? 'fly' : 'walk',
+      };
+    },
+    restoreState(state) {
+      if (!state || !Array.isArray(state.position) || state.position.length < 3) return false;
+      const [x, y, z] = state.position.map(Number);
+      if (![x, y, z].every(Number.isFinite) ||
+        Math.abs(x) > 12000 || Math.abs(z) > 12000 || y < -200 || y > 2000) return false;
+
+      const nextMode = state.mode === 'fly' ? 'fly' : 'walk';
+      if (mode !== nextMode) setMode(nextMode);
+
+      camera.position.set(x, y, z);
+      if (Array.isArray(state.quaternion) && state.quaternion.length === 4 &&
+        state.quaternion.map(Number).every(Number.isFinite)) {
+        camera.quaternion.set(...state.quaternion.map(Number)).normalize();
+      }
+
+      feetY = Number.isFinite(Number(state.feetY))
+        ? THREE.MathUtils.clamp(Number(state.feetY), -200, 1990)
+        : camera.position.y - EYE_HEIGHT;
+      oxygen = Number.isFinite(Number(state.oxygen))
+        ? THREE.MathUtils.clamp(Number(state.oxygen), 0, MAX_OXYGEN)
+        : MAX_OXYGEN;
+
+      velocity.set(0, 0, 0);
+      jumpQueued = 0;
+      grounded = nextMode !== 'fly';
+      clearWaterState();
+      onModeChange?.(mode);
+      syncAvatar();
+      return true;
+    },
     get hitbox() {
       return {
         type: 'cylinder', radius: BODY_RADIUS, height: PLAYER_HEIGHT,
