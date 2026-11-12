@@ -332,11 +332,16 @@ function createPlayerAvatar(scene) {
     motion.rotation.z += (bodyZ - motion.rotation.z) * blend;
   }
 
-  // The player camera is positioned inside the avatar's head. Keep the entire
-  // full-body avatar on layer 1 so the first-person camera (layers 0 and 2)
-  // cannot draw the head, neck, torso or avatar arms through the viewmodel.
-  // The separate first-person hands are built on the camera's normal layer.
-  root.traverse((object) => object.layers.set(1));
+  // Keep the actual body visible in first person: torso, clothing and legs
+  // render on layer 0. The head and neck are excluded because the camera sits
+  // at eye height inside the avatar. Full-body arms stay on layer 1 because
+  // the articulated right-hand viewmodel supplies all hand/tool animations.
+  root.traverse((object) => object.layers.set(0));
+  head.layers.set(1);
+  neck.layers.set(1);
+  for (const arm of [leftArm, rightArm]) {
+    arm.shoulder.traverse((object) => object.layers.set(1));
+  }
 
   root.visible = true;
   hitbox.visible = false;
