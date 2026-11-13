@@ -1295,6 +1295,78 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     ...toolNames,
   };
 
+  // A real in-game tooltip is more reliable and readable than the browser's delayed title popup.
+  const itemTooltip = document.createElement('div');
+  itemTooltip.className = 'survival-item-tooltip';
+  itemTooltip.id = 'survival-item-tooltip';
+  itemTooltip.hidden = true;
+  itemTooltip.setAttribute('role', 'tooltip');
+  itemTooltip.setAttribute('aria-live', 'polite');
+  document.body.appendChild(itemTooltip);
+
+  function getTooltipCell(target) {
+    return target instanceof Element
+      ? target.closest('.inventory-slot, .hotbar-slot, .craft-slot, .crafting-result')
+      : null;
+  }
+
+  function positionItemTooltip(x, y) {
+    const padding = 10;
+    const gap = 14;
+    const rect = itemTooltip.getBoundingClientRect();
+    const left = Math.max(padding, Math.min(x + gap, window.innerWidth - rect.width - padding));
+    const top = y + gap + rect.height > window.innerHeight - padding
+      ? Math.max(padding, y - rect.height - gap)
+      : y + gap;
+    itemTooltip.style.left = left + 'px';
+    itemTooltip.style.top = top + 'px';
+  }
+
+  function showItemTooltip(cell, x, y) {
+    const name = cell && cell.dataset.itemName;
+    if (!name) {
+      itemTooltip.hidden = true;
+      return;
+    }
+    const count = Number(cell.dataset.itemCount) || 0;
+    itemTooltip.textContent = name + (count > 1 ? ' · ' + count + ' шт.' : '');
+    itemTooltip.hidden = false;
+    itemTooltip.classList.add('visible');
+    positionItemTooltip(x, y);
+  }
+
+  function hideItemTooltip() {
+    itemTooltip.classList.remove('visible');
+    itemTooltip.hidden = true;
+  }
+
+  ui.addEventListener('pointerover', (event) => {
+    const cell = getTooltipCell(event.target);
+    if (!cell) return;
+    showItemTooltip(cell, event.clientX, event.clientY);
+  });
+  ui.addEventListener('pointermove', (event) => {
+    const cell = getTooltipCell(event.target);
+    if (cell && !itemTooltip.hidden) positionItemTooltip(event.clientX, event.clientY);
+  });
+  ui.addEventListener('pointerout', (event) => {
+    const cell = getTooltipCell(event.target);
+    if (!cell || (event.relatedTarget instanceof Node && cell.contains(event.relatedTarget))) return;
+    hideItemTooltip();
+  });
+  ui.addEventListener('focusin', (event) => {
+    const cell = getTooltipCell(event.target);
+    if (!cell) return;
+    const rect = cell.getBoundingClientRect();
+    showItemTooltip(cell, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  });
+  ui.addEventListener('focusout', (event) => {
+    const cell = getTooltipCell(event.target);
+    if (cell && !(event.relatedTarget instanceof Node && cell.contains(event.relatedTarget))) {
+      hideItemTooltip();
+    }
+  });
+
   let panelOpen = false;
   let mouseHeld = false;
   let hitCooldown = 0;
@@ -1393,7 +1465,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       (cellIsSelected(kind, index) ? ' moving' : '') +
       (!stack ? ' empty' : '');
     const itemName = stack ? (itemNames[stack.id] || stack.id) : '';
-    button.title = itemName ? itemName + (stack.count > 1 ? ' · ' + stack.count : '') : '';
+    button.dataset.itemName = itemName;
+    button.dataset.itemCount = stack ? String(stack.count) : '';
     if (kind === 'hotbar') {
       const key = document.createElement('span');
       key.className = 'slot-key';
@@ -1740,9 +1813,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     const outputName = match
       ? (itemNames[match.recipe.output] || match.recipe.output)
       : '';
-    const outputCount = match && match.recipe.count > 1 ? ' · ' + match.recipe.count : '';
-    craftOutputEl.title = outputName ? outputName + outputCount : '';
-    craftOutputEl.setAttribute('aria-label', match ? 'Результат: ' + outputName + outputCount : 'Результат крафта пока пуст');
+    const outputCount = match ? match.recipe.count : 0;
+    craftOutputEl.dataset.itemName = outputName;
+    craftOutputEl.dataset.itemCount = String(outputCount);
+    craftOutputEl.setAttribute('aria-label', match ? 'Результат: ' + outputName + (outputCount > 1 ? ' · ' + outputCount : '') : 'Результат крафта пока пуст');
     if (match) {
       const model = document.createElement('span');
       model.className = 'slot-model-wrap';
