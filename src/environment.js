@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PLAZA_RADIUS, GRASS_RADIUS, POOL_RADIUS, PALETTE, SUN_DIR } from './config.js';
+import { PLAZA_RADIUS, GRASS_RADIUS, POOL_RADIUS, PALETTE, SUN_DIR, getSunDirection } from './config.js';
 
 const NOISE_GLSL = /* glsl */ `
   float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
@@ -363,6 +363,7 @@ export function createEnvironment(scene) {
   const moon = new THREE.DirectionalLight(0x7896d8, 0);
   moon.position.set(-140, 220, -180);
   scene.add(moon);
+  scene.add(moon.target);
 
   const shadowDirection = new THREE.Vector3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z).normalize();
   const shadowFocus = new THREE.Vector3();
@@ -378,13 +379,20 @@ export function createEnvironment(scene) {
   return {
     group,
     sun,
-    setTimeOfDay(nightProgress = 0) {
+    setTimeOfDay(nightProgress = 0, dayPhase = 0) {
       const n = THREE.MathUtils.clamp(nightProgress, 0, 1);
-      sun.intensity = THREE.MathUtils.lerp(1.62, 0.12, n);
-      hemi.intensity = THREE.MathUtils.lerp(1.02, 0.34, n);
-      fill.intensity = THREE.MathUtils.lerp(0.36, 0.08, n);
-      bounce.intensity = THREE.MathUtils.lerp(0.14, 0.025, n);
-      moon.intensity = 0.48 * n;
+      const direction = getSunDirection(dayPhase);
+      shadowDirection.set(direction.x, direction.y, direction.z).normalize();
+      sun.target.position.copy(shadowFocus);
+      sun.position.copy(shadowFocus).addScaledVector(shadowDirection, 320);
+      moon.target.position.copy(shadowFocus);
+      moon.position.copy(shadowFocus).addScaledVector(shadowDirection, -280);
+
+      sun.intensity = THREE.MathUtils.lerp(1.62, 0.045, n);
+      hemi.intensity = THREE.MathUtils.lerp(1.02, 0.20, n);
+      fill.intensity = THREE.MathUtils.lerp(0.36, 0.03, n);
+      bounce.intensity = THREE.MathUtils.lerp(0.14, 0.018, n);
+      moon.intensity = 0.30 * n;
       for (const light of lampLights) light.intensity = 13 * n;
     },
     setShadowSize(size) {
