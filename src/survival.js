@@ -51,9 +51,11 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   const STACK_LIMIT = 64;
 
   function cleanStack(value) {
-    if (!value || !ITEM_IDS.includes(value.id)) return null;
-    const count = TOOL_IDS.includes(value.id) ? 1 : Math.max(0, Math.min(STACK_LIMIT, Math.floor(Number(value.count) || 0)));
-    return count > 0 ? { id: value.id, count } : null;
+    if (!value) return null;
+    const id = value.id === 'branch' ? 'sticks' : value.id;
+    if (!ITEM_IDS.includes(id)) return null;
+    const count = TOOL_IDS.includes(id) ? 1 : Math.max(0, Math.min(STACK_LIMIT, Math.floor(Number(value.count) || 0)));
+    return count > 0 ? { id, count } : null;
   }
 
   function normalizeSlotArray(value, length) {
@@ -64,10 +66,11 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     const slots = Array(27).fill(null);
     let cursor = 0;
     const put = (id, rawCount) => {
-      let remaining = TOOL_IDS.includes(id) ? (rawCount ? 1 : 0) : Math.max(0, Math.floor(Number(rawCount) || 0));
+      const normalizedId = id === 'branch' ? 'sticks' : id;
+      let remaining = TOOL_IDS.includes(normalizedId) ? (rawCount ? 1 : 0) : Math.max(0, Math.floor(Number(rawCount) || 0));
       while (remaining > 0 && cursor < slots.length) {
-        const amount = TOOL_IDS.includes(id) ? 1 : Math.min(STACK_LIMIT, remaining);
-        slots[cursor++] = { id, count: amount };
+        const amount = TOOL_IDS.includes(normalizedId) ? 1 : Math.min(STACK_LIMIT, remaining);
+        slots[cursor++] = { id: normalizedId, count: amount };
         remaining -= amount;
       }
     };
@@ -1656,7 +1659,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       },
       {
         id: 'handle', output: 'handle', count: 1, width: 2, height: 1, station: 'field',
-        cells: [{ x: 0, y: 0, id: 'branch' }, { x: 1, y: 0, id: 'sharpShard' }],
+        cells: [{ x: 0, y: 0, id: 'sticks' }, { x: 1, y: 0, id: 'sharpShard' }],
       },
       {
         id: 'stoneAxe', output: 'stoneAxe', count: 1, width: 3, height: 2, station: 'field',
@@ -2051,12 +2054,12 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       target.node.due = Date.now() + RESPAWN_MS;
       writeGatherNode(target.node, gatherMesh, isBranch, isLeaf, true);
       flushInstanceBuffer(gatherMesh);
-      const itemId = isFiber ? 'fiber' : isLeaf ? 'leaves' : isStick ? 'sticks' : 'branch';
+      const itemId = isFiber ? 'fiber' : isLeaf ? 'leaves' : 'sticks';
       const amount = isFiber || isLeaf ? 2 + Math.floor(Math.random() * 3) : 1 + (Math.random() < 0.18 ? 1 : 0);
       const missing = addToInventory(itemId, amount);
       save(); renderPanel();
-      const label = isFiber ? 'волокна' : isLeaf ? 'листьев' : isStick ? 'палок' : 'ветку';
-      const message = isFiber ? 'Куст собран: +' : isLeaf ? 'Листья собраны: +' : isStick ? 'Палки подобраны: +' : 'Ветка подобрана: +';
+      const label = isFiber ? 'волокна' : isLeaf ? 'листьев' : 'палок';
+      const message = isFiber ? 'Куст собран: +' : isLeaf ? 'Листья собраны: +' : 'Палки подобраны: +';
       toast(message + (amount - missing) + ' ' + label + '.' + (missing ? ' Инвентарь заполнен.' : ''));
       return;
     }
