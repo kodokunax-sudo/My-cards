@@ -6,6 +6,7 @@ export function createHud() {
     angle: document.getElementById('stat-angle'),
     height: document.getElementById('stat-height'),
     mode: document.getElementById('stat-mode'),
+    worldClock: document.getElementById('world-clock'),
     toast: document.getElementById('toast'),
     compass: document.getElementById('compass'),
     oxygen: document.getElementById('oxygen-indicator'),
@@ -18,6 +19,7 @@ export function createHud() {
   const cx = size / 2, cy = size / 2, r = size / 2 - 12;
 
   let toastTimer = 0;
+  let lastClockText = '';
   const fmt = (v) => v.toFixed(1).replace('.', ',');
 
   function drawCompass(yaw, bearing) {
@@ -98,6 +100,17 @@ export function createHud() {
       }
 
       drawCompass(camera.rotation.y, bearing);
+    },
+    setWorldClock(dayPhaseSeconds, isNight) {
+      if (!el.worldClock) return;
+      const gameMinutes = (6 * 60 + Math.floor(Math.max(0, Number(dayPhaseSeconds) || 0))) % (24 * 60);
+      const hours = String(Math.floor(gameMinutes / 60)).padStart(2, '0');
+      const minutes = String(gameMinutes % 60).padStart(2, '0');
+      const label = `${hours}:${minutes} · ${isNight ? 'НОЧЬ' : 'ДЕНЬ'}`;
+      if (label === lastClockText) return;
+      lastClockText = label;
+      el.worldClock.textContent = label;
+      el.worldClock.classList.toggle('night', !!isNight);
     },
     setMode(mode) {
       const names = { walk: 'пешком', fly: 'полёт', cinematic: 'облёт' };
