@@ -25,6 +25,28 @@ export const SUN_DIR = {
   z: -Math.cos(AZ) * Math.cos(EL),
 };
 
+// One real second equals one in-game minute: 14 minutes of daylight,
+// followed by 10 minutes of night. A fresh world starts at 06:00.
+export const DAY_DURATION_SECONDS = 14 * 60;
+export const NIGHT_DURATION_SECONDS = 10 * 60;
+export const DAY_NIGHT_CYCLE_SECONDS = DAY_DURATION_SECONDS + NIGHT_DURATION_SECONDS;
+
+export function getSunDirection(dayPhaseSeconds = 0) {
+  const raw = Number(dayPhaseSeconds);
+  const phase = ((Number.isFinite(raw) ? raw : 0) % DAY_NIGHT_CYCLE_SECONDS +
+    DAY_NIGHT_CYCLE_SECONDS) % DAY_NIGHT_CYCLE_SECONDS;
+  const angle = phase < DAY_DURATION_SECONDS
+    ? (phase / DAY_DURATION_SECONDS) * Math.PI
+    : Math.PI + ((phase - DAY_DURATION_SECONDS) / NIGHT_DURATION_SECONDS) * Math.PI;
+  const horizontal = Math.cos(angle);
+  const azimuth = 0.92;
+  return {
+    x: Math.sin(azimuth) * horizontal,
+    y: Math.sin(angle),
+    z: -Math.cos(azimuth) * horizontal,
+  };
+}
+
 export const PALETTE = {
   stone: 0xd9cdb2,
   stoneWarm: 0xe3d6b8,
