@@ -1435,6 +1435,7 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
   const shrubMeshes = [];
   const shrubById = new Map();
   const depleted = new Map();
+  const damaged = new Map();
   const grassGeometry = new THREE.ConeGeometry(0.32, 1.65, 3, 1);
 
   // One bush is a merged cluster of several low-poly foliage lobes. This is
@@ -1541,7 +1542,7 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
         angle: random() * TAU,
         hue: random(),
         active: true,
-        hp: 2,
+        hp: damaged.get(id) || 2,
         due: 0,
       });
     }
@@ -1616,6 +1617,7 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
     shrub.active = false;
     shrub.hp = 0;
     shrub.due = respawnAt;
+    damaged.delete(shrub.id);
     depleted.set(shrub.id, respawnAt);
     writeShrub(shrub, true);
     flushInstanceBuffer(shrub.mesh);
@@ -1631,6 +1633,7 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
       const respawnAt = Number(entry && typeof entry === 'object' ? entry.respawnAt : now + SHRUB_RESPAWN_MS);
       if (!id || id === 'undefined' || !Number.isFinite(respawnAt) || respawnAt <= now) continue;
       depleted.set(id, respawnAt);
+      damaged.delete(id);
       const shrub = shrubById.get(id);
       if (!shrub || !shrub.active) continue;
       shrub.active = false;
@@ -1654,6 +1657,7 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
       shrub.hp = 2;
       shrub.due = 0;
       depleted.delete(shrub.id);
+      damaged.delete(shrub.id);
       writeShrub(shrub, true);
       respawnMeshes.add(shrub.mesh);
     }
@@ -1706,6 +1710,18 @@ function createGroundCover(scene, heightAt, routePoints, rnd, renderables) {
       const now = Date.now();
       return Array.from(depleted, ([id, respawnAt]) => ({ id, respawnAt }))
         .filter((entry) => entry.respawnAt > now);
+    },
+    get damagedIds() {
+      return Array.from(damaged, ([id, hp]) => ({ id, hp }));
+    },
+    setHealthById(entry) {
+      const id = String(entry && entry.id);
+      const hp = Number(entry && entry.hp);
+      if (!id || id === 'undefined' || !Number.isFinite(hp) || hp < 1 || hp >= 2) return false;
+      damaged.set(id, hp);
+      const shrub = shrubById.get(id);
+      if (shrub && shrub.active) shrub.hp = hp;
+      return true;
     },
   };
 }
