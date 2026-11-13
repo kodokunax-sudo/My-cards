@@ -138,8 +138,13 @@ function createPlayerAvatar(scene) {
     const hand = new THREE.Group();
     hand.position.set(0, -0.285, 0);
     elbow.add(hand);
-    ellipsoid(hand, skin, [0, -0.035, 0.005], [0.064, 0.09, 0.052], 12);
-    ellipsoid(hand, skinLight, [side * -0.038, -0.065, 0.025], [0.027, 0.052, 0.026], 10);
+
+    // A compact, readable hand: broad palm, rounded knuckle line and a small
+    // tucked-in thumb. It is deliberately simple, but no longer a tiny ball
+    // attached to a segmented tube.
+    ellipsoid(hand, skin, [0, -0.035, 0.012], [0.071, 0.079, 0.057], 18);
+    ellipsoid(hand, skinLight, [0, -0.074, 0.057], [0.050, 0.018, 0.008], 14);
+    ellipsoid(hand, skin, [side * -0.047, -0.043, 0.018], [0.022, 0.036, 0.025], 12);
 
     return { shoulder, elbow, hand };
   }
