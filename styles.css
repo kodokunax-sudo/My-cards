@@ -24,6 +24,26 @@ html, body {
 /* ---------------- HUD ---------------- */
 #ui { position: fixed; inset: 0; pointer-events: none; }
 
+#world-clock {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border: 1px solid rgba(240, 194, 116, 0.32);
+  border-radius: 999px;
+  background: rgba(8, 13, 20, 0.58);
+  color: #f3d59d;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+}
+#world-clock.night {
+  border-color: rgba(143, 166, 226, 0.42);
+  color: #c8d7ff;
+  background: rgba(7, 12, 28, 0.76);
+}
+
 .panel {
   position: absolute;
   background: var(--panel);
