@@ -836,50 +836,52 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   const heldHands = new THREE.Group();
   heldHands.name = 'held-right-arm';
 
-  // A clean, fingerless right arm: one tapered forearm, a blue sleeve and
-  // one short rounded cylinder for the fist. The overlapping joints hide seams.
-  toolPart(heldHands, new THREE.CylinderGeometry(0.084, 0.106, 0.49, 20, 1),
-    handSkinMaterial, 0, -0.315, 0.055, -0.08);
-  toolPart(heldHands, new THREE.SphereGeometry(1, 16, 12),
-    handSkinMaterial, 0, -0.075, 0.035, 0, 0.084, 0.083, 0.072);
+  // First-person arm proportions: a visible blue sleeve, a tapered forearm,
+  // a rounded wrist and a palm wider than the arm. The fist is one broad shape,
+  // not a long cylinder or a thumb-shaped protrusion.
+  toolPart(heldHands, new THREE.CylinderGeometry(0.086, 0.108, 0.49, 24, 1),
+    handSkinMaterial, 0, -0.315, 0.055, -0.12);
+  toolPart(heldHands, new THREE.SphereGeometry(1, 20, 16),
+    handSkinMaterial, 0, -0.075, 0.035, 0, 0.088, 0.083, 0.078);
 
   const heldFist = new THREE.Group();
-  heldFist.name = 'right-rounded-mitten';
-  heldFist.position.set(0, -0.025, -0.018);
+  heldFist.name = 'right-rounded-fist';
+  heldFist.position.set(0, -0.018, -0.018);
   heldHands.add(heldFist);
-  // One compact oval mitten, aligned with the forearm. No side protrusions,
-  // thumb-like tips or finger geometry.
-  toolPart(heldFist, new THREE.SphereGeometry(1, 20, 16),
-    handSkinMaterial, 0, 0, 0, 0, 0.094, 0.086, 0.080);
+  // Broad oval palm/closed fist with a soft knuckle ridge. No finger sticks
+  // and no side piece that could read as a giant thumb.
+  toolPart(heldFist, new THREE.SphereGeometry(1, 24, 18),
+    handSkinMaterial, 0, 0, 0, 0, 0.126, 0.092, 0.094);
+  toolPart(heldFist, new THREE.SphereGeometry(1, 20, 12),
+    handShadeMaterial, 0, 0.030, 0.078, 0, 0.080, 0.027, 0.014);
 
-  // Sleeve enters from the bottom-right, with a narrow cuff over the wrist.
-  toolPart(heldHands, new THREE.CylinderGeometry(0.100, 0.126, 0.32, 20, 1),
-    sleeveMaterial, 0, -0.625, 0.09, -0.08);
-  toolPart(heldHands, new THREE.TorusGeometry(0.108, 0.010, 8, 20),
+  // Sleeve, cuff and wrist overlap slightly so there is no visible gap.
+  toolPart(heldHands, new THREE.CylinderGeometry(0.112, 0.132, 0.36, 24, 1),
+    sleeveMaterial, 0, -0.635, 0.09, -0.12);
+  toolPart(heldHands, new THREE.TorusGeometry(0.116, 0.012, 8, 24),
     sleeveTrimMaterial, 0, -0.465, 0.09, Math.PI / 2);
 
   heldHands.userData.swingType = 'hands';
   heldHands.userData.fist = heldFist;
   heldMotion.add(heldHands);
 
-  // The tool version uses the same simplified cylindrical hand, wrapped
-  // crosswise around the handle. No separate fingers or thumb geometry.
+  // When a tool is selected, the same arm silhouette grips its handle.
   const heldToolGrip = new THREE.Group();
   heldToolGrip.name = 'held-tool-gripping-right-hand';
   heldToolGrip.visible = false;
 
-  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.084, 0.106, 0.49, 20, 1),
-    handSkinMaterial, 0.01, -0.35, 0.075, -0.08);
-  toolPart(heldToolGrip, new THREE.SphereGeometry(1, 16, 12),
-    handSkinMaterial, 0.01, -0.105, 0.055, 0, 0.084, 0.083, 0.072);
-  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.100, 0.126, 0.32, 20, 1),
-    sleeveMaterial, 0.01, -0.66, 0.105, -0.08);
-  toolPart(heldToolGrip, new THREE.TorusGeometry(0.108, 0.010, 8, 20),
-    sleeveTrimMaterial, 0.01, -0.50, 0.105, Math.PI / 2);
-  // A single smooth palm shape wraps over the handle. The handle remains
-  // visible above and below it, without separate thumb-like side pieces.
-  toolPart(heldToolGrip, new THREE.SphereGeometry(1, 18, 14),
-    handSkinMaterial, 0, -0.165, 0.045, 0, 0.112, 0.082, 0.078);
+  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.086, 0.108, 0.49, 24, 1),
+    handSkinMaterial, 0.01, -0.35, 0.075, -0.12);
+  toolPart(heldToolGrip, new THREE.SphereGeometry(1, 20, 16),
+    handSkinMaterial, 0.01, -0.105, 0.055, 0, 0.088, 0.083, 0.078);
+  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.112, 0.132, 0.36, 24, 1),
+    sleeveMaterial, 0.01, -0.66, 0.105, -0.12);
+  toolPart(heldToolGrip, new THREE.TorusGeometry(0.116, 0.012, 8, 24),
+    sleeveTrimMaterial, 0.01, -0.49, 0.105, Math.PI / 2);
+  // The palm is broader than the handle. The shaft stays visible through the
+  // grip, while the wrist and sleeve remain connected during each swing.
+  toolPart(heldToolGrip, new THREE.SphereGeometry(1, 22, 16),
+    handSkinMaterial, 0, -0.165, 0.045, 0, 0.116, 0.084, 0.088);
   heldMotion.add(heldToolGrip);
 
   let activeHeldModel = heldHands;
