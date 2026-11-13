@@ -334,16 +334,15 @@ function createPlayerAvatar(scene) {
     motion.rotation.z += (bodyZ - motion.rotation.z) * blend;
   }
 
-  // Keep the actual body visible in first person: torso, clothing and legs
-  // render on layer 0. The head and neck are excluded because the camera sits
-  // at eye height inside the avatar. Full-body arms stay on layer 1 because
-  // the articulated right-hand viewmodel supplies all hand/tool animations.
+  // Keep the actual avatar body on the first-person camera layer. The head and
+  // neck stay hidden to prevent clipping; the left arm remains attached to the
+  // torso and visible, while only the right body arm is replaced by the animated
+  // first-person tool/hand model.
   root.traverse((object) => object.layers.set(0));
   head.layers.set(1);
   neck.layers.set(1);
-  for (const arm of [leftArm, rightArm]) {
-    arm.shoulder.traverse((object) => object.layers.set(1));
-  }
+  leftArm.shoulder.traverse((object) => object.layers.set(0));
+  rightArm.shoulder.traverse((object) => object.layers.set(1));
 
   root.visible = true;
   hitbox.visible = false;
