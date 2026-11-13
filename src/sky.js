@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SUN_DIR, PALETTE } from './config.js';
+import { SUN_DIR, PALETTE, getSunDirection } from './config.js';
 
 const NOISE_GLSL = /* glsl */ `
   float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
@@ -13,6 +13,11 @@ const NOISE_GLSL = /* glsl */ `
     float v = 0.0, a = 0.5;
     for (int i = 0; i < 5; i++) { v += a * vnoise(p); p *= 2.03; a *= 0.5; }
     return v;
+  }
+  float hash31(vec3 p){
+    p = fract(p * 0.1031);
+    p += dot(p, p.yxz + 33.33);
+    return fract((p.x + p.y) * p.z);
   }
 `;
 
@@ -61,6 +66,18 @@ export function createSky(scene) {
         float sunFade = 1.0 - smoothstep(0.05, 0.82, uNight);
         col += uSunColor * (pow(sd, 1600.0) * 9.0 + pow(sd, 30.0) * 0.38 + pow(sd, 5.0) * 0.09) * sunFade;
 
+        float moonDot = max(dot(d, -normalize(uSunDir)), 0.0);
+        float moonFade = smoothstep(0.08, 0.55, uNight);
+        col += vec3(0.58, 0.68, 0.96) *
+          (pow(moonDot, 1400.0) * 1.65 + pow(moonDot, 24.0) * 0.045) * moonFade;
+
+        vec3 starCell = floor(d * 420.0);
+        float starSeed = hash31(starCell);
+        float star = step(0.9995, starSeed);
+        float twinkle = 0.68 + 0.32 * sin(uTime * 2.1 + starSeed * 120.0);
+        float starFade = smoothstep(0.12, 0.78, uNight) * smoothstep(-0.08, 0.18, h);
+        col += vec3(0.72, 0.80, 1.0) * star * twinkle * starFade * 1.8;
+
         // вытянутые к горизонту облака
         vec2 cp = d.xz / max(h + 0.14, 0.05);
         float c1 = fbm(cp * 1.25 + vec2(uTime * 0.005, uTime * 0.0035));
@@ -86,9 +103,11 @@ export function createSky(scene) {
 
   return {
     dome,
-    update(t, camera, nightProgress = 0) {
+    update(t, camera, nightProgress = 0, dayPhase = 0) {
       uniforms.uTime.value = t;
       uniforms.uNight.value = THREE.MathUtils.clamp(nightProgress, 0, 1);
+      const sunDirection = getSunDirection(dayPhase);
+      uniforms.uSunDir.value.set(sunDirection.x, sunDirection.y, sunDirection.z).normalize();
       dome.position.copy(camera.position);
 
       // Keep the sky shell inside the camera's far plane. The sphere is a
