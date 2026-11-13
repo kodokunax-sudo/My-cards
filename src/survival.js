@@ -1288,6 +1288,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     stoneWedge: 'Каменный клин', bark: 'Кора',
     ironScrap: 'Железный лом', ironOre: 'Железная руда',
     ironIngot: 'Железный слиток', metalFastener: 'Металлическое крепление',
+    fieldWorkplace: 'Полевое рабочее место',
+    woodWorkshop: 'Деревянная мастерская',
+    furnace: 'Печь',
+    fullWorkbench: 'Полноценный верстак',
     ...toolNames,
   };
 
@@ -1388,6 +1392,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       (kind === 'hotbar' && selectedSlot === index ? ' selected' : '') +
       (cellIsSelected(kind, index) ? ' moving' : '') +
       (!stack ? ' empty' : '');
+    const itemName = stack ? (itemNames[stack.id] || stack.id) : '';
+    button.title = itemName ? itemName + (stack.count > 1 ? ' · ' + stack.count : '') : '';
     if (kind === 'hotbar') {
       const key = document.createElement('span');
       key.className = 'slot-key';
@@ -1731,7 +1737,12 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     craftOutputEl.replaceChildren();
     craftOutputEl.disabled = !match;
     craftOutputEl.classList.toggle('available', !!match);
-    craftOutputEl.setAttribute('aria-label', match ? 'Забрать изготовленный предмет' : 'Результат крафта пока пуст');
+    const outputName = match
+      ? (itemNames[match.recipe.output] || match.recipe.output)
+      : '';
+    const outputCount = match && match.recipe.count > 1 ? ' · ' + match.recipe.count : '';
+    craftOutputEl.title = outputName ? outputName + outputCount : '';
+    craftOutputEl.setAttribute('aria-label', match ? 'Результат: ' + outputName + outputCount : 'Результат крафта пока пуст');
     if (match) {
       const model = document.createElement('span');
       model.className = 'slot-model-wrap';
