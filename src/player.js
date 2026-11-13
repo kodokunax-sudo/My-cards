@@ -150,9 +150,11 @@ function createPlayerAvatar(scene) {
   // drawn underneath the dedicated first-person arms (the "three arms" bug).
   const leftArm = makeArm(-1);
   const rightArm = makeArm(1);
-  for (const arm of [leftArm, rightArm]) {
-    arm.shoulder.traverse((object) => object.layers.set(1));
-  }
+  // The ordinary left arm belongs to the visible character body and follows
+  // the body's walk/swim/fall animation. Only the avatar's right arm is hidden,
+  // because the animated first-person right hand replaces it in the camera.
+  leftArm.shoulder.traverse((object) => object.layers.set(0));
+  rightArm.shoulder.traverse((object) => object.layers.set(1));
 
   function makeLeg(side) {
     const hip = new THREE.Group();
