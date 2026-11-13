@@ -601,7 +601,7 @@ function animate() {
     nightLinear = 1 - dawn;
   }
   const nightProgress = nightLinear;
-  hud.setWorldClock(dayPhase, dayPhase >= DAY_DURATION_SECONDS);
+  hud.setWorldClock(dayPhase, nightLinear >= 0.5);
 
   if (dayPhase < previousDayPhase) {
     hud.toast('Наступило утро. Начинается новый день.');
