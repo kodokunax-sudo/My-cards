@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 
-import { PALETTE, FOUNTAIN_HEIGHT } from './config.js';
+import {
+  PALETTE, FOUNTAIN_HEIGHT,
+  DAY_DURATION_SECONDS, NIGHT_DURATION_SECONDS, DAY_NIGHT_CYCLE_SECONDS,
+} from './config.js';
 import { createSky } from './sky.js';
 import { createEnvironment } from './environment.js';
 import { createFountain } from './fountain.js';
@@ -66,7 +69,51 @@ const occlusionCuller = createOcclusionCuller(renderer, scene, camera);
 const hud = createHud();
 const audio = createAmbience();
 const physics = createPhysicsWorld(scene, world);
-function loadSavedGame() {
+const SAVE_DB_NAME = 'titan-fountain-save';
+const SAVE_DB_STORE = 'snapshots';
+
+function openSaveDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) {
+      reject(new Error('IndexedDB is unavailable'));
+      return;
+    }
+    const request = window.indexedDB.open(SAVE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(SAVE_DB_STORE)) {
+        db.createObjectStore(SAVE_DB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Could not open save database'));
+  });
+}
+
+async function readIndexedSave() {
+  const db = await openSaveDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(SAVE_DB_STORE, 'readonly');
+    const request = transaction.objectStore(SAVE_DB_STORE).get('latest');
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error('Could not read save database'));
+    transaction.oncomplete = () => db.close();
+    transaction.onerror = () => { db.close(); reject(transaction.error || new Error('Save read failed')); };
+    transaction.onabort = () => { db.close(); reject(transaction.error || new Error('Save read aborted')); };
+  });
+}
+
+function writeIndexedSave(snapshot) {
+  return openSaveDatabase().then((db) => new Promise((resolve, reject) => {
+    const transaction = db.transaction(SAVE_DB_STORE, 'readwrite');
+    transaction.objectStore(SAVE_DB_STORE).put(snapshot, 'latest');
+    transaction.oncomplete = () => { db.close(); resolve(true); };
+    transaction.onerror = () => { db.close(); reject(transaction.error || new Error('Save write failed')); };
+    transaction.onabort = () => { db.close(); reject(transaction.error || new Error('Save write aborted')); };
+  }));
+}
+
+function readLocalSave() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -74,7 +121,25 @@ function loadSavedGame() {
     return null;
   }
 }
-const previousSave = loadSavedGame();
+
+async function loadSavedGame() {
+  const localSave = readLocalSave();
+  try {
+    const indexedSave = await readIndexedSave();
+    const localTime = Number(localSave?.savedAt) || 0;
+    const indexedTime = Number(indexedSave?.savedAt) || 0;
+    const latest = indexedTime > localTime ? indexedSave : localSave;
+    if (latest && latest === indexedSave && latest !== localSave) {
+      try { localStorage.setItem(SAVE_KEY, JSON.stringify(latest)); } catch (error) { /* IndexedDB remains the primary backup. */ }
+    }
+    return latest;
+  } catch (error) {
+    return localSave;
+  }
+}
+
+const previousSave = await loadSavedGame();
+try { window.navigator.storage?.persist?.().catch(() => {}); } catch (error) { /* optional browser feature */ }
 let elapsed = Number(previousSave?.session?.elapsed);
 if (!Number.isFinite(elapsed) || elapsed < 0) elapsed = 0;
 
@@ -103,13 +168,24 @@ window.__titanBootStatus?.('Расставляем ресурсы и готов�
 await new Promise((resolve) => requestAnimationFrame(() =>
   requestAnimationFrame(resolve)
 ));
+let saveWarningShown = false;
+function notifySaveFailure() {
+  if (saveWarningShown) return;
+  saveWarningShown = true;
+  hud.toast('Не удалось сохранить игру. Проверьте хранилище браузера.');
+}
+
 const survival = createSurvival(scene, camera, canvas, world, player, hud, {
   mobile: isCoarseDevice,
+  initialSave: previousSave,
+  onSave: writeIndexedSave,
+  onSaveError: notifySaveFailure,
   getSessionState: () => ({
     elapsed,
     player: player.getSaveState(),
   }),
 });
+if (!survival.save()) notifySaveFailure();
 
 function saveGameBeforeExit() {
   const saved = survival.save();
@@ -462,9 +538,6 @@ window.addEventListener('keydown', (e) => {
 const clock = new THREE.Clock();
 let saveAccumulator = 0;
 let previousDayPhase = 0;
-const DAY_DURATION_SECONDS = 14 * 60;
-const NIGHT_DURATION_SECONDS = 10 * 60;
-const DAY_NIGHT_CYCLE_SECONDS = DAY_DURATION_SECONDS + NIGHT_DURATION_SECONDS;
 const NIGHT_TRANSITION_SECONDS = 55;
 previousDayPhase = elapsed % DAY_NIGHT_CYCLE_SECONDS;
 const DUSK_START_SECONDS = DAY_DURATION_SECONDS - NIGHT_TRANSITION_SECONDS;
@@ -499,9 +572,9 @@ function animate() {
   player.update(dt);
   survival.update(dt);
   saveAccumulator += dt;
-  if (saveAccumulator >= 12) {
-    saveAccumulator %= 12;
-    if (!survival.save()) console.warn('[SAVE] Не удалось записать игру в хранилище браузера.');
+  if (saveAccumulator >= 8) {
+    saveAccumulator %= 8;
+    if (!survival.save()) notifySaveFailure();
   }
   touch?.setSwimState(player.swimming);
   if (player.consumeDrownedEvent()) {
@@ -528,6 +601,7 @@ function animate() {
     nightLinear = 1 - dawn;
   }
   const nightProgress = nightLinear;
+  hud.setWorldClock(dayPhase, dayPhase >= DAY_DURATION_SECONDS);
 
   if (dayPhase < previousDayPhase) {
     hud.toast('Наступило утро. Начинается новый день.');
@@ -535,8 +609,8 @@ function animate() {
     hud.toast('Наступила ночь. До рассвета 10 минут.');
   }
   previousDayPhase = dayPhase;
-  sky.update(elapsed, camera, nightProgress);
-  env.setTimeOfDay(nightProgress);
+  sky.update(elapsed, camera, nightProgress, dayPhase);
+  env.setTimeOfDay(nightProgress, dayPhase);
   if (env.update(elapsed, renderer.getPixelRatio(), camera.position)) {
     renderer.shadowMap.needsUpdate = true;
   }
