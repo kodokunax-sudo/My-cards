@@ -818,13 +818,13 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     handSkinMaterial, 0, -0.075, 0.035, 0, 0.084, 0.083, 0.072);
 
   const heldFist = new THREE.Group();
-  heldFist.name = 'right-cylinder-fist';
-  heldFist.position.set(0, -0.025, -0.035);
+  heldFist.name = 'right-rounded-mitten';
+  heldFist.position.set(0, -0.025, -0.018);
   heldHands.add(heldFist);
-  toolPart(heldFist, new THREE.CylinderGeometry(0.070, 0.080, 0.17, 18, 1),
-    handSkinMaterial, 0, 0, -0.055, 0, 1, 1, 1, Math.PI / 2);
-  toolPart(heldFist, new THREE.SphereGeometry(0.070, 16, 12),
-    handSkinMaterial, 0, 0, -0.145);
+  // One compact oval mitten, aligned with the forearm. No side protrusions,
+  // thumb-like tips or finger geometry.
+  toolPart(heldFist, new THREE.SphereGeometry(1, 20, 16),
+    handSkinMaterial, 0, 0, 0, 0, 0.094, 0.086, 0.080);
 
   // Sleeve enters from the bottom-right, with a narrow cuff over the wrist.
   toolPart(heldHands, new THREE.CylinderGeometry(0.100, 0.126, 0.32, 20, 1),
@@ -850,12 +850,10 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     sleeveMaterial, 0.01, -0.66, 0.105, -0.08);
   toolPart(heldToolGrip, new THREE.TorusGeometry(0.108, 0.010, 8, 20),
     sleeveTrimMaterial, 0.01, -0.50, 0.105, Math.PI / 2);
-  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.071, 0.071, 0.19, 18, 1),
-    handSkinMaterial, 0, -0.165, 0.045, Math.PI / 2);
-  toolPart(heldToolGrip, new THREE.SphereGeometry(0.071, 14, 10),
-    handSkinMaterial, -0.095, -0.165, 0.045);
-  toolPart(heldToolGrip, new THREE.SphereGeometry(0.071, 14, 10),
-    handSkinMaterial, 0.095, -0.165, 0.045);
+  // A single smooth palm shape wraps over the handle. The handle remains
+  // visible above and below it, without separate thumb-like side pieces.
+  toolPart(heldToolGrip, new THREE.SphereGeometry(1, 18, 14),
+    handSkinMaterial, 0, -0.165, 0.045, 0, 0.112, 0.082, 0.078);
   heldMotion.add(heldToolGrip);
 
   let activeHeldModel = heldHands;
