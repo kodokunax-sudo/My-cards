@@ -31,7 +31,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   const LEAF_NODE_COUNT = mobileMode ? 360 : 4000;
   const SCRAP_NODE_COUNT = mobileMode ? 24 : 52;
   const IRON_ORE_NODE_COUNT = mobileMode ? 12 : 28;
-  const saved = loadSave();
+  const saved = options.initialSave && typeof options.initialSave === 'object'
+    ? options.initialSave : loadSave();
   const inventory = {
     logs: 0, planks: 0, sticks: 0, stone: 0,
     branch: 0, fiber: 0, leaves: 0, sharpShard: 0, rope: 0, handle: 0,
@@ -124,6 +125,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   for (const entry of savedDamagedTrees) world.forests.setHealthById?.(entry);
   const savedDamagedRocks = saved && Array.isArray(saved.damagedRocks) ? saved.damagedRocks : [];
   for (const entry of savedDamagedRocks) world.rocks.setHealthById?.(entry);
+  const savedDamagedShrubs = saved && Array.isArray(saved.damagedShrubs) ? saved.damagedShrubs : [];
+  for (const entry of savedDamagedShrubs) world.groundCover?.setHealthById?.(entry);
 
   const nodes = saved && Array.isArray(saved.nodes) && saved.nodes.length === NODE_COUNT
     ? saved.nodes.map((node, id) => ({
@@ -145,8 +148,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     try {
       const session = typeof options.getSessionState === 'function'
         ? options.getSessionState() : (saved && saved.session) || null;
-      localStorage.setItem(SAVE_KEY, JSON.stringify({
-        saveVersion: 2,
+      const snapshot = {
+        saveVersion: 3,
         savedAt: Date.now(),
         session,
         inventory,
@@ -160,6 +163,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         depletedShrubs: world.groundCover?.depletedIds || [],
         damagedTrees: world.forests.damagedTrees || [],
         damagedRocks: world.rocks.damagedIds || [],
+        damagedShrubs: world.groundCover?.damagedIds || [],
         nodes: nodes.map((node) => ({
           x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
           active: node.active, hp: node.hp, due: node.due,
@@ -192,8 +196,30 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
           x: node.x, y: node.y, z: node.z, size: node.size, angle: node.angle,
           active: node.active, hp: node.hp, due: node.due,
         })),
-      }));
-      return true;
+      };
+
+      const serialized = JSON.stringify(snapshot);
+      let localSaved = false;
+      try {
+        localStorage.setItem(SAVE_KEY, serialized);
+        localSaved = true;
+      } catch (storageError) {
+        // IndexedDB below can still keep the full save if localStorage is full or disabled.
+      }
+
+      let indexedSaveQueued = false;
+      if (typeof options.onSave === 'function') {
+        try {
+          const pending = options.onSave(snapshot);
+          indexedSaveQueued = true;
+          Promise.resolve(pending).catch((error) => {
+            if (!localSaved) options.onSaveError?.(error);
+          });
+        } catch (error) {
+          if (!localSaved) options.onSaveError?.(error);
+        }
+      }
+      return localSaved || indexedSaveQueued;
     } catch (error) {
       // Storage is optional; the current session remains playable without it.
       return false;
@@ -1954,6 +1980,9 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     if (target.type === 'bush') {
       const damage = selectedTool.endsWith('Axe') ? 2 : 1;
       target.shrub.hp = Math.max(0, target.shrub.hp - damage);
+      if (target.shrub.hp > 0) {
+        world.groundCover?.setHealthById?.({ id: target.shrub.id, hp: target.shrub.hp });
+      }
       if (target.shrub.hp <= 0) {
         world.groundCover.remove(target.shrub);
         const fiberAmount = 1 + Math.floor(Math.random() * 2);
