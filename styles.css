@@ -1685,3 +1685,26 @@ body.in-game #survival-toggle {display:inline-flex}
 @media(max-width:620px) {
   .crafting-note {max-height:64px;font-size:7px;line-height:1.35}
 }
+
+
+/* In-game hover names for every item slot and the crafting result. */
+.survival-item-tooltip {
+  position:fixed;
+  z-index:10000;
+  max-width:min(260px,calc(100vw - 20px));
+  padding:7px 10px;
+  color:#fff;
+  background:rgba(20,20,20,.96);
+  border:1px solid rgba(255,255,255,.72);
+  box-shadow:3px 3px 0 rgba(0,0,0,.42);
+  font:700 12px/1.3 system-ui,sans-serif;
+  text-shadow:1px 1px 1px #000;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  pointer-events:none;
+  opacity:0;
+  transform:translateY(3px);
+  transition:opacity .08s ease,transform .08s ease;
+}
+.survival-item-tooltip[hidden] {display:none}
+.survival-item-tooltip.visible {opacity:1;transform:translateY(0)}
