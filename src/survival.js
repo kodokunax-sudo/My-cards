@@ -859,7 +859,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   toolPart(heldHands, new THREE.CylinderGeometry(0.112, 0.132, 0.36, 24, 1),
     sleeveMaterial, 0, -0.635, 0.09, -0.12);
   toolPart(heldHands, new THREE.TorusGeometry(0.116, 0.012, 8, 24),
-    sleeveTrimMaterial, 0, -0.465, 0.09, Math.PI / 2);
+    sleeveTrimMaterial, 0, -0.465, 0.09, 0, 1, 1, 1, Math.PI / 2);
 
   heldHands.userData.swingType = 'hands';
   heldHands.userData.fist = heldFist;
@@ -877,7 +877,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   toolPart(heldToolGrip, new THREE.CylinderGeometry(0.112, 0.132, 0.36, 24, 1),
     sleeveMaterial, 0.01, -0.66, 0.105, -0.12);
   toolPart(heldToolGrip, new THREE.TorusGeometry(0.116, 0.012, 8, 24),
-    sleeveTrimMaterial, 0.01, -0.49, 0.105, Math.PI / 2);
+    sleeveTrimMaterial, 0.01, -0.49, 0.105, 0, 1, 1, 1, Math.PI / 2);
   // The palm is broader than the handle. The shaft stays visible through the
   // grip, while the wrist and sleeve remain connected during each swing.
   toolPart(heldToolGrip, new THREE.SphereGeometry(1, 22, 16),
