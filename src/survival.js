@@ -810,57 +810,47 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   const heldHands = new THREE.Group();
   heldHands.name = 'held-right-arm';
 
-  // Simple first-person right arm: one clean sleeve, a tapered forearm and a
-  // compact cylindrical closed hand. No separate fingers or thumb geometry.
-  toolPart(heldHands, new THREE.CylinderGeometry(0.078, 0.108, 0.60, 16),
-    handSkinMaterial, 0, -0.345, 0.055, -0.08);
-  toolPart(heldHands, new THREE.SphereGeometry(1, 14, 10),
-    handSkinMaterial, 0, -0.075, 0.035, 0, 0.084, 0.095, 0.068);
-  toolPart(heldHands, new THREE.CylinderGeometry(0.098, 0.128, 0.29, 16),
-    sleeveMaterial, 0, -0.665, 0.09, -0.08);
-  toolPart(heldHands, new THREE.TorusGeometry(0.106, 0.012, 7, 16),
-    sleeveTrimMaterial, 0, -0.525, 0.09, Math.PI / 2);
+  // A clean, fingerless right arm: one tapered forearm, a blue sleeve and
+  // one short rounded cylinder for the fist. The overlapping joints hide seams.
+  toolPart(heldHands, new THREE.CylinderGeometry(0.084, 0.106, 0.49, 20, 1),
+    handSkinMaterial, 0, -0.315, 0.055, -0.08);
+  toolPart(heldHands, new THREE.SphereGeometry(1, 16, 12),
+    handSkinMaterial, 0, -0.075, 0.035, 0, 0.084, 0.083, 0.072);
 
-  function createFirstPersonFist(parent) {
-    const fist = new THREE.Group();
-    fist.name = 'right-cylindrical-fist';
-    parent.add(fist);
+  const heldFist = new THREE.Group();
+  heldFist.name = 'right-cylinder-fist';
+  heldFist.position.set(0, -0.025, -0.035);
+  heldHands.add(heldFist);
+  toolPart(heldFist, new THREE.CylinderGeometry(0.070, 0.080, 0.17, 18, 1),
+    handSkinMaterial, 0, 0, -0.055, 0, 1, 1, 1, Math.PI / 2);
+  toolPart(heldFist, new THREE.SphereGeometry(0.070, 16, 12),
+    handSkinMaterial, 0, 0, -0.145);
 
-    // A short capsule-like cylinder points forward from the wrist.
-    // Rounded ends soften the silhouette without drawing individual fingers.
-    toolPart(fist, new THREE.CylinderGeometry(0.073, 0.079, 0.17, 16),
-      handSkinMaterial, 0, -0.015, -0.055, 0, 1, 1, 1, Math.PI / 2);
-    toolPart(fist, new THREE.SphereGeometry(0.073, 14, 10),
-      handSkinMaterial, 0, -0.015, -0.14);
-    toolPart(fist, new THREE.SphereGeometry(0.073, 14, 10),
-      handSkinMaterial, 0, -0.015, 0.03);
+  // Sleeve enters from the bottom-right, with a narrow cuff over the wrist.
+  toolPart(heldHands, new THREE.CylinderGeometry(0.100, 0.126, 0.32, 20, 1),
+    sleeveMaterial, 0, -0.625, 0.09, -0.08);
+  toolPart(heldHands, new THREE.TorusGeometry(0.108, 0.010, 8, 20),
+    sleeveTrimMaterial, 0, -0.465, 0.09, Math.PI / 2);
 
-    return { pivot: fist, fingers: [], thumb: new THREE.Group() };
-  }
-
-  const rightFistRig = createFirstPersonFist(heldHands);
-  const heldFingerJoints = rightFistRig.fingers;
-  const heldThumb = rightFistRig.thumb;
   heldHands.userData.swingType = 'hands';
-  heldHands.userData.fist = rightFistRig.pivot;
-  heldHands.userData.fingers = rightFistRig.fingers;
-  heldHands.userData.thumb = rightFistRig.thumb;
+  heldHands.userData.fist = heldFist;
   heldMotion.add(heldHands);
 
-  // Matching simplified mitten around the tool shaft. The shaft passes through
-  // the center of the short crosswise cylinder, so the right hand still grips it.
+  // The tool version uses the same simplified cylindrical hand, wrapped
+  // crosswise around the handle. No separate fingers or thumb geometry.
   const heldToolGrip = new THREE.Group();
   heldToolGrip.name = 'held-tool-gripping-right-hand';
   heldToolGrip.visible = false;
 
-  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.078, 0.108, 0.55, 16),
-    handSkinMaterial, 0.01, -0.405, 0.105, -0.075);
-  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.098, 0.128, 0.27, 16),
-    sleeveMaterial, 0.01, -0.66, 0.12, -0.075);
-  toolPart(heldToolGrip, new THREE.TorusGeometry(0.105, 0.012, 7, 16),
-    sleeveTrimMaterial, 0.01, -0.53, 0.12, Math.PI / 2);
-
-  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.071, 0.071, 0.19, 16),
+  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.084, 0.106, 0.49, 20, 1),
+    handSkinMaterial, 0.01, -0.35, 0.075, -0.08);
+  toolPart(heldToolGrip, new THREE.SphereGeometry(1, 16, 12),
+    handSkinMaterial, 0.01, -0.105, 0.055, 0, 0.084, 0.083, 0.072);
+  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.100, 0.126, 0.32, 20, 1),
+    sleeveMaterial, 0.01, -0.66, 0.105, -0.08);
+  toolPart(heldToolGrip, new THREE.TorusGeometry(0.108, 0.010, 8, 20),
+    sleeveTrimMaterial, 0.01, -0.50, 0.105, Math.PI / 2);
+  toolPart(heldToolGrip, new THREE.CylinderGeometry(0.071, 0.071, 0.19, 18, 1),
     handSkinMaterial, 0, -0.165, 0.045, Math.PI / 2);
   toolPart(heldToolGrip, new THREE.SphereGeometry(0.071, 14, 10),
     handSkinMaterial, -0.095, -0.165, 0.045);
@@ -966,14 +956,6 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     heldMotion.position.set(0, Math.sin(heldIdleTime * 2.1) * 0.008, 0);
     heldMotion.rotation.set(0, Math.sin(heldIdleTime * 0.85) * 0.012, 0);
 
-    const setHandPose = (curl, thumbAngle) => {
-      for (const finger of heldFingerJoints) {
-        finger.base.rotation.set(curl, 0, finger.fan);
-        finger.tip.rotation.set(curl * 0.62, 0, finger.fan * 0.25);
-      }
-      heldThumb.rotation.set(0, 0, thumbAngle);
-    };
-
     if (!isSwinging) {
       model.position.set(0, 0, 0);
       model.rotation.set(0, 0, 0);
@@ -987,7 +969,6 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
           Math.sin(heldIdleTime * 0.75) * 0.014,
           Math.sin(heldIdleTime * 1.6) * 0.008
         );
-        if (model.userData.fingers) setHandPose(1.05, 0.30);
       }
       return;
     }
@@ -1003,10 +984,6 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         sampleMotion([[0, 0], [0.22, -0.12], [0.48, 0.12], [0.72, -0.035], [1, 0]], progress),
         0,
         sampleMotion([[0, 0], [0.22, -0.09], [0.48, 0.08], [0.72, -0.025], [1, 0]], progress)
-      );
-      setHandPose(
-        sampleMotion([[0, 1.05], [0.20, -1.46], [0.43, -1.46], [0.66, 1.18], [0.84, 1.05], [1, 1.05]], progress),
-        sampleMotion([[0, 0.30], [0.20, -0.18], [0.43, -0.18], [0.66, 0.66], [0.84, 0.30], [1, 0.30]], progress)
       );
       return;
     }
@@ -1025,7 +1002,6 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       positionY = sampleMotion([[0, 0], [0.22, 0.055], [0.43, -0.035], [0.58, -0.015], [1, 0]], progress);
       positionZ = sampleMotion([[0, 0], [0.22, 0.095], [0.43, -0.29], [0.58, -0.105], [1, 0]], progress);
       // Punching keeps a firm closed fist. No opening/closing motion here.
-      setHandPose(0.92, 0.28);
     } else {
       // Each material/tool family has its own weight, wind-up and follow-through.
       const profile = HELD_SWING_PROFILES[activeHeldId] || HELD_SWING_PROFILES.woodAxe;
