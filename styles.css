@@ -2165,4 +2165,4 @@ body:not(.in-game) #moderator-toggle { display: none !important; }
   .moderator-login { grid-template-columns:minmax(0,1fr); }
   .moderator-login button { width:100%; }
 }
-body.paused .moderator-toggle { display:none; }
+body.paused #moderator-toggle { display:none; }
