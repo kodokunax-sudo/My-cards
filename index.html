@@ -71,9 +71,15 @@
     <span class="full" aria-hidden="true">♥</span>
     <span class="full" aria-hidden="true">♥</span>
   </div>
+  <div id="hunger-indicator" class="hunger-indicator" role="img" aria-label="Сытость: 100%">
+    <span class="hunger-icon" aria-hidden="true">🍖</span>
+    <span class="hunger-label">СЫТОСТЬ</span>
+    <div class="hunger-track"><i id="hunger-fill"></i></div>
+    <b id="hunger-text">100%</b>
+  </div>
 
   <div id="hint">
-    <b>WASD</b> идти · <b>мышь</b> смотреть · <b>Space</b> прыгать/всплывать · <b>Shift</b> бежать · <b>ЛКМ</b> рубить / добывать · <b>E</b> инвентарь · <b>1–9</b> выбрать предмет в быстрой панели · <b>F</b> полёт ·
+    <b>WASD</b> идти · <b>мышь</b> смотреть · <b>Space</b> прыгать/всплывать · <b>Shift</b> бежать · <b>ЛКМ</b> рубить / добывать · <b>E</b> инвентарь · <b>1–9</b> выбрать предмет в быстрой панели · <b>Q</b> съесть мясо · <b>F</b> полёт ·
     <b>в воде: WASD + направление взгляда</b> плыть · <b>Space/C</b> всплыть/нырнуть · <b>T</b> облёт · <b>M</b> звук · <b>O / P</b> меню и пауза · <b>Esc</b> открыть/закрыть меню
   </div>
   <div id="hint-touch">
@@ -136,6 +142,7 @@
     <button class="tbtn" data-act="fly">ПОЛЁТ</button>
     <button class="tbtn" data-act="tour">ОБЛЁТ</button>
     <button class="tbtn" data-act="sound">ЗВУК</button>
+    <button class="tbtn" data-act="eat">ЕДА</button>
     <button class="tbtn tbtn-up" data-act="up">▲</button>
     <button class="tbtn tbtn-down" data-act="down">▼</button>
   </div>
