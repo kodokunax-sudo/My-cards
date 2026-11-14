@@ -1049,6 +1049,9 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
       return value;
     },
     setMode,
+    respawn() {
+      resetToSpawn(false);
+    },
     jump() {
       if (mode !== 'fly' && !swimming && !grounded) jumpQueued = Math.max(jumpQueued, 0.16);
       else if (mode !== 'fly' && !swimming) jumpQueued = 0.16;
