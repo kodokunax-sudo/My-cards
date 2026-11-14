@@ -408,6 +408,7 @@ function setSettingsOpen(open) {
   if (shouldOpen) {
     player.unlock();
     survival.close();
+    survival.closeModerator?.();
     player.setRun(false);
     touch?.setRunState(false);
   }
