@@ -1942,6 +1942,7 @@ body.paused .hunger-indicator { display: none; }
   top: 194px;
   right: 14px;
   z-index: 26;
+  pointer-events: auto;
   min-height: 34px;
   padding: 5px 11px;
   color: #fff;
@@ -1966,6 +1967,7 @@ body:not(.in-game) #moderator-toggle { display: none !important; }
   position: fixed;
   inset: 0;
   z-index: 62;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;
