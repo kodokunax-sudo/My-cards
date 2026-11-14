@@ -1051,6 +1051,14 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     const isSwinging = toolSwing > 0;
     const progress = THREE.MathUtils.clamp(1 - toolSwing, 0, 1);
 
+    if (model === flashlightGroup) {
+      model.position.set(-0.005, -0.105, -0.045);
+      model.rotation.set(0, 0, 0);
+      heldMotion.position.set(0, Math.sin(heldIdleTime * 2.1) * 0.008, 0);
+      heldMotion.rotation.set(0, Math.sin(heldIdleTime * 0.85) * 0.012, 0);
+      return;
+    }
+
     heldMotion.position.set(0, Math.sin(heldIdleTime * 2.1) * 0.008, 0);
     heldMotion.rotation.set(0, Math.sin(heldIdleTime * 0.85) * 0.012, 0);
 
