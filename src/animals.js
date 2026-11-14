@@ -4,11 +4,11 @@ const TAU = Math.PI * 2;
 const MAX_HEALTH = 5;
 
 const SPECIES = {
-  hare: { name: 'Заяц', radius: 0.34, height: 1.25, walk: 1.15, run: 5.8, flee: 8.5 },
-  deer: { name: 'Олень', radius: 0.52, height: 2.05, walk: 0.9, run: 4.6, flee: 8.0 },
-  boar: { name: 'Кабан', radius: 0.58, height: 1.2, walk: 0.75, run: 3.2, flee: 5.0 },
-  bird: { name: 'Лесная птица', radius: 0.27, height: 0.85, walk: 1.25, run: 4.8, flee: 7.5 },
-  wolf: { name: 'Волк', radius: 0.48, height: 1.65, walk: 1.0, run: 6.1, flee: 0 },
+  hare: { name: 'Заяц', radius: 0.34, height: 1.25, walk: 1.15, run: 5.8, flee: 8.5, hp: 1, meat: 1 },
+  deer: { name: 'Олень', radius: 0.52, height: 2.05, walk: 0.9, run: 4.6, flee: 8.0, hp: 4, meat: 4 },
+  boar: { name: 'Кабан', radius: 0.58, height: 1.2, walk: 0.75, run: 3.2, flee: 5.0, hp: 5, meat: 3 },
+  bird: { name: 'Лесная птица', radius: 0.27, height: 0.85, walk: 1.25, run: 4.8, flee: 7.5, hp: 1, meat: 1 },
+  wolf: { name: 'Волк', radius: 0.48, height: 1.65, walk: 1.0, run: 6.1, flee: 0, hp: 5, meat: 2 },
 };
 
 export function createWildlife(scene, world, camera, player, hud, options = {}) {
@@ -100,12 +100,16 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
     root.userData.noCollider = true;
     const legs = [];
     const wings = [];
+    const ears = [];
     let body = null;
+    let head = null;
+    let tail = null;
+    let neck = null;
 
     if (kind === 'hare') {
       body = part(root, materials.hare, [0, 0.43, -0.02], [0.25, 0.24, 0.39]);
       part(root, materials.hareLight, [0, 0.34, 0.18], [0.19, 0.16, 0.2]);
-      const head = new THREE.Group();
+      head = new THREE.Group();
       head.position.set(0, 0.62, 0.31);
       root.add(head);
       part(head, materials.hare, [0, 0.02, 0.02], [0.18, 0.17, 0.19]);
@@ -114,10 +118,17 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
       addEye(head, -1, 0.055, 0.105, 0.025);
       addEye(head, 1, 0.055, 0.105, 0.025);
       for (const side of [-1, 1]) {
-        part(head, materials.hare, [side * 0.075, 0.27, -0.015], [0.064, 0.28, 0.052]).rotation.z = side * -0.12;
-        part(head, materials.pink, [side * 0.075, 0.275, 0.031], [0.027, 0.22, 0.013]).rotation.z = side * -0.12;
+        const ear = new THREE.Group();
+        ear.position.set(side * 0.075, 0.27, -0.015);
+        head.add(ear);
+        part(ear, materials.hare, [0, 0, 0], [0.064, 0.28, 0.052]).rotation.z = side * -0.12;
+        part(ear, materials.pink, [0, 0.005, 0.046], [0.027, 0.22, 0.013]).rotation.z = side * -0.12;
+        ears.push({ pivot: ear, side });
       }
-      part(root, materials.hareLight, [0, 0.43, -0.40], [0.105, 0.105, 0.10]);
+      tail = new THREE.Group();
+      tail.position.set(0, 0.43, -0.40);
+      root.add(tail);
+      part(tail, materials.hareLight, [0, 0, 0], [0.105, 0.105, 0.10]);
       for (const side of [-1, 1]) {
         legs.push(addLeg(root, materials.hare, side * 0.16, 0.32, 0.23, 0.34, 0.085));
         legs.push(addLeg(root, materials.hare, side * 0.17, 0.31, -0.27, 0.33, 0.095));
@@ -127,7 +138,7 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
       part(root, materials.deerLight, [0, 0.68, 0.18], [0.29, 0.25, 0.44]);
       const neck = part(root, materials.deer, [0, 1.22, 0.47], [0.22, 0.48, 0.25]);
       neck.rotation.x = -0.28;
-      const head = new THREE.Group();
+      head = new THREE.Group();
       head.position.set(0, 1.52, 0.64);
       root.add(head);
       part(head, materials.deer, [0, 0.04, 0.02], [0.18, 0.21, 0.24]);
@@ -136,7 +147,11 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
       addEye(head, -1, 0.09, 0.14, 0.026);
       addEye(head, 1, 0.09, 0.14, 0.026);
       for (const side of [-1, 1]) {
-        part(head, materials.deer, [side * 0.19, 0.12, -0.02], [0.16, 0.055, 0.09]).rotation.y = side * 0.20;
+        const ear = new THREE.Group();
+        ear.position.set(side * 0.15, 0.11, -0.02);
+        head.add(ear);
+        part(ear, materials.deer, [side * 0.10, 0, 0], [0.16, 0.055, 0.09]).rotation.y = side * 0.20;
+        ears.push({ pivot: ear, side });
         addBone(head, [side * 0.08, 0.19, -0.015], [side * 0.13, 0.42, -0.025], 0.8);
         addBone(head, [side * 0.13, 0.35, -0.025], [side * 0.25, 0.44, 0.015], 0.75);
         addBone(head, [side * 0.13, 0.35, -0.025], [side * 0.12, 0.52, -0.11], 0.72);
@@ -146,18 +161,25 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
         legs.push(addLeg(root, materials.deer, side * 0.23, 0.67, 0.45, 0.62, 0.064, true));
         legs.push(addLeg(root, materials.deer, side * 0.23, 0.67, -0.48, 0.62, 0.064, true));
       }
-      part(root, materials.deerLight, [0, 0.95, -0.72], [0.10, 0.12, 0.18]);
+      tail = new THREE.Group();
+      tail.position.set(0, 0.95, -0.72);
+      root.add(tail);
+      part(tail, materials.deerLight, [0, 0, 0], [0.10, 0.12, 0.18]);
     } else if (kind === 'boar') {
       body = part(root, materials.boar, [0, 0.62, -0.02], [0.48, 0.47, 0.78]);
       part(root, materials.boarLight, [0, 0.52, 0.29], [0.38, 0.32, 0.44]);
-      const head = new THREE.Group();
+      head = new THREE.Group();
       head.position.set(0, 0.75, 0.53);
       root.add(head);
       part(head, materials.boar, [0, 0.02, 0.05], [0.34, 0.31, 0.37]);
       part(head, materials.boarLight, [0, -0.11, 0.31], [0.25, 0.17, 0.24]);
       part(head, materials.muzzle, [0, -0.08, 0.49], [0.13, 0.09, 0.08]);
       for (const side of [-1, 1]) {
-        part(head, materials.boar, [side * 0.27, 0.20, 0.07], [0.12, 0.21, 0.075]).rotation.z = side * -0.55;
+        const ear = new THREE.Group();
+        ear.position.set(side * 0.27, 0.20, 0.07);
+        head.add(ear);
+        part(ear, materials.boar, [0, 0, 0], [0.12, 0.21, 0.075]).rotation.z = side * -0.55;
+        ears.push({ pivot: ear, side });
         part(head, materials.tusk, [side * 0.20, -0.16, 0.30], [0.045, 0.11, 0.045], coneGeometry).rotation.x = -0.28;
         addEye(head, side, 0.09, 0.22, 0.025);
       }
@@ -165,11 +187,14 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
         legs.push(addLeg(root, materials.boar, side * 0.29, 0.40, 0.43, 0.38, 0.10, true));
         legs.push(addLeg(root, materials.boar, side * 0.29, 0.40, -0.45, 0.38, 0.10, true));
       }
-      part(root, materials.boar, [0, 0.70, -0.77], [0.07, 0.07, 0.20]);
+      tail = new THREE.Group();
+      tail.position.set(0, 0.70, -0.77);
+      root.add(tail);
+      part(tail, materials.boar, [0, 0, -0.08], [0.07, 0.07, 0.20]);
     } else if (kind === 'bird') {
       body = part(root, materials.bird, [0, 0.38, -0.02], [0.25, 0.25, 0.36]);
       part(root, materials.blue, [0, 0.39, 0.17], [0.19, 0.19, 0.22]);
-      const head = new THREE.Group();
+      head = new THREE.Group();
       head.position.set(0, 0.57, 0.25);
       root.add(head);
       part(head, materials.bird, [0, 0.03, 0.03], [0.15, 0.15, 0.16]);
@@ -184,33 +209,47 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
         wings.push({ pivot: wing, side });
         legs.push(addLeg(root, materials.hoof, side * 0.10, 0.22, -0.02, 0.19, 0.035));
       }
+      tail = new THREE.Group();
+      tail.position.set(0, 0.43, -0.34);
+      root.add(tail);
       for (let i = -1; i <= 1; i++) {
-        part(root, materials.birdWing, [i * 0.075, 0.43, -0.34], [0.065, 0.07, 0.20]).rotation.x = -0.35;
+        part(tail, materials.birdWing, [i * 0.075, 0, 0], [0.065, 0.07, 0.20]).rotation.x = -0.35;
       }
     } else if (kind === 'wolf') {
       body = part(root, materials.wolf, [0, 0.78, -0.02], [0.40, 0.39, 0.72]);
       part(root, materials.wolfLight, [0, 0.62, 0.31], [0.30, 0.25, 0.40]);
       const neck = part(root, materials.wolf, [0, 1.03, 0.40], [0.25, 0.34, 0.30]);
       neck.rotation.x = -0.22;
-      const head = new THREE.Group();
+      head = new THREE.Group();
       head.position.set(0, 1.16, 0.62);
       root.add(head);
       part(head, materials.wolf, [0, 0.02, 0.05], [0.23, 0.23, 0.26]);
       part(head, materials.wolfLight, [0, -0.10, 0.25], [0.15, 0.13, 0.25]);
       part(head, materials.muzzle, [0, -0.06, 0.43], [0.085, 0.07, 0.08]);
       for (const side of [-1, 1]) {
-        part(head, materials.wolfDark, [side * 0.14, 0.23, -0.005], [0.10, 0.20, 0.075], coneGeometry).rotation.z = side * 0.18;
+        const ear = new THREE.Group();
+        ear.position.set(side * 0.14, 0.23, -0.005);
+        head.add(ear);
+        part(ear, materials.wolfDark, [0, 0, 0], [0.10, 0.20, 0.075], coneGeometry).rotation.z = side * 0.18;
+        ears.push({ pivot: ear, side });
         addEye(head, side, 0.08, 0.16, 0.029);
       }
       for (const side of [-1, 1]) {
         legs.push(addLeg(root, materials.wolf, side * 0.25, 0.51, 0.42, 0.49, 0.085));
         legs.push(addLeg(root, materials.wolf, side * 0.25, 0.51, -0.44, 0.49, 0.085));
       }
-      const tail = part(root, materials.wolfDark, [0, 0.90, -0.70], [0.13, 0.14, 0.34]);
-      tail.rotation.x = -0.48;
+      tail = new THREE.Group();
+      tail.position.set(0, 0.90, -0.70);
+      root.add(tail);
+      const tailMesh = part(tail, materials.wolfDark, [0, 0, -0.12], [0.13, 0.14, 0.34]);
+      tailMesh.rotation.x = -0.48;
     }
 
-    return { root, body, legs, wings, phase: Math.random() * TAU };
+    return {
+      root, body, head, neck, tail, ears, legs, wings,
+      bodyRestY: body ? body.position.y : 0,
+      phase: Math.random() * TAU,
+    };
   }
 
   function isValidGround(x, z, referenceY = null) {
@@ -259,6 +298,11 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
       legs: model.legs,
       wings: model.wings,
       body: model.body,
+      head: model.head,
+      neck: model.neck,
+      tail: model.tail,
+      ears: model.ears,
+      bodyRestY: model.bodyRestY,
       phase: model.phase,
       x: position.x,
       y: position.y,
@@ -272,8 +316,13 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
       eatTimer: 0,
       energy: kind === 'wolf' ? 42 + Math.random() * 20 : 100,
       vitality: 100,
+      hp: SPECIES[kind].hp,
       dead: false,
       attackTimer: 0,
+    });
+    const animal = animals[animals.length - 1];
+    animal.root.traverse((object) => {
+      if (object.isMesh) object.userData.wildlifeAnimal = animal;
     });
     return true;
   }
@@ -294,6 +343,30 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
     scene.remove(animal.root);
     const index = animals.indexOf(animal);
     if (index >= 0) animals.splice(index, 1);
+  }
+
+  function getAnimalFromObject(object) {
+    let current = object;
+    while (current) {
+      if (current.userData?.wildlifeAnimal) return current.userData.wildlifeAnimal;
+      current = current.parent;
+    }
+    return null;
+  }
+
+  function getMeatYield(animal) {
+    return animal && SPECIES[animal.kind] ? SPECIES[animal.kind].meat : 0;
+  }
+
+  function damageAnimal(animal, damage = 1) {
+    if (!animal || animal.dead || !animals.includes(animal)) return null;
+    animal.hp = Math.max(0, animal.hp - Math.max(1, Math.floor(Number(damage) || 1)));
+    animal.state = 'hurt';
+    animal.hurtTimer = 0.22;
+    if (animal.hp > 0) return { dead: false, hp: animal.hp, name: animal.name, meat: 0 };
+    const result = { dead: true, hp: 0, name: animal.name, meat: getMeatYield(animal) };
+    removeAnimal(animal);
+    return result;
   }
 
   function moveToward(animal, targetX, targetZ, speed, dt) {
@@ -341,19 +414,67 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
   }
 
   function animateModel(animal, dt, moving, speed) {
-    animal.phase += dt * (moving ? 5.5 + speed * 0.9 : 1.1);
-    const stride = moving ? Math.min(0.72, speed * 0.12) : 0.035;
+    const activeMotion = moving ? 1 : 0;
+    animal.phase += dt * (moving ? 6.5 + speed * 1.15 : 1.25);
+
+    const gaitSpeed = moving ? Math.min(0.86, 0.18 + speed * 0.11) : 0;
+    const fourLegPhases = [0, Math.PI, Math.PI, 0];
     for (let i = 0; i < animal.legs.length; i++) {
-      animal.legs[i].rotation.x = Math.sin(animal.phase + (i % 2) * Math.PI) * stride;
+      const phaseOffset = animal.legs.length >= 4 ? fourLegPhases[i] : (i % 2) * Math.PI;
+      const stride = Math.sin(animal.phase + phaseOffset) * gaitSpeed;
+      const leg = animal.legs[i];
+      leg.rotation.x = stride;
+      leg.rotation.z = moving ? Math.cos(animal.phase + phaseOffset) * 0.035 : 0;
     }
+
     for (const wing of animal.wings) {
-      const flap = animal.state === 'flee' ? Math.sin(animal.phase * 2.3) * 0.8 : Math.sin(animal.phase) * 0.08;
-      wing.pivot.rotation.z = wing.side * (0.08 + flap);
+      const flap = animal.state === 'flee'
+        ? Math.sin(animal.phase * 2.2) * 0.82
+        : Math.sin(animal.phase * 0.8) * 0.10;
+      wing.pivot.rotation.z = wing.side * (0.06 + flap);
+      wing.pivot.rotation.x = animal.state === 'flee' ? Math.sin(animal.phase * 2.2) * 0.18 : 0;
     }
+
+    const bob = animal.kind === 'hare'
+      ? (moving ? Math.abs(Math.sin(animal.phase * 2)) * 0.16 : Math.sin(animal.phase * 0.55) * 0.012)
+      : animal.kind === 'bird'
+        ? (animal.state === 'flee' ? Math.abs(Math.sin(animal.phase * 2)) * 0.15 : Math.sin(animal.phase) * 0.06)
+        : moving ? Math.abs(Math.sin(animal.phase * 2)) * (animal.kind === 'deer' ? 0.055 : 0.035)
+          : Math.sin(animal.phase * 0.7) * 0.012;
+    animal.root.position.y = animal.y + bob;
+
     if (animal.body) {
-      animal.body.position.y += ((animal.kind === 'bird' ? 0.38 : animal.kind === 'hare' ? 0.43 : animal.kind === 'deer' ? 0.91 : animal.kind === 'boar' ? 0.62 : 0.78)
-        + (moving ? Math.abs(Math.sin(animal.phase * 2)) * 0.025 : Math.sin(animal.phase) * 0.008)
-        - animal.body.position.y) * Math.min(1, dt * 9);
+      animal.body.position.y = animal.bodyRestY + bob * (animal.kind === 'hare' ? 0.35 : 0.55);
+      animal.body.rotation.x = moving
+        ? Math.sin(animal.phase * 2) * (animal.kind === 'hare' ? 0.11 : 0.035)
+        : Math.sin(animal.phase * 0.55) * 0.018;
+      animal.body.rotation.z = moving
+        ? Math.sin(animal.phase) * 0.025 * activeMotion
+        : Math.sin(animal.phase * 0.8) * 0.012;
+    }
+
+    if (animal.head) {
+      const grazing = animal.state === 'eat' || animal.state === 'graze';
+      const headDip = grazing ? 0.48 : Math.sin(animal.phase * (moving ? 1.6 : 0.7)) * (moving ? 0.055 : 0.035);
+      animal.head.rotation.x = headDip;
+      animal.head.rotation.y = Math.sin(animal.phase * 0.42) * (moving ? 0.035 : 0.09);
+    }
+
+    if (animal.neck) {
+      animal.neck.rotation.x = -0.22 + Math.sin(animal.phase * 0.65) * (moving ? 0.025 : 0.045);
+    }
+
+    if (animal.tail) {
+      animal.tail.rotation.x = Math.sin(animal.phase * (moving ? 1.7 : 0.8)) * (animal.kind === 'hare' ? 0.08 : 0.20);
+      animal.tail.rotation.z = Math.sin(animal.phase * (moving ? 2.1 : 0.9)) * 0.16;
+    }
+
+    for (const ear of animal.ears) {
+      const twitch = Math.sin(animal.phase * 1.4 + ear.side) * 0.035;
+      ear.pivot.rotation.z = ear.side * (twitch + (animal.state === 'flee' ? -0.12 : 0));
+      if (animal.kind === 'hare') {
+        ear.pivot.rotation.x = Math.sin(animal.phase * 0.7 + ear.side) * (moving ? 0.06 : 0.12);
+      }
     }
   }
 
@@ -547,6 +668,10 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
   return {
     update,
     advanceBackground,
+    getInteractiveMeshes() { return animals.map((animal) => animal.root); },
+    getAnimalFromObject,
+    getMeatYield,
+    damageAnimal,
     get count() { return animals.length; },
     get health() { return health; },
     getSaveState,
