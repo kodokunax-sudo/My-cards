@@ -682,13 +682,13 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   // The body is a real low-poly 3D model: knurled grip, machined head,
   // front bezel, lens, rear cap and a small power button.
   toolPart(flashlightBodyGroup, new THREE.CylinderGeometry(0.052, 0.058, 0.34, 16),
-    flashlightHousingMaterial, 0, 0.005, 0, 0, 1, 1, 1, -Math.PI / 2);
+    flashlightHousingMaterial, 0, 0.005, 0);
   toolPart(flashlightBodyGroup, new THREE.CylinderGeometry(0.060, 0.060, 0.105, 20),
-    flashlightHousingMaterial, 0, -0.205, 0, 0, 1, 1, 1, -Math.PI / 2);
+    flashlightHousingMaterial, 0, -0.205, 0);
   toolPart(flashlightBodyGroup, new THREE.CylinderGeometry(0.080, 0.080, 0.075, 24),
-    flashlightMetalMaterial, 0, -0.265, 0, 0, 1, 1, 1, -Math.PI / 2);
+    flashlightMetalMaterial, 0, -0.265, 0);
   toolPart(flashlightBodyGroup, new THREE.CylinderGeometry(0.067, 0.067, 0.012, 24),
-    flashlightLensMaterial, 0, -0.309, 0, 0, 1, 1, 1, -Math.PI / 2);
+    flashlightLensMaterial, 0, -0.309, 0);
   toolPart(flashlightBodyGroup, new THREE.TorusGeometry(0.070, 0.008, 7, 24),
     flashlightMetalMaterial, 0, -0.316, 0, 0, 1, 1, 1, 0);
   for (let i = 0; i < 5; i++) {
