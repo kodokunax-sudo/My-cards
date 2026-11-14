@@ -8,7 +8,7 @@ const SPECIES = {
   deer: { name: 'Олень', radius: 0.52, height: 2.05, walk: 0.9, run: 4.6, flee: 8.0 },
   boar: { name: 'Кабан', radius: 0.58, height: 1.2, walk: 0.75, run: 3.2, flee: 5.0 },
   bird: { name: 'Лесная птица', radius: 0.27, height: 0.85, walk: 1.25, run: 4.8, flee: 7.5 },
-  wolf: { name: 'Волк', radius: 0.48, height: 1.65, walk: 1.0, run: 5.2, flee: 0 },
+  wolf: { name: 'Волк', radius: 0.48, height: 1.65, walk: 1.0, run: 6.1, flee: 0 },
 };
 
 export function createWildlife(scene, world, camera, player, hud, options = {}) {
