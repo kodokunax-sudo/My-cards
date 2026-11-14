@@ -183,6 +183,7 @@ function notifySaveFailure() {
 
 const survival = createSurvival(scene, camera, canvas, world, player, hud, {
   mobile: isCoarseDevice,
+  wildlife,
   initialSave: previousSave,
   onSave: writeIndexedSave,
   onSaveError: notifySaveFailure,
@@ -621,6 +622,7 @@ function animate() {
   if (backgroundCatchup > 0) {
     player.advanceBackground?.(backgroundCatchup);
     wildlife.advanceBackground?.(backgroundCatchup);
+    survival.advanceBackground?.(backgroundCatchup);
   }
   survival.update(dt);
   saveAccumulator += realDt;
