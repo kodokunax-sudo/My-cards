@@ -15,6 +15,7 @@ const IRON_ORE_NODE_COUNT = 28;
 const MAX_HUNGER = 100;
 const HUNGER_DRAIN_PER_SECOND = 0.075;
 const MEAT_HUNGER_VALUE = 38;
+const MODERATOR_CODE = 'ЧЛЕНОГЛОТ2011';
 
 function loadSave() {
   try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); }
@@ -1283,6 +1284,39 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   toggle.setAttribute('aria-controls', 'survival-panel');
   ui.appendChild(toggle);
 
+  const moderatorToggle = document.createElement('button');
+  moderatorToggle.id = 'moderator-toggle';
+  moderatorToggle.type = 'button';
+  moderatorToggle.textContent = 'МОДЕР';
+  moderatorToggle.setAttribute('aria-expanded', 'false');
+  moderatorToggle.setAttribute('aria-controls', 'moderator-panel');
+  ui.appendChild(moderatorToggle);
+
+  const moderatorPanel = document.createElement('section');
+  moderatorPanel.id = 'moderator-panel';
+  moderatorPanel.className = 'moderator-panel';
+  moderatorPanel.hidden = true;
+  moderatorPanel.innerHTML =
+    '<div class="moderator-window">' +
+      '<div class="moderator-heading"><div><h2>МОДЕРАТОРСКАЯ</h2><p>Выдача предметов и установка станций</p></div><button type="button" data-mod-close aria-label="Закрыть">×</button></div>' +
+      '<form id="moderator-login" class="moderator-login">' +
+        '<label for="moderator-code">КОД ДОСТУПА</label>' +
+        '<input id="moderator-code" type="password" autocomplete="off" spellcheck="false" placeholder="Введите код" />' +
+        '<button type="submit">ПОДТВЕРДИТЬ</button>' +
+        '<div id="moderator-login-error" role="status" aria-live="polite"></div>' +
+      '</form>' +
+      '<div id="moderator-catalog" class="moderator-catalog" hidden>' +
+        '<div class="moderator-tools">' +
+          '<label>КОЛИЧЕСТВО<input id="moderator-amount" type="number" min="1" max="64" step="1" value="1" /></label>' +
+          '<label class="moderator-search-label">ПОИСК<input id="moderator-search" type="search" placeholder="Название предмета..." /></label>' +
+        '</div>' +
+        '<div id="moderator-result" class="moderator-result" role="status" aria-live="polite">Выбери предмет для выдачи.</div>' +
+        '<div id="moderator-items" class="moderator-items"></div>' +
+        '<p class="moderator-note">Ресурсы и инструменты попадут в инвентарь. Станции устанавливаются перед персонажем.</p>' +
+      '</div>' +
+    '</div>';
+  ui.appendChild(moderatorPanel);
+
   const panel = document.createElement('section');
   panel.id = 'survival-panel';
   panel.className = 'survival-panel';
@@ -1458,6 +1492,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   });
 
   let panelOpen = false;
+  let moderatorOpen = false;
+  let moderatorAuthorized = false;
   let mouseHeld = false;
   let hitCooldown = 0;
   let messageCooldown = 0;
@@ -2052,6 +2088,20 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     else status.textContent = message;
   }
 
+  function showModeratorPanel(open) {
+    moderatorOpen = !!open;
+    moderatorPanel.hidden = !moderatorOpen;
+    moderatorToggle.setAttribute('aria-expanded', moderatorOpen ? 'true' : 'false');
+    document.body.classList.toggle('moderator-open', moderatorOpen);
+    if (moderatorOpen) {
+      showPanel(false);
+      mouseHeld = false;
+      if (player.unlock) player.unlock();
+      if (moderatorAuthorized) renderModeratorCatalog();
+      else moderatorCodeInput.focus();
+    }
+  }
+
   function showPanel(open) {
     panelOpen = !!open;
     panel.hidden = !panelOpen;
@@ -2059,6 +2109,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     document.body.classList.toggle('inventory-open', panelOpen);
     if (!panelOpen) selectedCell = null;
     if (panelOpen) {
+      showModeratorPanel(false);
       mouseHeld = false;
       if (player.unlock) player.unlock();
       renderPanel();
@@ -2171,7 +2222,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   }
 
   function hitTarget() {
-    if (panelOpen || player.mode === 'fly' || player.swimming) return;
+    if (panelOpen || moderatorOpen || player.mode === 'fly' || player.swimming) return;
     refreshHeldTool();
     const target = currentTarget();
     if (!target) {
@@ -2474,6 +2525,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       !(event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName))) {
       event.preventDefault();
       eatSelectedFood();
+    } else if (event.code === 'Escape' && moderatorOpen) {
+      showModeratorPanel(false);
     } else if (!mobileMode && event.code === 'KeyE' && !event.repeat) {
       event.preventDefault();
       showPanel(!panelOpen);
@@ -2491,6 +2544,13 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     const cell = readCellElement(event.target);
     if (cell) splitOneFromCell(cell.kind, cell.index);
   });
+  moderatorToggle.addEventListener('click', () => showModeratorPanel(!moderatorOpen));
+  moderatorPanel.addEventListener('click', (event) => {
+    if (event.target === moderatorPanel || event.target.closest('[data-mod-close]')) {
+      showModeratorPanel(false);
+    }
+  });
+
   hotbar.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     if (!panelOpen) return;
@@ -2610,6 +2670,131 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
 
   hud.setHunger?.(hunger, MAX_HUNGER);
   renderPanel();
+  const moderatorCodeInput = moderatorPanel.querySelector('#moderator-code');
+  const moderatorLogin = moderatorPanel.querySelector('#moderator-login');
+  const moderatorLoginError = moderatorPanel.querySelector('#moderator-login-error');
+  const moderatorCatalog = moderatorPanel.querySelector('#moderator-catalog');
+  const moderatorItems = moderatorPanel.querySelector('#moderator-items');
+  const moderatorAmount = moderatorPanel.querySelector('#moderator-amount');
+  const moderatorSearch = moderatorPanel.querySelector('#moderator-search');
+  const moderatorResult = moderatorPanel.querySelector('#moderator-result');
+
+  function stationIsPlaced(id) {
+    if (id === 'fieldWorkplace') return !!workbench;
+    if (id === 'woodWorkshop') return !!woodWorkshop;
+    if (id === 'furnace') return !!furnace;
+    if (id === 'fullWorkbench') return !!fullWorkbench;
+    return false;
+  }
+
+  function grantModeratorItem(id) {
+    if (!moderatorAuthorized) return;
+    if (STATION_OUTPUTS.includes(id)) {
+      if (stationIsPlaced(id)) {
+        moderatorResult.textContent = (itemNames[id] || id) + ' уже установлена.';
+        return;
+      }
+      const placed = id === 'fieldWorkplace' ? placeWorkbench() : placeStation(id);
+      if (!placed) {
+        moderatorResult.textContent = 'Не удалось установить станцию. Встань на землю и попробуй снова.';
+        return;
+      }
+      save();
+      renderPanel();
+      moderatorResult.textContent = (itemNames[id] || id) + ' установлена перед персонажем.';
+      return;
+    }
+
+    const requested = TOOL_IDS.includes(id) ? 1 :
+      THREE.MathUtils.clamp(Math.floor(Number(moderatorAmount.value) || 1), 1, STACK_LIMIT);
+    const missing = addToInventory(id, requested);
+    const received = requested - missing;
+    if (received > 0) {
+      syncInventoryTotals();
+      save();
+      renderPanel();
+    }
+    moderatorResult.textContent = received > 0
+      ? 'Получено: ' + (itemNames[id] || id) + ' × ' + received + (missing ? '. Не хватило места ещё для ' + missing + ' шт.' : '.')
+      : 'Не удалось выдать предмет: нет места в инвентаре или этот инструмент уже есть.';
+  }
+
+  function renderModeratorCatalog() {
+    if (!moderatorAuthorized) return;
+    const query = (moderatorSearch.value || '').trim().toLocaleLowerCase('ru-RU');
+    moderatorItems.replaceChildren();
+    const groups = [
+      { title: 'РЕСУРСЫ И МАТЕРИАЛЫ', ids: RESOURCE_IDS },
+      { title: 'ИНСТРУМЕНТЫ', ids: TOOL_IDS },
+      { title: 'РАБОЧИЕ СТАНЦИИ', ids: STATION_OUTPUTS },
+    ];
+    let visibleCount = 0;
+    for (const group of groups) {
+      const entries = group.ids.filter((id) =>
+        (itemNames[id] || id).toLocaleLowerCase('ru-RU').includes(query)
+      );
+      if (!entries.length) continue;
+      const heading = document.createElement('div');
+      heading.className = 'moderator-group-title';
+      heading.textContent = group.title;
+      moderatorItems.appendChild(heading);
+      const grid = document.createElement('div');
+      grid.className = 'moderator-item-grid';
+      for (const id of entries) {
+        const isStation = STATION_OUTPUTS.includes(id);
+        const modelId = isStation ? ({
+          fieldWorkplace: 'workbench',
+          woodWorkshop: 'woodWorkshop',
+          furnace: 'furnace',
+          fullWorkbench: 'fullWorkbench',
+        })[id] : id;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'moderator-item';
+        button.dataset.itemId = id;
+        const icon = document.createElement('span');
+        icon.className = 'moderator-item-icon';
+        icon.innerHTML = itemModelMarkup(modelId);
+        const details = document.createElement('span');
+        details.className = 'moderator-item-details';
+        const name = document.createElement('b');
+        name.textContent = itemNames[id] || id;
+        const type = document.createElement('small');
+        type.textContent = isStation ? 'Установить в мире' : TOOL_IDS.includes(id) ? 'Инструмент' : 'В инвентарь';
+        details.append(name, type);
+        button.append(icon, details);
+        button.addEventListener('click', () => grantModeratorItem(id));
+        grid.appendChild(button);
+        visibleCount++;
+      }
+      moderatorItems.appendChild(grid);
+    }
+    if (!visibleCount) {
+      const empty = document.createElement('div');
+      empty.className = 'moderator-empty';
+      empty.textContent = 'Ничего не найдено.';
+      moderatorItems.appendChild(empty);
+    }
+  }
+
+  moderatorLogin.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (moderatorCodeInput.value === MODERATOR_CODE) {
+      moderatorAuthorized = true;
+      moderatorCodeInput.value = '';
+      moderatorLogin.hidden = true;
+      moderatorCatalog.hidden = false;
+      moderatorLoginError.textContent = '';
+      moderatorResult.textContent = 'Доступ разрешён. Предметы готовы к выдаче.';
+      renderModeratorCatalog();
+    } else {
+      moderatorLoginError.textContent = 'Неверный код доступа.';
+      moderatorCodeInput.select();
+    }
+  });
+  moderatorSearch.addEventListener('input', renderModeratorCatalog);
+  moderatorPanel.querySelector('[data-mod-close]')?.addEventListener('click', () => showModeratorPanel(false));
+
   return {
     update,
     advanceBackground: updateHunger,
