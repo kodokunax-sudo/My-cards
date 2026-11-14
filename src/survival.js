@@ -1995,7 +1995,13 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       starvationDamageTimer += dt;
       while (starvationDamageTimer >= 18) {
         starvationDamageTimer -= 18;
+        const healthBefore = wildlife?.health;
         wildlife?.damagePlayer?.('hunger');
+        if (Number(healthBefore) <= 1 && wildlife?.health >= 5) {
+          hunger = 25;
+          starvationDamageTimer = 0;
+          break;
+        }
       }
     } else {
       starvationDamageTimer = 0;
