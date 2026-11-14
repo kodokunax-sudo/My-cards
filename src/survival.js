@@ -2526,6 +2526,8 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       event.preventDefault();
       eatSelectedFood();
     } else if (event.code === 'Escape' && moderatorOpen) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
       showModeratorPanel(false);
     } else if (!mobileMode && event.code === 'KeyE' && !event.repeat) {
       event.preventDefault();
@@ -2558,7 +2560,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     if (cell) splitOneFromCell(cell.kind, cell.index);
   });
   canvas.addEventListener('mousedown', (event) => {
-    if (event.button !== 0 || panelOpen) return;
+    if (event.button !== 0 || panelOpen || moderatorOpen) return;
     mouseHeld = true;
     hitTarget();
     hitCooldown = 0.42;
@@ -2724,7 +2726,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     const query = (moderatorSearch.value || '').trim().toLocaleLowerCase('ru-RU');
     moderatorItems.replaceChildren();
     const groups = [
-      { title: 'РЕСУРСЫ И МАТЕРИАЛЫ', ids: RESOURCE_IDS },
+      { title: 'РЕСУРСЫ И МАТЕРИАЛЫ', ids: RESOURCE_IDS.filter((id) => id !== 'branch') },
       { title: 'ИНСТРУМЕНТЫ', ids: TOOL_IDS },
       { title: 'РАБОЧИЕ СТАНЦИИ', ids: STATION_OUTPUTS },
     ];
@@ -2802,6 +2804,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     save,
     open() { showPanel(true); },
     close() { showPanel(false); },
+    closeModerator() { showModeratorPanel(false); },
     get inventory() { return inventory; },
     get selectedTool() { return selectedTool; },
     get activeStoneNodes() { return nodes.filter((node) => node.active).length + world.rocks.activeCount; },
