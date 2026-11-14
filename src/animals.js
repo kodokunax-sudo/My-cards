@@ -136,7 +136,7 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
     } else if (kind === 'deer') {
       body = part(root, materials.deer, [0, 0.91, -0.02], [0.39, 0.42, 0.72]);
       part(root, materials.deerLight, [0, 0.68, 0.18], [0.29, 0.25, 0.44]);
-      const neck = part(root, materials.deer, [0, 1.22, 0.47], [0.22, 0.48, 0.25]);
+      neck = part(root, materials.deer, [0, 1.22, 0.47], [0.22, 0.48, 0.25]);
       neck.rotation.x = -0.28;
       head = new THREE.Group();
       head.position.set(0, 1.52, 0.64);
@@ -218,7 +218,7 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
     } else if (kind === 'wolf') {
       body = part(root, materials.wolf, [0, 0.78, -0.02], [0.40, 0.39, 0.72]);
       part(root, materials.wolfLight, [0, 0.62, 0.31], [0.30, 0.25, 0.40]);
-      const neck = part(root, materials.wolf, [0, 1.03, 0.40], [0.25, 0.34, 0.30]);
+      neck = part(root, materials.wolf, [0, 1.03, 0.40], [0.25, 0.34, 0.30]);
       neck.rotation.x = -0.22;
       head = new THREE.Group();
       head.position.set(0, 1.16, 0.62);
@@ -443,9 +443,10 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
           : Math.sin(animal.phase * 0.7) * 0.012;
     animal.root.position.y = animal.y + bob;
 
+    const reactingToHit = animal.hurtTimer > 0;
     if (animal.body) {
       animal.body.position.y = animal.bodyRestY + bob * (animal.kind === 'hare' ? 0.35 : 0.55);
-      animal.body.rotation.x = moving
+      animal.body.rotation.x = reactingToHit ? -0.12 : moving
         ? Math.sin(animal.phase * 2) * (animal.kind === 'hare' ? 0.11 : 0.035)
         : Math.sin(animal.phase * 0.55) * 0.018;
       animal.body.rotation.z = moving
@@ -456,12 +457,13 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
     if (animal.head) {
       const grazing = animal.state === 'eat' || animal.state === 'graze';
       const headDip = grazing ? 0.48 : Math.sin(animal.phase * (moving ? 1.6 : 0.7)) * (moving ? 0.055 : 0.035);
-      animal.head.rotation.x = headDip;
+      animal.head.rotation.x = reactingToHit ? -0.20 : headDip;
       animal.head.rotation.y = Math.sin(animal.phase * 0.42) * (moving ? 0.035 : 0.09);
     }
 
     if (animal.neck) {
-      animal.neck.rotation.x = -0.22 + Math.sin(animal.phase * 0.65) * (moving ? 0.025 : 0.045);
+      const baseNeckAngle = animal.kind === 'deer' ? -0.28 : -0.22;
+      animal.neck.rotation.x = baseNeckAngle + Math.sin(animal.phase * 0.65) * (moving ? 0.025 : 0.045);
     }
 
     if (animal.tail) {
@@ -624,6 +626,7 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
 
     for (const animal of [...animals]) {
       if (animal.dead) continue;
+      animal.hurtTimer = Math.max(0, (animal.hurtTimer || 0) - dt);
       const distance = Math.hypot(animal.x - playerX, animal.z - playerZ);
       if (distance > 360) {
         removeAnimal(animal);
