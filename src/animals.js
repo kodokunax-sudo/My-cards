@@ -531,9 +531,9 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
     animateModel(animal, dt, !arrived, speed);
   }
 
-  function damagePlayer() {
-    if (biteCooldown > 0 || invulnerable > 0) return;
-    biteCooldown = 1.45;
+  function damagePlayer(source = 'wolf') {
+    if (biteCooldown > 0 || invulnerable > 0) return false;
+    biteCooldown = source === 'hunger' ? 1.0 : 1.45;
     invulnerable = 0.8;
     health = Math.max(0, health - 1);
     hud.setHealth?.(health, MAX_HEALTH, true);
@@ -543,10 +543,15 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
       health = MAX_HEALTH;
       invulnerable = 3.5;
       hud.setHealth?.(health, MAX_HEALTH, false);
-      hud.toast('Волк загнал вас. Вы очнулись возле дома.');
+      hud.toast(source === 'hunger'
+        ? 'От голода вы потеряли сознание и очнулись возле дома.'
+        : 'Волк загнал вас. Вы очнулись возле дома.');
+    } else if (source === 'hunger') {
+      hud.toast('Голод ослабляет вас. Найдите еду!');
     } else {
       hud.toast('Волк укусил вас. Уходите от него!');
     }
+    return true;
   }
 
   function updateWolf(wolf, dt, playerX, playerZ) {
@@ -672,6 +677,7 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
     getAnimalFromObject,
     getMeatYield,
     damageAnimal,
+    damagePlayer,
     get count() { return animals.length; },
     get health() { return health; },
     getSaveState,
