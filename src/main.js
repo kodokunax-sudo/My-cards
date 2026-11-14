@@ -256,7 +256,8 @@ const bloomInput = document.getElementById('graphics-bloom');
 const graphicsStatus = document.getElementById('graphics-status');
 const settingsToggle = document.getElementById('settings-toggle');
 const settingsPanel = document.getElementById('settings-panel');
-const settingsClose = document.getElementById('settings-close');
+const resumeButton = document.getElementById('settings-resume');
+const menuSoundButton = document.getElementById('menu-sound-toggle');
 
 function detectDeviceQuality() {
   // Phones start with the lightest profile to avoid GPU/context failures
@@ -384,20 +385,40 @@ function chooseQuality(nextQuality, resetOptions = true) {
   saveGraphicsSettings();
 }
 
+let paused = false;
+
+function syncMenuSoundButton() {
+  if (!menuSoundButton) return;
+  menuSoundButton.textContent = audio.enabled ? 'ЗВУК: ВКЛЮЧЁН' : 'ЗВУК: ВЫКЛЮЧЕН';
+  menuSoundButton.setAttribute('aria-pressed', audio.enabled ? 'true' : 'false');
+}
+
 function setSettingsOpen(open) {
   if (!settingsPanel || !settingsToggle) return;
-  settingsPanel.hidden = !open;
-  settingsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  const shouldOpen = !!open;
+  settingsPanel.hidden = !shouldOpen;
+  settingsPanel.classList.toggle('menu-open', shouldOpen);
+  settingsToggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+  paused = shouldOpen && started;
+  document.body.classList.toggle('paused', paused);
+  if (shouldOpen) {
+    player.unlock();
+    survival.close();
+    player.setRun(false);
+  }
+  syncMenuSoundButton();
 }
+
 settingsToggle?.addEventListener('click', () => {
   setSettingsOpen(settingsPanel?.hidden !== false);
 });
-settingsClose?.addEventListener('click', () => setSettingsOpen(false));
-document.addEventListener('keydown', (event) => {
-  if (event.code === 'Escape' && settingsPanel && !settingsPanel.hidden) {
-    setSettingsOpen(false);
-  }
+resumeButton?.addEventListener('click', () => setSettingsOpen(false));
+menuSoundButton?.addEventListener('click', () => {
+  audio.toggle();
+  touch?.setSoundState(audio.enabled);
+  syncMenuSoundButton();
 });
+syncMenuSoundButton();
 qualitySelect?.addEventListener('change', () => {
   if (qualitySelect.value === 'auto') {
     autoQuality = true;
@@ -524,7 +545,7 @@ function enterScene() {
 }
 window.__titanStartGame = enterScene;
 canvas.addEventListener('click', (e) => {
-  if (started && !player.locked && !touch && e.pointerType === 'mouse') {
+  if (started && !paused && !player.locked && !touch && e.pointerType === 'mouse') {
     try { Promise.resolve(player.lock()).catch(() => {}); } catch (error) { /* drag-to-look remains available */ }
   }
 });
@@ -534,15 +555,18 @@ window.addEventListener('keydown', (e) => {
     touch?.setSoundState(on);
     hud.toast(on ? 'Звук включён' : 'Звук выключен');
   }
-  if (e.code === 'Escape') player.unlock();
-  if (e.code === 'KeyO' && !e.repeat) {
+  if (e.code === 'Escape' && started) {
+    if (settingsPanel && !settingsPanel.hidden) setSettingsOpen(false);
+    else setSettingsOpen(true);
     player.unlock();
+  }
+  if ((e.code === 'KeyO' || e.code === 'KeyP') && !e.repeat) {
     setSettingsOpen(settingsPanel?.hidden !== false);
   }
 });
 
 // ---------- цикл ----------
-const clock = new THREE.Clock();
+let lastFrameTime = performance.now();
 let saveAccumulator = 0;
 let previousDayPhase = 0;
 const NIGHT_TRANSITION_SECONDS = 55;
@@ -573,13 +597,31 @@ document.addEventListener('fullscreenchange', resize);
 
 function animate() {
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
-  elapsed += dt;
+  const now = performance.now();
+  const realDt = Math.max(0, Math.min((now - lastFrameTime) / 1000, 6 * 60 * 60));
+  lastFrameTime = now;
+  const dt = Math.min(realDt, 0.05);
 
+  if (paused) {
+    try {
+      if (composer) composer.render();
+      else renderer.render(scene, camera);
+    } finally {
+      occlusionCuller.restore();
+    }
+    return;
+  }
+
+  elapsed += realDt;
   player.update(dt);
   wildlife.update(dt);
+  const backgroundCatchup = Math.max(0, realDt - dt);
+  if (backgroundCatchup > 0) {
+    player.advanceBackground?.(backgroundCatchup);
+    wildlife.advanceBackground?.(backgroundCatchup);
+  }
   survival.update(dt);
-  saveAccumulator += dt;
+  saveAccumulator += realDt;
   if (saveAccumulator >= 8) {
     saveAccumulator %= 8;
     if (!survival.save()) notifySaveFailure();
