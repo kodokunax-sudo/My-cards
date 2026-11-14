@@ -883,6 +883,31 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     } else if (id === 'ironIngot') {
       toolPart(group, new THREE.BoxGeometry(0.42, 0.17, 0.25), metalEdgeMaterial, 0, -0.10, 0, 0, 1, 1, 1, 0.12);
       toolPart(group, new THREE.BoxGeometry(0.33, 0.055, 0.18), stoneHeadMaterial, 0, 0.005, 0, 0, 1, 1, 1, 0.12);
+    } else if (id === 'rawMeat') {
+      const meatOuterMaterial = new THREE.MeshStandardMaterial({
+        color: 0x813332, roughness: 0.92, flatShading: true,
+      });
+      const meatSurfaceMaterial = new THREE.MeshStandardMaterial({
+        color: 0xb94d49, roughness: 0.86, flatShading: true,
+      });
+      const meatFatMaterial = new THREE.MeshStandardMaterial({
+        color: 0xf0c6aa, roughness: 0.9, flatShading: true,
+      });
+      const meatVeinMaterial = new THREE.MeshStandardMaterial({
+        color: 0xd98b80, roughness: 0.9, flatShading: true,
+      });
+      // A compact, irregular piece of raw meat with a darker edge,
+      // a moist red center and a few pale fat seams.
+      toolPart(group, new THREE.DodecahedronGeometry(0.19, 1), meatOuterMaterial,
+        0, -0.075, 0, 0.16, 1.22, 0.78, 0.82);
+      toolPart(group, new THREE.SphereGeometry(0.145, 10, 7), meatSurfaceMaterial,
+        0.005, -0.065, 0.055, -0.12, 1.08, 0.70, 0.56);
+      toolPart(group, new THREE.SphereGeometry(0.075, 8, 6), meatFatMaterial,
+        -0.105, -0.045, 0.09, -0.22, 0.52, 0.24, 0.20);
+      toolPart(group, new THREE.SphereGeometry(0.062, 8, 6), meatFatMaterial,
+        0.10, -0.095, 0.085, 0.18, 0.48, 0.22, 0.18);
+      toolPart(group, new THREE.SphereGeometry(0.082, 8, 6), meatVeinMaterial,
+        -0.015, 0.015, 0.091, 0.32, 0.70, 0.18, 0.16);
     } else if (id === 'metalFastener') {
       toolPart(group, new THREE.CylinderGeometry(0.025, 0.025, 0.45, 7), metalEdgeMaterial, -0.10, -0.08, 0, 0, 1, 1, 1, 0, 0);
       toolPart(group, new THREE.CylinderGeometry(0.025, 0.025, 0.38, 7), metalEdgeMaterial, 0.10, -0.08, 0, 0.12);
