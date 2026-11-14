@@ -405,6 +405,7 @@ function setSettingsOpen(open) {
     player.unlock();
     survival.close();
     player.setRun(false);
+    touch?.setRunState(false);
   }
   syncMenuSoundButton();
 }
@@ -553,6 +554,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') {
     const on = audio.toggle();
     touch?.setSoundState(on);
+    syncMenuSoundButton();
     hud.toast(on ? 'Звук включён' : 'Звук выключен');
   }
   if (e.code === 'Escape' && started) {
