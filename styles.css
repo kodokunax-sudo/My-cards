@@ -1867,3 +1867,69 @@ body.in-game.paused #settings-toggle { display: none; }
   .game-menu-card .setting-toggles label { font-size: 10px; }
 }
 body.paused #touch-layer { pointer-events: none; }
+
+
+/* Hunger meter displayed under the player's health hearts. */
+.hunger-indicator {
+  position: fixed;
+  z-index: 44;
+  top: 57px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(220px, 68vw);
+  min-height: 28px;
+  padding: 5px 9px;
+  color: #f5ead7;
+  background: rgba(15, 16, 18, 0.82);
+  border: 1px solid rgba(222, 173, 113, 0.34);
+  box-shadow: 0 3px 14px rgba(0,0,0,.22);
+  pointer-events: none;
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+}
+.hunger-icon { font-size: 14px; line-height: 1; }
+.hunger-label {
+  flex: 0 0 auto;
+  color: rgba(255, 235, 203, .78);
+  font: 800 8px/1 system-ui,sans-serif;
+  letter-spacing: .08em;
+}
+.hunger-track {
+  flex: 1 1 auto;
+  height: 8px;
+  overflow: hidden;
+  background: rgba(0,0,0,.5);
+  border: 1px solid rgba(255,255,255,.15);
+}
+.hunger-track i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg,#d18a3e,#f1ca77);
+  transition: width .18s linear, background .2s ease;
+}
+.hunger-indicator>b {
+  min-width: 30px;
+  color: #f6ddb0;
+  font: 800 9px/1 system-ui,sans-serif;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.hunger-indicator.low { border-color: rgba(235,86,63,.8); }
+.hunger-indicator.low .hunger-track i {
+  background: linear-gradient(90deg,#a6322c,#ef7651);
+}
+@media(max-width:620px) {
+  .hunger-indicator {
+    top: 39px;
+    width: min(190px, 62vw);
+    min-height: 24px;
+    gap: 6px;
+    padding: 3px 7px;
+  }
+  .hunger-label { font-size: 7px; }
+}
+body.paused .hunger-indicator { display: none; }
