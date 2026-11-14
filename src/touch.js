@@ -130,6 +130,8 @@ export function createTouchControls(player, actions = {}) {
         actions.tour?.();
       } else if (action === 'sound') {
         actions.sound?.();
+      } else if (action === 'eat') {
+        actions.eat?.();
       }
     };
 
