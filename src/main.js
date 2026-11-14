@@ -144,6 +144,8 @@ try { window.navigator.storage?.persist?.().catch(() => {}); } catch (error) { /
 let elapsed = Number(previousSave?.session?.elapsed);
 if (!Number.isFinite(elapsed) || elapsed < 0) elapsed = 0;
 
+let survival = null;
+
 const player = createPlayer(camera, canvas, physics, world, (mode) => {
   hud.setMode(mode);
   touch?.setFlyState(mode === 'fly');
@@ -157,7 +159,7 @@ const touch = createTouchControls(player, {
     touch.setSoundState(on);
     hud.toast(on ? 'Звук включён' : 'Звук выключен');
   },
-  eat: () => survival.eatSelectedFood?.(),
+  eat: () => survival?.eatSelectedFood?.(),
 });
 if (touch) {
   touch.setSoundState(audio.enabled);
@@ -182,7 +184,7 @@ function notifySaveFailure() {
   hud.toast('Не удалось сохранить игру. Проверьте хранилище браузера.');
 }
 
-const survival = createSurvival(scene, camera, canvas, world, player, hud, {
+survival = createSurvival(scene, camera, canvas, world, player, hud, {
   mobile: isCoarseDevice,
   wildlife,
   initialSave: previousSave,
