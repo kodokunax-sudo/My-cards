@@ -648,6 +648,70 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   heldMotion.name = 'held-item-motion';
   viewModel.add(heldMotion);
 
+  // Flashlight is a temporary utility, not an inventory item yet.
+  let flashlightOn = false;
+  const flashlightGroup = new THREE.Group();
+  flashlightGroup.name = 'held-flashlight';
+  flashlightGroup.position.set(-0.005, -0.105, -0.045);
+  flashlightGroup.visible = false;
+  heldMotion.add(flashlightGroup);
+  const flashlightBodyGroup = new THREE.Group();
+  flashlightBodyGroup.rotation.x = Math.PI / 2;
+  flashlightGroup.add(flashlightBodyGroup);
+
+  const flashlightHousingMaterial = new THREE.MeshStandardMaterial({
+    color: 0x20252a, roughness: 0.48, metalness: 0.62,
+  });
+  const flashlightGripMaterial = new THREE.MeshStandardMaterial({
+    color: 0x30363b, roughness: 0.92, metalness: 0.16,
+  });
+  const flashlightMetalMaterial = new THREE.MeshStandardMaterial({
+    color: 0x858d91, roughness: 0.34, metalness: 0.82,
+  });
+  const flashlightButtonMaterial = new THREE.MeshStandardMaterial({
+    color: 0x9b3428, roughness: 0.5, metalness: 0.18,
+  });
+  const flashlightLensMaterial = new THREE.MeshStandardMaterial({
+    color: 0xf6e7bd,
+    emissive: 0x000000,
+    emissiveIntensity: 0,
+    roughness: 0.24,
+    metalness: 0.08,
+  });
+
+  // The body is a real low-poly 3D model: knurled grip, machined head,
+  // front bezel, lens, rear cap and a small power button.
+  toolPart(flashlightBodyGroup, new THREE.CylinderGeometry(0.052, 0.058, 0.34, 16),
+    flashlightHousingMaterial, 0, 0.005, 0, 0, 1, 1, 1, -Math.PI / 2);
+  toolPart(flashlightBodyGroup, new THREE.CylinderGeometry(0.060, 0.060, 0.105, 20),
+    flashlightHousingMaterial, 0, -0.205, 0, 0, 1, 1, 1, -Math.PI / 2);
+  toolPart(flashlightBodyGroup, new THREE.CylinderGeometry(0.080, 0.080, 0.075, 24),
+    flashlightMetalMaterial, 0, -0.265, 0, 0, 1, 1, 1, -Math.PI / 2);
+  toolPart(flashlightBodyGroup, new THREE.CylinderGeometry(0.067, 0.067, 0.012, 24),
+    flashlightLensMaterial, 0, -0.309, 0, 0, 1, 1, 1, -Math.PI / 2);
+  toolPart(flashlightBodyGroup, new THREE.TorusGeometry(0.070, 0.008, 7, 24),
+    flashlightMetalMaterial, 0, -0.316, 0, 0, 1, 1, 1, 0);
+  for (let i = 0; i < 5; i++) {
+    toolPart(flashlightBodyGroup, new THREE.TorusGeometry(0.055, 0.0045, 5, 16),
+      flashlightMetalMaterial, 0, -0.055 + i * 0.035, 0, 0, 1, 1, 1, Math.PI / 2);
+  }
+  toolPart(flashlightBodyGroup, new THREE.CylinderGeometry(0.063, 0.063, 0.035, 16),
+    flashlightGripMaterial, 0, 0.185, 0, 0, 1, 1, 1, -Math.PI / 2);
+  toolPart(flashlightBodyGroup, new THREE.SphereGeometry(0.018, 10, 8),
+    flashlightButtonMaterial, 0.049, -0.015, 0.002, 0, 1, 1, 1);
+  toolPart(flashlightBodyGroup, new THREE.TorusGeometry(0.021, 0.0035, 5, 12),
+    flashlightMetalMaterial, 0.049, -0.015, 0.002, 0, 1, 1, 1, Math.PI / 2);
+
+  const flashlightLight = new THREE.SpotLight(0xffedc8, 68, 42, Math.PI / 7, 0.58, 1.35);
+  flashlightLight.position.set(0, -0.314, 0);
+  flashlightLight.castShadow = false;
+  flashlightLight.visible = false;
+  flashlightBodyGroup.add(flashlightLight);
+  const flashlightTarget = new THREE.Object3D();
+  flashlightTarget.position.set(0, -3.2, 0);
+  flashlightBodyGroup.add(flashlightTarget);
+  flashlightLight.target = flashlightTarget;
+
   function toolPart(group, geometry, material, x, y, z, rotationZ = 0, scaleX = 1, scaleY = 1, scaleZ = 1, rotationX = 0, rotationY = 0) {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(x, y, z);
@@ -898,18 +962,23 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     const activeStack = hotbarSlots[selectedSlot];
     selectedTool = activeStack && TOOL_IDS.includes(activeStack.id) ? activeStack.id : 'hands';
     const gathering = toolAction === 'gather' && toolSwing > 0;
+    const flashlightActive = flashlightOn && !gathering;
     for (const [id, group] of Object.entries(heldTools)) {
-      group.visible = selectedTool === id && !gathering;
+      group.visible = selectedTool === id && !gathering && !flashlightActive;
     }
     for (const [id, group] of Object.entries(heldResources)) {
-      group.visible = !gathering && !!activeStack && activeStack.id === id && activeStack.count > 0;
+      group.visible = !gathering && !flashlightActive && !!activeStack && activeStack.id === id && activeStack.count > 0;
     }
-    heldHands.visible = !activeStack || gathering;
-    heldToolGrip.visible = !gathering && selectedTool !== 'hands';
+    heldHands.visible = (!activeStack || gathering) && !flashlightActive;
+    heldToolGrip.visible = flashlightActive || (!gathering && selectedTool !== 'hands');
+    flashlightGroup.visible = flashlightActive;
+    flashlightLight.visible = flashlightActive;
+    flashlightLensMaterial.emissive.setHex(flashlightActive ? 0xffdf9c : 0x000000);
+    flashlightLensMaterial.emissiveIntensity = flashlightActive ? 2.8 : 0;
     const selectedResource = activeStack && heldResources[activeStack.id] ? heldResources[activeStack.id] : null;
-    activeHeldId = gathering ? 'hands' : selectedTool !== 'hands' ? selectedTool :
+    activeHeldId = flashlightActive ? 'flashlight' : gathering ? 'hands' : selectedTool !== 'hands' ? selectedTool :
       selectedResource ? activeStack.id : 'hands';
-    activeHeldModel = gathering ? heldHands : selectedTool !== 'hands' ? heldTools[selectedTool] :
+    activeHeldModel = flashlightActive ? flashlightGroup : gathering ? heldHands : selectedTool !== 'hands' ? heldTools[selectedTool] :
       selectedResource || heldHands;
     viewModel.visible = player.mode !== 'cinematic' && !player.swimming;
   }
@@ -2297,6 +2366,14 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   mobileHit.addEventListener('click', () => hitTarget());
 
   window.addEventListener('keydown', (event) => {
+    if (event.code === 'KeyR' && !event.repeat && !panelOpen &&
+      !(event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName))) {
+      event.preventDefault();
+      flashlightOn = !flashlightOn;
+      refreshHeldTool();
+      toast(flashlightOn ? 'Фонарик включён.' : 'Фонарик выключен.');
+      return;
+    }
     if (!mobileMode && event.code === 'KeyE' && !event.repeat) {
       event.preventDefault();
       showPanel(!panelOpen);
