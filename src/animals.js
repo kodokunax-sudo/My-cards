@@ -326,7 +326,7 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
     return distance <= step + 0.55;
   }
 
-  function closestPrey(wolf, maxDistance = 125) {
+  function closestPrey(wolf, maxDistance = 260) {
     let best = null;
     let bestDistance = maxDistance;
     for (const animal of animals) {
