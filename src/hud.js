@@ -24,6 +24,7 @@ export function createHud() {
 
   let toastTimer = 0;
   let healthHitTimer = 0;
+  let lastHungerPercent = -1;
   let lastClockText = '';
   const fmt = (v) => v.toFixed(1).replace('.', ',');
 
@@ -104,8 +105,12 @@ export function createHud() {
       const max = Math.max(1, Number(maximum) || 100);
       const current = Math.max(0, Math.min(max, Number(value) || 0));
       const ratio = current / max;
-      el.hungerFill.style.width = (ratio * 100) + '%';
-      el.hungerText.textContent = Math.round(ratio * 100) + '%';
+      const percent = Math.round(ratio * 100);
+      if (percent !== lastHungerPercent) {
+        lastHungerPercent = percent;
+        el.hungerFill.style.width = percent + '%';
+        el.hungerText.textContent = percent + '%';
+      }
       el.hunger.classList.toggle('low', ratio <= 0.2);
       el.hunger.setAttribute('aria-label', 'Сытость: ' + Math.round(ratio * 100) + '%');
     },
