@@ -12,6 +12,9 @@ const STICK_NODE_COUNT = 4000;
 const LEAF_NODE_COUNT = 4000;
 const SCRAP_NODE_COUNT = 52;
 const IRON_ORE_NODE_COUNT = 28;
+const MAX_HUNGER = 100;
+const HUNGER_DRAIN_PER_SECOND = 0.075;
+const MEAT_HUNGER_VALUE = 38;
 
 function loadSave() {
   try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); }
@@ -25,6 +28,7 @@ function numberOrZero(value) {
 
 export function createSurvival(scene, camera, canvas, world, player, hud, options = {}) {
   const mobileMode = options.mobile === true;
+  const wildlife = options.wildlife || null;
   const FIBER_NODE_COUNT = mobileMode ? 64 : 190;
   const BRANCH_NODE_COUNT = mobileMode ? 64 : 150;
   const STICK_NODE_COUNT = mobileMode ? 360 : 4000;
@@ -33,17 +37,21 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
   const IRON_ORE_NODE_COUNT = mobileMode ? 12 : 28;
   const saved = options.initialSave && typeof options.initialSave === 'object'
     ? options.initialSave : loadSave();
+  let hunger = Number.isFinite(Number(saved?.hunger))
+    ? THREE.MathUtils.clamp(Number(saved.hunger), 0, MAX_HUNGER)
+    : MAX_HUNGER;
+  let starvationDamageTimer = 0;
   const inventory = {
     logs: 0, planks: 0, sticks: 0, stone: 0,
     branch: 0, fiber: 0, leaves: 0, sharpShard: 0, rope: 0, handle: 0,
-    stoneWedge: 0, bark: 0, ironScrap: 0, ironOre: 0, ironIngot: 0, metalFastener: 0,
+    stoneWedge: 0, bark: 0, ironScrap: 0, ironOre: 0, ironIngot: 0, metalFastener: 0, rawMeat: 0,
     woodAxe: false, woodPickaxe: false, stoneAxe: false, stonePickaxe: false,
     ironAxe: false, ironPickaxe: false,
   };
   const RESOURCE_IDS = [
     'logs', 'planks', 'sticks', 'stone',
     'branch', 'fiber', 'leaves', 'sharpShard', 'rope', 'handle',
-    'stoneWedge', 'bark', 'ironScrap', 'ironOre', 'ironIngot', 'metalFastener',
+    'stoneWedge', 'bark', 'ironScrap', 'ironOre', 'ironIngot', 'metalFastener', 'rawMeat',
   ];
   const TOOL_IDS = ['woodAxe', 'woodPickaxe', 'stoneAxe', 'stonePickaxe', 'ironAxe', 'ironPickaxe'];
   const STATION_OUTPUTS = ['fieldWorkplace', 'woodWorkshop', 'furnace', 'fullWorkbench'];
@@ -161,6 +169,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
         craftingGrid,
         selectedTool,
         selectedSlot,
+        hunger,
         depletedTrees: world.forests.depletedIds || world.forests.trees.filter((tree) => tree.removed).map((tree) => tree.id),
         depletedRocks: world.rocks.depletedIds || [],
         depletedShrubs: world.groundCover?.depletedIds || [],
@@ -1368,6 +1377,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     stoneWedge: 'Каменный клин', bark: 'Кора',
     ironScrap: 'Железный лом', ironOre: 'Железная руда',
     ironIngot: 'Железный слиток', metalFastener: 'Металлическое крепление',
+    rawMeat: 'Сырое мясо',
     fieldWorkplace: 'Полевое рабочее место',
     woodWorkshop: 'Деревянная мастерская',
     furnace: 'Печь',
@@ -1492,6 +1502,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     ironScrap: '<g stroke="#493d35" stroke-width="2"><path d="m9 17 22-8 24 14-8 29-28 4-10-18Z" fill="#786f68"/><path d="m9 17 22-8-3 22-9 25-10-18Z" fill="#4e5453"/><path d="m31 9 24 14-8 29-19-21Z" fill="#a06b47"/></g>',
     ironOre: '<g stroke="#4d4741" stroke-width="2"><path d="m8 40 7-23 20-8 21 14 1 22-21 10-21-5Z" fill="#77736c"/><path d="m15 17 20-8-3 22-24 9Z" fill="#a16b4c"/><path d="m32 31 24-8 1 22-21 10Z" fill="#5d615e"/></g>',
     ironIngot: '<g stroke="#42484a" stroke-width="2" stroke-linejoin="round"><path d="m9 25 36-11 11 9-36 13Z" fill="#aeb5b4"/><path d="m20 36 36-13v14L20 50Z" fill="#747d80"/><path d="m9 25 11 11v14L9 38Z" fill="#8d9797"/></g>',
+    rawMeat: '<g stroke="#6d302d" stroke-width="2" stroke-linejoin="round"><path d="M12 38Q8 25 20 17Q31 8 45 15Q57 20 53 34Q50 48 36 51Q18 55 12 38Z" fill="#bd665f"/><path d="M19 35Q19 24 31 21Q43 18 48 27Q51 37 39 43Q26 49 19 35Z" fill="#e6a29a"/><path d="M24 26Q31 20 39 23" fill="none" stroke="#f2c0b6" stroke-width="3"/></g>',
     metalFastener: '<g stroke="#50595a" stroke-width="3" fill="#9aa3a2"><path d="M13 17h38v8H13zM28 9h8v37h-8z"/><circle cx="32" cy="13" r="5" fill="#c7cccc"/></g>',
     stoneAxe: '<g stroke-linejoin="round"><path d="m25 55 13-45 5 2-13 45Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="m38 14 5-12 18 4 1 15-12 8-13-4Z" fill="#7e8585" stroke="#42494b" stroke-width="2"/><path d="m43 4 18 2 1 15-8-4-12-2Z" fill="#b9bfbb"/><path d="m38 14 5-10 4 15-2 8Z" fill="#60696b"/></g>',
     stonePickaxe: '<g stroke-linejoin="round" stroke-linecap="round"><path d="m27 57 12-48 5 1-12 48Z" fill="#a46e3d" stroke="#583b25" stroke-width="2"/><path d="m10 21 14-13 19 5 12-6 7 7-17 15-22-5-11 6Z" fill="#7e8585" stroke="#42494b" stroke-width="3"/><path d="m24 8 19 5 19-6-7 9-17 6-19-5Z" fill="#b9bfbb"/></g>',
@@ -1975,6 +1986,48 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       ' · Камни на карте: ' + active + '/2000';
   }
 
+  function updateHunger(seconds) {
+    const dt = Math.max(0, Number(seconds) || 0);
+    if (!dt) return;
+    const previous = hunger;
+    hunger = Math.max(0, hunger - dt * HUNGER_DRAIN_PER_SECOND);
+    if (hunger <= 0) {
+      starvationDamageTimer += dt;
+      while (starvationDamageTimer >= 18) {
+        starvationDamageTimer -= 18;
+        wildlife?.damagePlayer?.('hunger');
+      }
+    } else {
+      starvationDamageTimer = 0;
+    }
+    hud.setHunger?.(hunger, MAX_HUNGER);
+    if (previous > 20 && hunger <= 20) toast('Вы проголодались. Найдите еду.');
+    if (previous > 0 && hunger <= 0) toast('Вы голодаете. Еда нужна срочно!');
+  }
+
+  function eatSelectedFood() {
+    const stack = hotbarSlots[selectedSlot];
+    if (!stack || stack.id !== 'rawMeat') {
+      toast('Выбери сырое мясо в быстрой панели, чтобы поесть.');
+      return false;
+    }
+    const restored = Math.min(MEAT_HUNGER_VALUE, MAX_HUNGER - hunger);
+    if (restored <= 0) {
+      toast('Ты пока не голоден.');
+      return false;
+    }
+    stack.count -= 1;
+    if (stack.count <= 0) hotbarSlots[selectedSlot] = null;
+    hunger = Math.min(MAX_HUNGER, hunger + MEAT_HUNGER_VALUE);
+    starvationDamageTimer = 0;
+    syncInventoryTotals();
+    hud.setHunger?.(hunger, MAX_HUNGER);
+    save();
+    renderPanel();
+    toast('Съедено сырое мясо: +' + Math.round(restored) + ' к сытости.');
+    return true;
+  }
+
   function selectHotbarSlot(index) {
     if (!Number.isInteger(index) || index < 0 || index >= hotbarSlots.length) return;
     selectedCell = null;
@@ -2057,11 +2110,15 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     const localTrees = world.forests.getInteractiveMeshes(camera.position.x, camera.position.z);
     const localRocks = world.rocks.getInteractiveMeshes(camera.position.x, camera.position.z);
     const localShrubs = world.groundCover?.getInteractiveMeshes?.(camera.position.x, camera.position.z) || [];
+    const animalRoots = wildlife?.getInteractiveMeshes?.() || [];
     const hits = raycaster.intersectObjects(localTrees.concat(
-      localRocks, localShrubs, stoneMesh, fiberMesh, branchMesh, stickMesh, leafMesh, ...scrapMeshes, ironOreMesh
-    ), false);
+      localRocks, localShrubs, animalRoots, stoneMesh, fiberMesh, branchMesh, stickMesh, leafMesh, ...scrapMeshes, ironOreMesh
+    ), true);
     for (const hit of hits) {
-      if (hit.distance > 6.2 || hit.instanceId === undefined) continue;
+      if (hit.distance > 6.2) continue;
+      const animal = wildlife?.getAnimalFromObject?.(hit.object);
+      if (animal && !animal.dead) return { type: 'animal', animal };
+      if (hit.instanceId === undefined) continue;
       if (hit.object === stoneMesh) {
         const node = nodes[hit.instanceId];
         if (node && node.active) return { type: 'stone', node };
@@ -2143,6 +2200,31 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
 
     if (selectedTool === 'hands') startHeldAction('punch');
     else startHeldAction('tool');
+
+    if (target.type === 'animal') {
+      const damage = selectedTool === 'ironAxe' ? 4 :
+        selectedTool === 'stoneAxe' ? 3 :
+        selectedTool === 'woodAxe' ? 2 :
+        selectedTool.endsWith('Pickaxe') ? 2 : 1;
+      const meatYield = wildlife?.getMeatYield?.(target.animal) || 0;
+      if (target.animal.hp <= damage && meatYield > 0 && !canStoreItem('rawMeat', meatYield)) {
+        toast('Инвентарь заполнен. Освободи место для мяса.');
+        return;
+      }
+      const result = wildlife?.damageAnimal?.(target.animal, damage);
+      if (!result) return;
+      if (result.dead) {
+        const missing = addToInventory('rawMeat', result.meat);
+        syncInventoryTotals();
+        save();
+        renderPanel();
+        toast(result.name + ' добыт: +' + (result.meat - missing) + ' сырого мяса.' +
+          (missing ? ' Не поместилось в инвентарь.' : ' Переложи мясо в быстрый слот и нажми Q, чтобы поесть.'));
+      } else {
+        toast(result.name + ': осталось ' + result.hp + ' ед. здоровья.');
+      }
+      return;
+    }
 
     if (target.type === 'bush') {
       const damage = selectedTool.endsWith('Axe') ? 2 : 1;
@@ -2382,7 +2464,11 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
       toast(flashlightOn ? 'Фонарик включён.' : 'Фонарик выключен.');
       return;
     }
-    if (!mobileMode && event.code === 'KeyE' && !event.repeat) {
+    if (event.code === 'KeyQ' && !event.repeat &&
+      !(event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName))) {
+      event.preventDefault();
+      eatSelectedFood();
+    } else if (!mobileMode && event.code === 'KeyE' && !event.repeat) {
       event.preventDefault();
       showPanel(!panelOpen);
     } else if (/^Digit[1-9]$/.test(event.code) && !event.repeat) {
@@ -2416,6 +2502,7 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
 
   function update(dt) {
     messageCooldown = Math.max(0, messageCooldown - dt);
+    updateHunger(dt);
     hitCooldown = Math.max(0, hitCooldown - dt);
     toolSwing = Math.max(0, toolSwing - dt * toolSwingSpeed);
     if (toolSwing <= 0) toolAction = 'idle';
@@ -2515,9 +2602,12 @@ export function createSurvival(scene, camera, canvas, world, player, hud, option
     }
   }
 
+  hud.setHunger?.(hunger, MAX_HUNGER);
   renderPanel();
   return {
     update,
+    advanceBackground: updateHunger,
+    eatSelectedFood,
     save,
     open() { showPanel(true); },
     close() { showPanel(false); },
