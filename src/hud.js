@@ -12,6 +12,7 @@ export function createHud() {
     oxygen: document.getElementById('oxygen-indicator'),
     oxygenText: document.getElementById('oxygen-text'),
     oxygenFill: document.getElementById('oxygen-fill'),
+    health: document.getElementById('health-hearts'),
   };
 
   const ctx = el.compass.getContext('2d');
@@ -72,6 +73,21 @@ export function createHud() {
   }
 
   return {
+    setHealth(value, maximum = 5, hurt = false) {
+      if (!el.health) return;
+      const total = Math.max(1, Math.min(12, Math.floor(Number(maximum) || 5)));
+      const current = Math.max(0, Math.min(total, Math.floor(Number(value) || 0)));
+      const hearts = Array.from({ length: total }, (_, index) => {
+        const heart = document.createElement('span');
+        heart.className = index < current ? 'full' : 'empty';
+        heart.textContent = index < current ? '♥' : '♡';
+        heart.setAttribute('aria-hidden', 'true');
+        return heart;
+      });
+      el.health.replaceChildren(...hearts);
+      el.health.setAttribute('aria-label', 'Здоровье: ' + current + ' из ' + total);
+      el.health.classList.toggle('hurt', !!hurt);
+    },
     update(camera, player = null) {
       const dx = camera.position.x;
       const dz = camera.position.z;
