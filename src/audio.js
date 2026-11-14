@@ -63,7 +63,7 @@ export function createAmbience() {
     lfo.start();
 
     src.start(); src2.start(); src3.start();
-    master.gain.linearRampToValueAtTime(0.55, ctx.currentTime + 2.5);
+    master.gain.linearRampToValueAtTime(enabled ? 0.55 : 0.0, ctx.currentTime + 2.5);
   }
 
   return {
