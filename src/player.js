@@ -1052,6 +1052,16 @@ export function createPlayer(camera, domElement, physics, worldInfo, onModeChang
     respawn() {
       resetToSpawn(false);
     },
+    advanceBackground(seconds) {
+      const dt = Math.max(0, Number(seconds) || 0);
+      if (!dt || mode === 'cinematic') return;
+      if (underwater) {
+        oxygen = Math.max(0, oxygen - dt);
+        if (oxygen <= 0) respawnAfterDrowning();
+      } else {
+        oxygen = Math.min(MAX_OXYGEN, oxygen + dt * 6.5);
+      }
+    },
     jump() {
       if (mode !== 'fly' && !swimming && !grounded) jumpQueued = Math.max(jumpQueued, 0.16);
       else if (mode !== 'fly' && !swimming) jumpQueued = 0.16;
