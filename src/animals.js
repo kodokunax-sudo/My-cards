@@ -519,6 +519,18 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
     }
   }
 
+  function advanceBackground(seconds) {
+    let remaining = Math.max(0, Number(seconds) || 0);
+    // Browsers may suspend requestAnimationFrame in an inactive tab.
+    // Catch up animal AI in small steps when it becomes available again.
+    remaining = Math.min(remaining, 10 * 60);
+    while (remaining > 0) {
+      const step = Math.min(0.5, remaining);
+      update(step);
+      remaining -= step;
+    }
+  }
+
   function getSaveState() {
     return { health };
   }
@@ -534,6 +546,7 @@ export function createWildlife(scene, world, camera, player, hud, options = {}) 
 
   return {
     update,
+    advanceBackground,
     get count() { return animals.length; },
     get health() { return health; },
     getSaveState,
