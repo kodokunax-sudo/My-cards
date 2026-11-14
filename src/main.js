@@ -157,6 +157,7 @@ const touch = createTouchControls(player, {
     touch.setSoundState(on);
     hud.toast(on ? 'Звук включён' : 'Звук выключен');
   },
+  eat: () => survival.eatSelectedFood?.(),
 });
 if (touch) {
   touch.setSoundState(audio.enabled);
