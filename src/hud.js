@@ -20,6 +20,7 @@ export function createHud() {
   const cx = size / 2, cy = size / 2, r = size / 2 - 12;
 
   let toastTimer = 0;
+  let healthHitTimer = 0;
   let lastClockText = '';
   const fmt = (v) => v.toFixed(1).replace('.', ',');
 
@@ -86,7 +87,14 @@ export function createHud() {
       });
       el.health.replaceChildren(...hearts);
       el.health.setAttribute('aria-label', 'Здоровье: ' + current + ' из ' + total);
+      if (healthHitTimer) clearTimeout(healthHitTimer);
       el.health.classList.toggle('hurt', !!hurt);
+      if (hurt) {
+        healthHitTimer = setTimeout(() => {
+          el.health?.classList.remove('hurt');
+          healthHitTimer = 0;
+        }, 650);
+      }
     },
     update(camera, player = null) {
       const dx = camera.position.x;
