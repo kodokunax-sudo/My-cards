@@ -13,6 +13,9 @@ export function createHud() {
     oxygenText: document.getElementById('oxygen-text'),
     oxygenFill: document.getElementById('oxygen-fill'),
     health: document.getElementById('health-hearts'),
+    hunger: document.getElementById('hunger-indicator'),
+    hungerFill: document.getElementById('hunger-fill'),
+    hungerText: document.getElementById('hunger-text'),
   };
 
   const ctx = el.compass.getContext('2d');
@@ -95,6 +98,16 @@ export function createHud() {
           healthHitTimer = 0;
         }, 650);
       }
+    },
+    setHunger(value, maximum = 100) {
+      if (!el.hunger || !el.hungerFill || !el.hungerText) return;
+      const max = Math.max(1, Number(maximum) || 100);
+      const current = Math.max(0, Math.min(max, Number(value) || 0));
+      const ratio = current / max;
+      el.hungerFill.style.width = (ratio * 100) + '%';
+      el.hungerText.textContent = Math.round(ratio * 100) + '%';
+      el.hunger.classList.toggle('low', ratio <= 0.2);
+      el.hunger.setAttribute('aria-label', 'Сытость: ' + Math.round(ratio * 100) + '%');
     },
     update(camera, player = null) {
       const dx = camera.position.x;
