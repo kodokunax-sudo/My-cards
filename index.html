@@ -74,7 +74,7 @@
 
   <div id="hint">
     <b>WASD</b> идти · <b>мышь</b> смотреть · <b>Space</b> прыгать/всплывать · <b>Shift</b> бежать · <b>ЛКМ</b> рубить / добывать · <b>E</b> инвентарь · <b>1–9</b> выбрать предмет в быстрой панели · <b>F</b> полёт ·
-    <b>в воде: WASD + направление взгляда</b> плыть · <b>Space/C</b> всплыть/нырнуть · <b>T</b> облёт · <b>M</b> звук · <b>O</b> настройки · <b>Esc</b> мышь
+    <b>в воде: WASD + направление взгляда</b> плыть · <b>Space/C</b> всплыть/нырнуть · <b>T</b> облёт · <b>M</b> звук · <b>O / P</b> меню и пауза · <b>Esc</b> открыть/закрыть меню
   </div>
   <div id="hint-touch">
     <b>джойстик</b> слева — идти · <b>свайп</b> — смотреть · <b>ПРЫЖОК</b> — подпрыгнуть
@@ -83,16 +83,19 @@
   <div id="toast"></div>
 
   <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings-panel">
-    ⚙ ГРАФИКА
+    ☰ МЕНЮ
   </button>
   <section id="settings-panel" class="panel settings-panel" hidden>
-    <div class="settings-heading">
-      <div>
-        <h2>НАСТРОЙКИ</h2>
-        <p>Графика и производительность</p>
+    <div class="game-menu-card">
+      <div class="settings-heading">
+        <div>
+          <h2>ИГРОВОЕ МЕНЮ</h2>
+          <p>Игра остановлена. Настройки можно менять в любой момент.</p>
+        </div>
       </div>
-      <button id="settings-close" type="button" aria-label="Закрыть настройки">×</button>
-    </div>
+
+      <button id="menu-sound-toggle" class="menu-sound-toggle" type="button" aria-pressed="true">ЗВУК: ВКЛЮЧЁН</button>
+      <div class="menu-section-title">ГРАФИКА И ПРОИЗВОДИТЕЛЬНОСТЬ</div>
 
     <label class="setting-row" for="graphics-quality">
       <span>Качество графики</span>
@@ -120,6 +123,8 @@
     </div>
 
     <div class="settings-footnote" id="graphics-status">Автоматическое качество подстраивается под устройство.</div>
+      <button id="settings-resume" class="menu-resume" type="button">▶ ПРОДОЛЖИТЬ ИГРУ</button>
+    </div>
   </section>
 </div>
 
