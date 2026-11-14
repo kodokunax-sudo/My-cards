@@ -16,6 +16,7 @@ import { createTouchControls } from './touch.js';
 import { createWorld } from './world.js';
 import { createOcclusionCuller } from './occlusion.js';
 import { createSurvival, SAVE_KEY } from './survival.js';
+import { createWildlife } from './animals.js';
 
 
 window.__titanBootStatus?.('Подготавливаем графику и игровые модули...');
@@ -164,6 +165,11 @@ if (previousSave?.session?.player) {
   player.restoreState(previousSave.session.player);
 }
 
+const wildlife = createWildlife(scene, world, camera, player, hud, {
+  mobile: isCoarseDevice,
+});
+wildlife.restoreState(previousSave?.session?.wildlife);
+
 window.__titanBootStatus?.('Расставляем ресурсы и готовим управление...');
 await new Promise((resolve) => requestAnimationFrame(() =>
   requestAnimationFrame(resolve)
@@ -183,6 +189,7 @@ const survival = createSurvival(scene, camera, canvas, world, player, hud, {
   getSessionState: () => ({
     elapsed,
     player: player.getSaveState(),
+    wildlife: wildlife.getSaveState(),
   }),
 });
 if (!survival.save()) notifySaveFailure();
@@ -570,6 +577,7 @@ function animate() {
   elapsed += dt;
 
   player.update(dt);
+  wildlife.update(dt);
   survival.update(dt);
   saveAccumulator += dt;
   if (saveAccumulator >= 8) {
@@ -658,5 +666,5 @@ startBtn.textContent = touch ? 'Начать прогулку' : 'Войти в 
 // для отладки из консоли
 window.__scene = {
   scene, camera, renderer, fountain, water, world, player, physics,
-  occlusionCuller, survival, FOUNTAIN_HEIGHT,
+  occlusionCuller, survival, wildlife, FOUNTAIN_HEIGHT,
 };
