@@ -1708,3 +1708,50 @@ body.in-game #survival-toggle {display:inline-flex}
 }
 .survival-item-tooltip[hidden] {display:none}
 .survival-item-tooltip.visible {opacity:1;transform:translateY(0)}
+
+
+/* Player health hearts. */
+.health-hearts {
+  position: fixed;
+  z-index: 45;
+  top: max(14px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 142px;
+  padding: 5px 12px 7px;
+  border: 1px solid rgba(255, 142, 150, 0.28);
+  border-radius: 999px;
+  background: rgba(12, 15, 22, 0.66);
+  box-shadow: 0 5px 22px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.health-hearts span {
+  display: block;
+  font: 800 25px/1 system-ui, sans-serif;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.health-hearts .full {
+  color: #ff5968;
+  text-shadow: 0 0 9px rgba(255, 65, 85, 0.46);
+}
+.health-hearts .empty {
+  color: rgba(235, 218, 216, 0.40);
+  text-shadow: none;
+}
+.health-hearts.hurt {
+  border-color: rgba(255, 65, 75, 0.9);
+  animation: health-hit 0.22s ease 2;
+}
+@keyframes health-hit {
+  50% { transform: translateX(-50%) scale(1.08); filter: brightness(1.7); }
+}
+@media(max-width:620px) {
+  .health-hearts { top: max(8px, env(safe-area-inset-top)); gap: 3px; padding: 4px 9px 5px; }
+  .health-hearts span { font-size: 21px; }
+}
